@@ -1,0 +1,32 @@
+{
+  "name": "page-context-bridge",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Monorepo for the Page Context Bridge extension and MCP bridge server",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter page-context-bridge-extension dev",
+    "mcp": "pnpm --filter page-context-mcp-bridge start",
+    "mcp:dev": "pnpm --filter page-context-mcp-bridge dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @page-context/shared-protocol build && vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.30",
+    "@types/node": "^24.5.2",
+    "@types/ws": "^8.18.1",
+    "jsdom": "^26.1.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "chrome-extension",
+    "mcp",
+    "context-bridge",
+    "browser"
+  ],
+  "license": "MIT"
+}

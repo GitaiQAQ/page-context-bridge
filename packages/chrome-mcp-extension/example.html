@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page Context Bridge - Test Page</title>
+  <style>
+    :root { --bg: #0f172a; --surface: #1e293b; --border: #334155; --text: #e2e8f0; --muted: #94a3b8; --accent: #3b82f6; --green: #22c55e; --red: #ef4444; --yellow: #eab308; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px; max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+    h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; margin-top: 28px; }
+    .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .card h3 { font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 10px; }
+    .stat { font-size: 28px; font-weight: 700; }
+    .stat.green { color: var(--green); }
+    .stat.red { color: var(--red); }
+    .stat.blue { color: var(--accent); }
+    .stat.yellow { color: var(--yellow); }
+    .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    button { padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+    button:hover { border-color: var(--accent); background: #1a2744; }
+    button:active { transform: scale(0.97); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { background: #2563eb; }
+    button.danger { border-color: var(--red); color: var(--red); }
+    button.danger:hover { background: #2a1515; }
+
+    .items-list { list-style: none; }
+    .items-list li { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .items-list li:last-child { border-bottom: none; }
+    .items-list .remove-btn { background: none; border: none; color: var(--red); cursor: pointer; font-size: 12px; padding: 2px 6px; }
+
+    .log-area { background: #0c1222; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-family: "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.6; max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+    .log-area .ts { color: var(--muted); }
+    .log-area .info { color: var(--accent); }
+    .log-area .success { color: var(--green); }
+    .log-area .error { color: var(--red); }
+    .log-area .warn { color: var(--yellow); }
+
+    .form-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+    input[type="text"], textarea, select { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; outline: none; }
+    input[type="text"]:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    textarea { min-height: 90px; resize: vertical; }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .pill-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .pill { padding: 4px 8px; border-radius: 999px; background: #16213a; border: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+    .fixture-box { border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+    pre.code-block { background: #0c1222; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-size: 12px; overflow: auto; }
+
+    .test-result { padding: 10px 14px; border-radius: 8px; margin-top: 8px; font-size: 13px; font-family: monospace; white-space: pre-wrap; }
+    .test-result.ok { background: #0d2818; border: 1px solid #166534; color: var(--green); }
+    .test-result.fail { background: #2a0f0f; border: 1px solid #7f1d1d; color: var(--red); }
+
+    code { background: #1a2744; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Page Context Bridge Test Page</h1>
+  <p class="subtitle">This page provides interactive elements for testing Page Context Bridge tools without depending on Chrome DevTools semantics.</p>
+
+  <h2>Status</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Context Tools</h3>
+      <div class="stat green" id="tools-status">Active</div>
+      <div class="label"><code>__pageContextBridge__</code> registered</div>
+      <div class="hint" id="registry-summary">5 namespaces registered</div>
+    </div>
+    <div class="card">
+      <h3>Items Count</h3>
+      <div class="stat blue" id="items-count">2</div>
+      <div class="label">Items in list (queryable)</div>
+    </div>
+    <div class="card">
+      <h3>Counter</h3>
+      <div class="stat yellow" id="counter-value">0</div>
+      <div class="label">Global counter (JS state)</div>
+    </div>
+    <div class="card">
+      <h3>Selection</h3>
+      <div class="stat" id="selection-preview" style="font-size:16px;color:var(--muted);">No selection</div>
+      <div class="label">Try selecting text on this page</div>
+    </div>
+  </div>
+
+  <h2>Interactive Controls</h2>
+  <div class="card">
+    <h3>Items List</h3>
+    <ul class="items-list" id="items-list">
+      <li>Initial item 1</li>
+      <li>Initial item 2</li>
+    </ul>
+    <div class="form-row">
+      <input type="text" id="new-item-input" placeholder="New item text..." />
+      <button class="primary" id="add-item-btn">Add Item</button>
+      <button class="danger" id="clear-items-btn">Clear All</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3>Counter</h3>
+    <div class="controls">
+      <button id="counter-inc">+1</button>
+      <button id="counter-dec">-1</button>
+      <button id="counter-reset">Reset</button>
+      <button id="counter-set" class="primary">Set to 42</button>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:12px">
+    <div class="card stack">
+      <div>
+        <h3>Profile Form</h3>
+        <p class="hint">Used to validate <code>fill_input</code>, <code>query_elements</code>, form context tools, and nested schema inputs.</p>
+      </div>
+      <div class="form-row"><input type="text" id="full-name-input" value="MCP Demo User" placeholder="Full name" /></div>
+      <div class="form-row"><input type="text" id="email-input" value="demo@example.com" placeholder="Email" /></div>
+      <div class="form-row">
+        <select id="role-select">
+          <option value="analyst">analyst</option>
+          <option value="developer">developer</option>
+          <option value="reviewer">reviewer</option>
+        </select>
+      </div>
+      <div class="form-row"><textarea id="notes-input">Selection target and form fixture.</textarea></div>
+      <div class="controls">
+        <button id="profile-apply-btn" class="primary">Apply Preview</button>
+      </div>
+      <pre class="code-block" id="profile-preview"></pre>
+    </div>
+    <div class="card stack">
+      <div>
+        <h3>Fixture & Namespaces</h3>
+        <p class="hint">The example exposes multiple namespaces and instances to exercise tree filtering and selective tool injection.</p>
+      </div>
+      <div class="pill-list">
+        <span class="pill">page.default</span>
+        <span class="pill">catalog.primary · getItems/addItem/removeItem</span>
+        <span class="pill">catalog.secondary · getItems/seedItems/getInstanceSummary</span>
+        <span class="pill">form.profile</span>
+        <span class="pill">metrics.dashboard</span>
+        <span class="pill">qa.smoke</span>
+      </div>
+      <div class="fixture-box">
+        <div class="hint">Fixture summary</div>
+        <div id="fixture-status">2 items · counter 0</div>
+      </div>
+      <p class="hint" id="selection-target">Selection target text for bridge tests. Select this sentence to verify <code>get_selected_text</code>.</p>
+      <div class="controls">
+        <button id="fixture-reset-btn">Reset Fixture</button>
+        <button id="qa-run-suite-btn" class="primary">Run Full Suite</button>
+      </div>
+      <div class="test-result ok" id="qa-results">Ready</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h3>Context Tool Test</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Test built-in tools and namespace-aware context tools directly from this page:</p>
+    <div class="controls">
+      <button id="test-page-info">get_page_info</button>
+      <button id="test-selected-text">get_selected_text</button>
+      <button id="test-query-h1">query_elements h1</button>
+      <button id="test-execute-js">execute_js</button>
+      <button id="test-console-logs">get_console_logs</button>
+      <button id="test-screenshot">screenshot_tab</button>
+      <button id="test-page-tool-suite" class="primary">qa.smoke.runSuite</button>
+    </div>
+    <div id="test-result"></div>
+  </div>
+
+  <h2>Log</h2>
+  <div class="log-area" id="log-area"></div>
+
+  <script type="module" src="./src/example-page-main.ts"></script>
+</body>
+</html>
