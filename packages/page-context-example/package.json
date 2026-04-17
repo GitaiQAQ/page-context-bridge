@@ -1,0 +1,33 @@
+{
+  "name": "@page-context/example",
+  "version": "0.0.1",
+  "description": "Example test page for Page Context Bridge — standalone SPA with full protocol fixture.",
+  "homepage": "https://unpkg.com/@page-context/example/dist/example.html",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@page-context/shared-protocol": "*"
+  },
+  "keywords": [
+    "page-context",
+    "example",
+    "fixture",
+    "mcp"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@page-context/shared-protocol": "workspace:*",
+    "vite": "^8.0.8"
+  }
+}

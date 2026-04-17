@@ -1,0 +1,35 @@
+{
+  "name": "@page-context/opencode-handler",
+  "version": "0.0.2-2",
+  "description": "macOS opencode:// protocol handler",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "opencode-handler": "bin/opencode-handler"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cp dist/index.js dist/handler.mjs",
+    "dev": "tsc --watch -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "node dist/index.js 'opencode://run?msg=hello%20world'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "opencode",
+    "protocol-handler",
+    "macos",
+    "url-scheme"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

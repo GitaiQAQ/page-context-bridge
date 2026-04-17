@@ -11,7 +11,7 @@ export default defineConfig({
           name: "node",
           include: [
             "packages/shared-protocol/src/**/*.test.ts",
-            "packages/chrome-mcp-bridge-server/src/**/*.test.ts",
+            "packages/page-context-bridge-server/src/**/*.test.ts",
           ],
           environment: "node",
         },
@@ -19,7 +19,7 @@ export default defineConfig({
       {
         test: {
           name: "browser",
-          include: ["packages/chrome-mcp-extension/src/**/*.browser.test.ts"],
+          include: ["packages/page-context-extension/src/**/*.browser.test.ts"],
           environment: "jsdom",
         },
       },

@@ -1,18 +1,73 @@
 # Page Context Bridge
 
-[中文](#中文)
+**Page Capability Bridge for Agents**
 
-`Page Context Bridge` is a universal Chrome extension host that integrates page-exposed debugging tools into browser-side LLM agents via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
+Page Context Bridge lets business pages declare structured capabilities and compiles them into standard MCP tools, resources, and prompts for agentic clients.
 
-Its goal is not to create business-specific plugins, but to provide an open-source set of universal capabilities:
+Instead of exposing the entire browser or page surface directly to the model, the bridge narrows what agents can see and use through scene-aware, namespace-aware, and enablement-aware capability trimming.
 
-- Discover debug namespaces / instances / tools on the page
-- Bridge page context to standard MCP tools, resources, and prompts
-- Manage sessions / contexts and tool visibility
-- Call page tools from any MCP-compatible client
-- Execute JS analysis code under restricted capabilities
+It is designed around a simple pipeline:
+
+`Business page -> Page Context Bridge -> MCP -> Agent`
+
+## Goals
+
+Page Context Bridge exists to:
+
+- Let pages expose structured capabilities through `window.__pageContextBridge__`
+- Compile page capabilities into standard MCP tools, resources, and prompts
+- Trim capability exposure by scene, namespace, and enablement state
+- Give agents a narrower, safer, and more semantic operating surface
+- Support native page bridges first, injected adapters second, and builtin debug tools last
+
+## Core Capabilities
+
+### 1. Capability Declaration
+
+Pages can declare:
+
+- Scene
+- Manifest
+- Tools
+- Resources
+- Skills
+
+### 2. Capability Compilation
+
+The bridge compiles:
+
+- Page tools -> MCP tools
+- Page resources -> MCP resources
+- Page skills -> MCP prompts
+
+### 3. Capability Trimming
+
+The bridge reduces agent-visible surface area through:
+
+- Scene-aware filtering
+- Namespace-aware filtering
+- Tool visibility and enablement filtering
+
+### 4. Bridge Runtime
+
+The runtime includes:
+
+- A browser extension runtime for discovery and execution
+- A local MCP bridge server for stdio/SSE transport
+- Builtin browser diagnostics and debugging tools
+
+## Non-Goals / Guardrails
+
+Page Context Bridge is not trying to become:
+
+- A generic browser automation framework
+- A site-specific plugin repository
+- A grab bag of arbitrary injected page scripts
+- A system that exposes every available capability to agents by default
 
 ## How It Works
+
+Page Context Bridge turns page-declared capabilities into MCP-compatible objects that agentic clients can discover and call.
 
 ```
 Page (window.__pageContextBridge__)
@@ -48,12 +103,12 @@ packages/
 ├── shared-protocol/          # Shared JSON-RPC 2.0 protocol and type definitions
 │   └── src/
 │       └── index.ts          # RpcPeer, message types, PageContextManifest types
-├── chrome-mcp-bridge-server/ # Node.js MCP bridge server (SSE/stdio transport)
+├── page-context-bridge-server/ # Node.js MCP bridge server (SSE/stdio transport)
 │   └── src/
 │       ├── index.ts          # WebSocket + MCP server, builtin tools, routing
 │       ├── schema.ts         # JSON Schema → Zod converter
 │       └── page-tool-routing.ts
-└── chrome-mcp-extension/     # Chrome Extension (Manifest V3)
+└── page-context-extension/     # Page Context Extension (Manifest V3)
     └── src/
         ├── background.ts              # Service worker: WebSocket, tool discovery, routing
         ├── content-script-core.ts     # Builtin tool implementations
@@ -92,7 +147,7 @@ packages/
 
 ### Builtin Tools
 
-The extension provides 12 built-in browser automation tools:
+The extension also provides builtin diagnostics and browser interaction tools that complement page-declared capabilities:
 
 | Tool | Description |
 |------|-------------|
@@ -164,13 +219,31 @@ Start the extension dev preview (Playwright-based):
 pnpm dev
 ```
 
+## Quick Start (For AI Integration)
+
+**Goal**: Expose `window.__pageContextBridge__` on your page so this extension can bridge your page's tools/resources/skills into standard MCP protocol for any LLM agent.
+
+**Copy the following prompt to any LLM to auto-generate integration code for your current project:**
+
+```text
+Read ./docs/page-context-bridge-all-in-one-guidance.md, then generate a minimal complete window.__pageContextBridge__ implementation for the current project's business page.
+
+Requirements:
+1. Organize namespaces by business domain (e.g. catalog, checkout, profile) — NOT utils/misc/common
+2. tools = atomic actions, resources = read-only state, skills = task intent descriptions
+3. Output ready-to-paste TypeScript code for the page
+4. Also output an example getManifest() return value
+```
+
+Full specification: [Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
+
 ## Load Extension in Chrome
 
 1. Run `pnpm build`
 2. Open `chrome://extensions`
 3. Enable **Developer mode** in the top right
 4. Click **Load unpacked**
-5. Select the `packages/chrome-mcp-extension/dist/` directory
+5. Select the `packages/page-context-extension/dist/` directory
 
 After loading, the extension will:
 - Inject the content script into all pages
@@ -180,36 +253,86 @@ After loading, the extension will:
 
 ## Configure MCP Client
 
-### SSE Transport
+### Using npx (Recommended)
 
-Add to your MCP client configuration (e.g., Claude Desktop `claude_desktop_config.json`):
+The simplest way to use Page Context Bridge is via npx:
+
+```bash
+npx @page-context/mcp-bridge
+```
+
+For OpenCode, add to `~/.config/opencode/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "page-context-bridge": {
-      "url": "http://127.0.0.1:9001/sse"
+      "command": "npx",
+      "args": ["-y", "@page-context/mcp-bridge"]
     }
   }
 }
 ```
 
-Then start the bridge server:
+For Claude Desktop, add to `claude_desktop_config.json`:
 
-```bash
-pnpm mcp
+```json
+{
+  "mcpServers": {
+    "page-context-bridge": {
+      "command": "npx",
+      "args": ["-y", "@page-context/mcp-bridge"]
+    }
+  }
+}
 ```
 
-### stdio Transport
+### CLI Commands
 
-For CLI-based MCP clients:
+```bash
+# Run in stdio mode (default, for MCP clients)
+npx @page-context/mcp-bridge
+
+# Run in SSE mode
+npx @page-context/mcp-bridge sse 22334
+
+# Show configuration examples
+npx @page-context/mcp-bridge config
+
+# Show help
+npx @page-context/mcp-bridge --help
+```
+
+### SSE Transport
+
+For SSE transport, start the server first:
+
+```bash
+npx @page-context/mcp-bridge sse 22334
+```
+
+Then configure your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "page-context-bridge": {
+      "url": "http://127.0.0.1:22334/sse"
+    }
+  }
+}
+```
+
+### stdio Transport (Local Development)
+
+For local development with stdio transport:
 
 ```json
 {
   "mcpServers": {
     "page-context-bridge": {
       "command": "node",
-      "args": ["/path/to/packages/chrome-mcp-bridge-server/dist/index.js"]
+      "args": ["/path/to/packages/page-context-bridge-server/dist/index.js"]
     }
   }
 }
@@ -234,7 +357,7 @@ window.__pageContextBridge__ = {
 }
 ```
 
-See the [Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md) for the complete specification and [example-page-core.ts](./packages/chrome-mcp-extension/src/example-page-core.ts) for a full implementation.
+See the [Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md) for the complete specification and [example-page-core.ts](./packages/page-context-extension/src/example-page-core.ts) for a full implementation.
 
 ## Security Considerations
 
@@ -272,243 +395,6 @@ Not yet completed:
 - [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
 - [Capability Pipeline Design](./docs/page-context-capability-pipeline.md)
 
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines.
-
 ## License
-
-MIT
-
----
-
-# 中文
-
-`Page Context Bridge` 是一个通用的 Chrome 扩展宿主，通过 [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) 将页面暴露的调试工具接入浏览器侧 LLM Agent。
-
-它的目标不是做某个业务专属插件，而是提供一套可开源的通用能力：
-
-- 发现页面上的 debug namespaces / instances / tools
-- 将页面上下文桥接为标准 MCP tools / resources / prompts
-- 管理 session / context 与工具可见性
-- 从任何 MCP 兼容客户端调用页面工具
-- 在受限能力下执行 JS 分析代码
-
-## 工作原理
-
-```
-页面 (window.__pageContextBridge__)
-  -> Content Script (内置工具 + 页面工具发现)
-  -> Service Worker (background.ts, WebSocket 桥接)
-  -> MCP Bridge Server (Node.js, SSE/stdio 传输)
-  -> MCP 客户端 (Claude Desktop, OpenCode 等)
-```
-
-核心约束：
-
-- 扩展不直接 import 业务代码
-- 扩展不硬编码业务 namespace
-- 扩展只依赖 `window.__pageContextBridge__` 协议
-- 页面能力被编译为标准 MCP 对象 (tools / resources / prompts)
-- 基于 namespace 的过滤减少暴露给 agent 的能力规模
-
-## 用户故事
-
-### 1. 自动化根因分析
-> 作为技术支持工程师，我希望调用专门的"诊断 Agent"自动检查隐藏配置规则，以便在几秒内定位问题，而不是查看多个仪表盘。
-
-### 2. 复杂软件的自然语言接口
-> 作为 SaaS 产品经理，我希望将应用内部 API 暴露为调试工具，以便用户通过自然语言执行复杂的批量操作。
-
-### 3. 深度状态巡检
-> 作为前端开发者，我希望询问 Agent "是哪个 observable 导致了意外重渲染？"，以便 Agent 可以遍历状态树并精准定位数据变化。
-
-## 项目结构
-
-```
-packages/
-├── shared-protocol/          # 共享 JSON-RPC 2.0 协议和类型定义
-│   └── src/
-│       └── index.ts          # RpcPeer、消息类型、PageContextManifest 类型
-├── chrome-mcp-bridge-server/ # Node.js MCP 桥接服务器 (SSE/stdio 传输)
-│   └── src/
-│       ├── index.ts          # WebSocket + MCP 服务器、内置工具、路由
-│       ├── schema.ts         # JSON Schema → Zod 转换器
-│       └── page-tool-routing.ts
-└── chrome-mcp-extension/     # Chrome 扩展 (Manifest V3)
-    └── src/
-        ├── background.ts              # Service Worker: WebSocket、工具发现、路由
-        ├── content-script-core.ts     # 内置工具实现
-        ├── content-script.ts          # Content script 入口
-        ├── sidepanel-main.ts          # Side panel UI（工具树、上下文、浏览器）
-        ├── popup-main.ts              # Popup UI（连接状态）
-        ├── runtime-rpc.ts             # Chrome runtime JSON-RPC 适配器
-        ├── page-tool-registry.ts      # 页面工具标准化
-        ├── page-tool-visibility.ts    # 工具偏好层级
-        ├── context-manifest-diff.ts   # Manifest 差异计算
-        ├── context-manifest-filter-debug.ts  # 过滤原因追踪
-        ├── builtin-tool-filtering.ts  # 内置工具过滤
-        ├── example-page-core.ts       # 示例页面（含 namespace/resource/skill）
-        └── example-page-main.ts       # 示例页面入口
-```
-
-## 快速开始
-
-### 前置条件
-
-- Node.js >= 18
-- pnpm >= 8
-
-### 安装
-
-```bash
-pnpm install
-```
-
-### 构建
-
-```bash
-pnpm build
-```
-
-### 类型检查
-
-```bash
-pnpm typecheck
-```
-
-### 测试
-
-```bash
-pnpm test
-```
-
-### 开发
-
-以开发模式启动 MCP 桥接服务器：
-
-```bash
-pnpm mcp:dev
-```
-
-启动扩展开发预览（基于 Playwright）：
-
-```bash
-pnpm dev
-```
-
-## 在 Chrome 中加载扩展
-
-1. 运行 `pnpm build`
-2. 打开 `chrome://extensions`
-3. 打开右上角 **开发者模式**
-4. 点击 **加载已解压的扩展程序**
-5. 选择 `packages/chrome-mcp-extension/dist/` 目录
-
-加载后，扩展会：
-- 向所有页面注入 content script
-- 启动 service worker (background.ts)
-- 提供 popup 用于查看连接状态
-- 提供 side panel 用于管理工具/上下文
-
-## 配置 MCP 客户端
-
-### SSE 传输
-
-添加到 MCP 客户端配置（如 Claude Desktop 的 `claude_desktop_config.json`）：
-
-```json
-{
-  "mcpServers": {
-    "page-context-bridge": {
-      "url": "http://127.0.0.1:9001/sse"
-    }
-  }
-}
-```
-
-然后启动桥接服务器：
-
-```bash
-pnpm mcp
-```
-
-### stdio 传输
-
-适用于基于 CLI 的 MCP 客户端：
-
-```json
-{
-  "mcpServers": {
-    "page-context-bridge": {
-      "command": "node",
-      "args": ["/path/to/packages/chrome-mcp-bridge-server/dist/index.js"]
-    }
-  }
-}
-```
-
-## 页面接入
-
-页面通过 `window.__pageContextBridge__` 暴露能力：
-
-```ts
-// 最小页面接入
-window.__pageContextBridge__ = {
-  version: "0.1.0",
-  listNamespaces() { return ["catalog"] },
-  getNamespace(ns) { /* 返回 namespace 对象 */ },
-  getScene() { return "catalog-list" },
-  listResources() { /* 返回资源描述 */ },
-  readResource(id) { /* 返回资源内容 */ },
-  listSkills() { /* 返回技能描述 */ },
-  getSkill(id, input?) { /* 返回技能 prompt */ },
-  getManifest() { /* 返回完整 manifest */ },
-}
-```
-
-完整规范请参考[接入文档](./docs/page-context-bridge-all-in-one-guidance.md)，完整实现请参考 [example-page-core.ts](./packages/chrome-mcp-extension/src/example-page-core.ts)。
-
-## 安全说明
-
-> **警告**：`execute_js` 内置工具会在页面上下文中执行任意 JavaScript。这是为了允许深度页面检查，但也意味着显著的攻击面，在生产环境中请谨慎使用。
-
-关键安全属性：
-- MCP 桥接服务器在本地运行，无身份验证——依赖本地网络隔离
-- 静态资源服务器的 CORS 设为 `*`——仅用于本地开发
-- 页面工具发现使用 Chrome scripting API，有正确的隔离边界
-- Side panel 对所有用户生成内容使用 HTML 转义（XSS 防护）
-
-## 当前状态
-
-已完成：
-- Monorepo 构建系统（pnpm workspaces + TypeScript + Vite + Vitest）
-- MCP 桥接服务器（SSE 和 stdio 传输）
-- Chrome 扩展（MV3）含 service worker、content script、side panel 和 popup
-- 12 个内置浏览器自动化工具
-- 页面上下文协议（tools、resources、skills）
-- 基于 namespace 的工具可见性和过滤
-- JSON-RPC 2.0 共享协议库
-- Side panel UI（工具树、上下文 manifest、资源/技能检查器）
-- 工具测试面板（手动 RPC 调用）
-- 示例页面（5 个 namespace + 自测套件）
-- 29 个单元测试
-
-尚未完成：
-- E2E 测试
-- CI/CD 流水线
-- RPC 参数运行时验证（当前使用类型断言）
-
-## 文档
-
-- [架构：浏览器扩展 ↔ MCP Bridge](./docs/architecture/browser-extension-mcp-bridge.md)
-- [Page Context Bridge 接入文档](./docs/page-context-bridge-all-in-one-guidance.md)
-- [能力流水线设计](./docs/page-context-capability-pipeline.md)
-
-## 贡献
-
-开发指南请参考 [CONTRIBUTING.md](./CONTRIBUTING.md)。
-
-## 许可证
 
 MIT

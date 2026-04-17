@@ -1,6 +1,7 @@
 {
-  "name": "@page-context/shared-protocol",
+  "name": "@page-context/builtin-tools",
   "version": "0.0.1",
+  "description": "Builtin browser automation tools as a plugin for page-context-bridge",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,6 +20,16 @@
     "test": "pnpm --dir ../.. exec vitest run --project node",
     "prepublishOnly": "npm run build"
   },
+  "dependencies": {
+    "@page-context/shared-protocol": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "automation",
+    "tools"
+  ],
   "license": "MIT",
   "publishConfig": { "access": "public" }
 }

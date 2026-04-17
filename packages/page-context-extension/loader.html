@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #inner { width: 100%; height: 100%; border: none; display: none; }
+    #status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #999;
+      font-size: 14px;
+    }
+    .error-text { color: #d32f2f; text-align: center; line-height: 1.6; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #666; border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-start {
+      margin-top: 12px;
+      padding: 6px 16px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .btn-start:hover { background: #2563eb; }
+    .icon-error { width: 48px; height: 48px; opacity: 0.4; color: #d32f2f; }
+    .icon-empty { width: 48px; height: 48px; opacity: 0.4; color: #999; }
+  </style>
+</head>
+<body>
+  <div id="status">Loading...</div>
+  <iframe id="inner"></iframe>
+  <script type="module" src="./loader.ts"></script>
+</body>
+</html>

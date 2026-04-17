@@ -6,7 +6,7 @@ import {
   RpcProtocolError,
   parseMessage,
   serializeMessage,
-} from "./index.js";
+} from "./index";
 
 describe("RpcPeer", () => {
   it("completes request/response roundtrip", async () => {

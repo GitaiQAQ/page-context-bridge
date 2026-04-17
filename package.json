@@ -8,8 +8,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter page-context-bridge-extension dev",
-    "mcp": "pnpm --filter page-context-mcp-bridge start",
-    "mcp:dev": "pnpm --filter page-context-mcp-bridge dev",
+    "mcp": "pnpm --filter @page-context/mcp-bridge start",
+    "mcp:dev": "pnpm --filter @page-context/mcp-bridge dev",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @page-context/shared-protocol build && vitest run"
   },
@@ -20,10 +20,11 @@
     "jsdom": "^26.1.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
+    "vite": "^8.0.8",
     "vitest": "^3.2.4"
   },
   "keywords": [
-    "chrome-extension",
+    "page-context",
     "mcp",
     "context-bridge",
     "browser"

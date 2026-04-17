@@ -1,0 +1,221 @@
+#!/bin/bash
+set -euo pipefail
+
+# ============================================================
+# OpenCode Protocol Handler CLI
+# Usage: npx opencode-handler <command>
+# ============================================================
+
+RESOLVED_BIN="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$RESOLVED_BIN")" && pwd)"
+PKG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+INSTALL_DIR="$HOME/.opencode"
+CONFIG_FILE="$INSTALL_DIR/config.env"
+HANDLER_SCRIPT="$INSTALL_DIR/handler.mjs"
+APP_BUNDLE="$HOME/Applications/OpenCodeHandler.app"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
+ok()    { echo -e "${GREEN}[ OK ]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+err()   { echo -e "${RED}[ERR]${NC}  $*"; exit 1; }
+
+show_help() {
+    cat << 'EOF'
+Usage: npx opencode-handler <command> [options]
+
+Commands:
+  install       Install the protocol handler
+  uninstall     Uninstall the protocol handler
+  test [url]    Test the handler (default: opencode://run?msg=hello%20world)
+  help          Show this help message
+
+Examples:
+  npx opencode-handler install
+  npx opencode-handler uninstall
+  npx opencode-handler test
+  npx opencode-handler test 'opencode://run?msg=hello'
+EOF
+}
+
+cmd_install() {
+    echo ""
+    echo "=============================================="
+    echo "    OpenCode Protocol Handler (macOS)         "
+    echo "=============================================="
+    echo ""
+
+    info "Checking dependencies..."
+
+    if ! command -v node &>/dev/null; then
+        err "Node.js >= 18 is required. Install with: brew install node"
+    fi
+    ok "Node.js: $(node -v) ($(command -v node))"
+
+    if command -v opencode &>/dev/null; then
+        ok "opencode: $(command -v opencode)"
+    else
+        warn "opencode CLI not found. Install and add to PATH."
+    fi
+
+    info "Installing handler..."
+    mkdir -p "$INSTALL_DIR"
+
+    if [ -f "$PKG_DIR/dist/handler.mjs" ]; then
+        cp "$PKG_DIR/dist/handler.mjs" "$HANDLER_SCRIPT"
+    elif [ -f "$PKG_DIR/dist/index.js" ]; then
+        cp "$PKG_DIR/dist/index.js" "$HANDLER_SCRIPT"
+    else
+        err "handler.mjs not found. Run: npm run build"
+    fi
+    chmod +x "$HANDLER_SCRIPT"
+    ok "handler.mjs -> $HANDLER_SCRIPT"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        info "Creating config..."
+        cat > "$CONFIG_FILE" << 'CONFIG_EOF'
+# OpenCode Protocol Handler Configuration
+
+# Path to opencode binary (empty to use PATH)
+# OPENCODE_BIN=/usr/local/bin/opencode
+
+# Terminal: Terminal, iTerm, Warp, Ghostty, Kitty, Alacritty
+# OPENCODE_TERMINAL=iTerm
+
+# Log level: debug, info, warn, error
+# LOG_LEVEL=info
+CONFIG_EOF
+        ok "Config -> $CONFIG_FILE"
+    else
+        ok "Config exists, skipping"
+    fi
+
+    info "Creating URL scheme handler app..."
+    rm -rf "$APP_BUNDLE"
+
+    NODE_PATH="$(command -v node)"
+
+    # Build native .app bundle (osacompile applets don't register URL schemes on Sonoma+)
+    mkdir -p "$APP_BUNDLE/Contents/MacOS"
+    mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+    # Executable: receives URL as $1, runs handler.mjs via node
+    cat > "$APP_BUNDLE/Contents/MacOS/OpenCodeHandler" << 'APPEOF'
+#!/bin/bash
+URL="${1:-}"
+HANDLER="$HOME/.opencode/handler.mjs"
+LOG="$HOME/.opencode/protocol-handler.log"
+NODE="$(command -v node || echo /usr/bin/node)"
+if [ -n "$URL" ]; then
+    export PATH="$HOME/.opencode/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+    "$NODE" "$HANDLER" "$URL" >> "$LOG" 2>&1 &
+fi
+APPEOF
+    chmod +x "$APP_BUNDLE/Contents/MacOS/OpenCodeHandler"
+
+    # Info.plist with URL scheme declaration
+    cat > "$APP_BUNDLE/Contents/Info.plist" << PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>OpenCodeHandler</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.opencode.protocol-handler</string>
+    <key>CFBundleName</key>
+    <string>OpenCodeHandler</string>
+    <key>CFBundleDisplayName</key>
+    <string>OpenCode Protocol Handler</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.13</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSBackgroundOnly</key>
+    <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>OpenCode Protocol</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>opencode</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
+PLISTEOF
+
+    if [ ! -d "$APP_BUNDLE" ]; then
+        err "Failed to create .app bundle"
+    fi
+    ok "App -> $APP_BUNDLE"
+
+    # Rebuild Launch Services database
+    if [ -x "$LSREGISTER" ]; then
+        "$LSREGISTER" -f "$APP_BUNDLE" 2>/dev/null
+        ok "Registered via lsregister"
+    else
+        open "$APP_BUNDLE" 2>/dev/null || true
+        ok "Registered via open"
+    fi
+
+    echo ""
+    echo "=============================================="
+    echo "  Done!                                       "
+    echo "=============================================="
+    echo ""
+    echo "  Test: open 'opencode://run?msg=hello%20world'"
+    echo "  Debug: node $HANDLER_SCRIPT 'opencode://run?msg=hello'"
+    echo "  Logs: tail -f $INSTALL_DIR/protocol-handler.log"
+    echo "  Config: $CONFIG_FILE"
+    echo "  Uninstall: npx opencode-handler uninstall"
+    echo ""
+}
+
+cmd_uninstall() {
+    info "Uninstalling..."
+
+    if [ -x "$LSREGISTER" ] && [ -d "$APP_BUNDLE" ]; then
+        "$LSREGISTER" -u "$APP_BUNDLE" 2>/dev/null || true
+        ok "URL Scheme unregistered"
+    fi
+
+    if [ -d "$APP_BUNDLE" ]; then
+        rm -rf "$APP_BUNDLE"
+        ok "Removed: $APP_BUNDLE"
+    fi
+
+    rm -f "$INSTALL_DIR/handler.mjs"
+    rm -f "$INSTALL_DIR/handler.py"
+    rm -f "$INSTALL_DIR/.protocol-trusted"
+    ok "Cleaned up handler and trust state"
+
+    echo ""
+    ok "Uninstall complete"
+    info "Config and logs preserved at: $INSTALL_DIR"
+    echo ""
+}
+
+cmd_test() {
+    local url="${1:-opencode://run?msg=hello%20world}"
+    info "Testing: $url"
+    node "$PKG_DIR/dist/index.js" "$url"
+}
+
+case "${1:-help}" in
+    install)  cmd_install ;;
+    uninstall) cmd_uninstall ;;
+    test)     cmd_test "${2:-}" ;;
+    help|--help|-h) show_help ;;
+    *)        echo "Unknown command: $1"; show_help; exit 1 ;;
+esac

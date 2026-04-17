@@ -1,62 +1,62 @@
-# Page Context Bridge All-in-One 接入文档
+# Page Context Bridge All-in-One Integration Guide
 
-这是一份可以直接复制给另一个 LLM 的接入文档，用于在**任意业务项目页面**里实现 `Page Context Bridge`，并让 bridge / MCP / agent 能标准化消费页面侧的 `tools + resources + skills`。
+This is an integration guide that can be directly copied to another LLM for implementing `Page Context Bridge` in **any business project page**, enabling bridge / MCP / agent to standardize consumption of page-side `tools + resources + skills`.
 
-本文档目标不是解释当前仓库的内部实现细节，而是提供一份**面向接入方**的完整实施说明。
+The goal of this document is not to explain the internal implementation details of the current repository, but to provide a **complete implementation guide for integrators**.
 
 ---
 
-## 1. 目标
+## 1. Goal
 
-你要在业务页面里实现一个统一的页面能力对象：
+You need to implement a unified page capability object in the business page:
 
 - `window.__pageContextBridge__`
 
-它用于向外暴露：
+It is used to expose:
 
-- 页面内原子工具 `tools`
-- 只读上下文 `resources`
-- 面向任务的技能描述 `skills`
-- 页面级 manifest `manifest`
+- Atomic tools `tools` within the page
+- Read-only context `resources`
+- Task-oriented skill descriptions `skills`
+- Page-level manifest `manifest`
 
-然后由 Page Context Bridge 把这些能力编译成标准 MCP 输出：
+Then Page Context Bridge compiles these capabilities into standard MCP output:
 
-- 原子 tool -> MCP `tool`
+- Atomic tool -> MCP `tool`
 - resource -> MCP `resource`
 - skill -> MCP `prompt`
 
-这样 Agent 不需要直接理解业务页面内部实现，只需要读 MCP 暴露出的标准能力。
+This way, the Agent doesn't need to directly understand the business page's internal implementation, it only needs to read the standard capabilities exposed by MCP.
 
 ---
 
-## 2. 总体链路
+## 2. Overall Flow
 
-目标链路如下：
+The target flow is as follows:
 
-`业务项目(skills + tools + resources) -> 页面 -> bridge -> mcp -> agent + skills`
+`Business Project(skills + tools + resources) -> Page -> Bridge -> MCP -> Agent + Skills`
 
-职责分层：
+Responsibility layers:
 
-- **业务项目页面**：声明真实业务语义
-- **Page Context Bridge**：采集并标准化这些语义
-- **MCP**：向 Agent 暴露标准对象
-- **Agent**：基于裁剪后的能力集做推理和执行
+- **Business Project Page**: Declares real business semantics
+- **Page Context Bridge**: Collects and standardizes these semantics
+- **MCP**: Exposes standard objects to Agent
+- **Agent**: Performs inference and execution based on the trimmed capability set
 
 ---
 
-## 3. 你必须实现的全局对象
+## 3. Global Object You Must Implement
 
-页面必须暴露：
+The page must expose:
 
 - `window.__pageContextBridge__`
 
-推荐同时暴露：
+It is also recommended to expose:
 
 - `window.__pageContextTools__`
 
-两者可以指向同一个对象。
+Both can point to the same object.
 
-不要使用以下旧名字：
+Do not use the following old names:
 
 - `__pageDebugTools__`
 - `__MCP_BRIDGE_TEST__`
@@ -64,9 +64,9 @@
 
 ---
 
-## 4. 最小接口定义
+## 4. Minimum Interface Definition
 
-页面对象至少要实现这些方法：
+The page object must implement at least these methods:
 
 ```ts
 interface PageContextBridge {
@@ -85,7 +85,7 @@ interface PageContextBridge {
 }
 ```
 
-namespace/instance/tool 结构：
+namespace/instance/tool structure:
 
 ```ts
 interface ToolNamespace {
@@ -103,9 +103,9 @@ interface ToolInstance {
 
 ---
 
-## 5. 标准数据结构
+## 5. Standard Data Structures
 
-请严格对齐以下结构：
+Please strictly align with the following structures:
 
 ```ts
 interface ContextNamespaceDescriptor {
@@ -161,46 +161,46 @@ interface PageContextManifest {
 
 ---
 
-## 6. 设计原则
+## 6. Design Principles
 
-### 6.1 tools 是原子动作
+### 6.1 Tools are Atomic Actions
 
-`tools` 应该只做清晰、可执行、边界明确的动作，例如：
+`tools` should only perform clear, executable, well-bounded actions, such as:
 
 - `catalog.primary.addItem`
 - `form.profile.setProfile`
 - `checkout.payment.submit`
 
-不要把一个过于复杂的大流程直接塞成一个“黑盒工具”，除非它非常稳定且确实适合作为宏动作。
+Do not stuff an overly complex large process directly into a "black box tool", unless it is very stable and indeed suitable as a macro action.
 
-### 6.2 resources 是只读上下文
+### 6.2 Resources are Read-only Context
 
-`resources` 用于暴露页面当前状态，不应该带副作用，例如：
+`resources` are used to expose the current page state and should not have side effects, such as:
 
-- 当前表单值
-- 当前列表项
-- 页面摘要
-- 当前路由场景
-- 最近日志
+- Current form values
+- Current list items
+- Page summary
+- Current route scene
+- Recent logs
 
-### 6.3 skills 是策略描述，不是原子动作
+### 6.3 Skills are Strategy Descriptions, Not Atomic Actions
 
-`skills` 的作用是告诉 agent：
+The purpose of `skills` is to tell the agent:
 
-- 这个任务是什么
-- 推荐读哪些 resources
-- 允许用哪些 tools
-- 应该如何组织推理
+- What this task is
+- Which resources are recommended to read
+- Which tools are allowed
+- How to organize reasoning
 
-skill 当前阶段建议先编译成 MCP `prompt`，而不是直接变成宏工具。
+At the current stage, skills should be compiled into MCP `prompts`, not directly turned into macro tools.
 
 ---
 
-## 7. 命名规范
+## 7. Naming Conventions
 
-### 7.1 namespace
+### 7.1 Namespace
 
-namespace 应该按业务域划分，而不是按技术实现划分，例如：
+Namespace should be divided by business domain, not by technical implementation, for example:
 
 - `catalog`
 - `checkout`
@@ -208,25 +208,25 @@ namespace 应该按业务域划分，而不是按技术实现划分，例如：
 - `analytics`
 - `qa`
 
-不推荐：
+Not recommended:
 
 - `utils`
 - `misc`
 - `components`
 - `service`
 
-### 7.2 instance
+### 7.2 Instance
 
-同一个 namespace 下如果存在多个实体或上下文实例，用 `instanceId` 区分，例如：
+If multiple entities or context instances exist under the same namespace, use `instanceId` to distinguish, for example:
 
 - `catalog.primary`
 - `catalog.secondary`
 - `checkout.shipping`
 - `checkout.payment`
 
-### 7.3 tool name
+### 7.3 Tool Name
 
-tool 名称建议是动词短语或查询短语，例如：
+Tool names should be verb phrases or query phrases, for example:
 
 - `getItems`
 - `addItem`
@@ -234,23 +234,23 @@ tool 名称建议是动词短语或查询短语，例如：
 - `setProfile`
 - `submitOrder`
 
-最终完整工具名会是：
+The final complete tool name will be:
 
 - `namespace.instance.tool`
-- 例如：`catalog.primary.getItems`
+- Example: `catalog.primary.getItems`
 
-### 7.4 resource id
+### 7.4 Resource ID
 
-resource id 建议稳定、简洁、只表达“读取的对象”是什么，例如：
+Resource ID should be stable, concise, and only express "what is being read", for example:
 
 - `catalog.items`
 - `form.profile`
 - `checkout.summary`
 - `page.summary`
 
-### 7.5 skill id
+### 7.5 Skill ID
 
-skill id 建议表达明确任务意图，例如：
+Skill ID should express clear task intent, for example:
 
 - `catalog.manage-items`
 - `form.update-profile`
@@ -259,68 +259,68 @@ skill id 建议表达明确任务意图，例如：
 
 ---
 
-## 8. 页面必须实现的行为
+## 8. Behaviors the Page Must Implement
 
 ### 8.1 `listNamespaces()`
 
-返回当前页面可用的 namespace 列表。
+Returns the list of available namespaces on the current page.
 
 ### 8.2 `getNamespace(namespace)`
 
-返回某个 namespace 对应的实例集合与工具集合。
+Returns the instance collection and tool collection for a namespace.
 
 ### 8.3 `getScene()`
 
-返回当前页面场景，例如：
+Returns the current page scene, for example:
 
 - `checkout-address`
 - `checkout-payment`
 - `catalog-list`
 - `profile-edit`
 
-scene 应该尽量贴近用户任务，而不是路由原文。
+Scene should be as close to user tasks as possible, not the raw route text.
 
 ### 8.4 `listResources()`
 
-返回当前页面所有可读 resource 的声明。
+Returns declarations of all readable resources on the current page.
 
 ### 8.5 `readResource(id)`
 
-根据资源 id 返回当前值。
+Returns the current value based on resource ID.
 
-要求：
+Requirements:
 
-- 返回结构必须包含 `id`
-- 内容统一用 `text` 字段承载
-- 如果是结构化数据，`text` 里放 JSON 字符串
+- Return structure must include `id`
+- Content is carried in the `text` field
+- If it's structured data, put JSON string in `text`
 
 ### 8.6 `listSkills()`
 
-返回当前页面所有技能描述。
+Returns all skill descriptions on the current page.
 
 ### 8.7 `getSkill(id, input?)`
 
-返回一个可直接给模型看的 prompt 文本。
+Returns a prompt text that can be directly read by the model.
 
-这个 prompt 应至少包含：
+This prompt should at least include:
 
-- skill 标题
-- 目标描述
-- 推荐读取的资源
-- 允许使用的工具
-- 推理规则/执行约束
+- Skill title
+- Goal description
+- Recommended resources to read
+- Allowed tools
+- Reasoning rules / execution constraints
 
 ### 8.8 `getManifest()`
 
-返回当前完整 manifest。
+Returns the current complete manifest.
 
-manifest 应该是对当前页面能力的统一快照。
+Manifest should be a unified snapshot of the current page's capabilities.
 
 ---
 
-## 9. 页面侧最小接入模板
+## 9. Minimal Page Integration Template
 
-可以直接参考下面模板：
+You can directly refer to the following template:
 
 ```ts
 const pageContextBridge = {
@@ -422,7 +422,7 @@ const pageContextBridge = {
     const skill = this.listSkills().find((entry) => entry.id === id)
     if (!skill) return undefined
 
-    const goal = typeof input.goal === "string" && input.goal ? input.goal : "完成该业务任务"
+    const goal = typeof input.goal === "string" && input.goal ? input.goal : "Complete this business task"
 
     return {
       skill,
@@ -463,9 +463,9 @@ window.__pageContextTools__ = pageContextBridge
 
 ---
 
-## 10. skill 设计规范
+## 10. Skill Design Specification
 
-每个 skill 应尽量包含以下信息：
+Each skill should include the following information as much as possible:
 
 - `id`
 - `namespace`
@@ -476,63 +476,63 @@ window.__pageContextTools__ = pageContextBridge
 - `toolNames`
 - `mode`
 
-### 10.1 `mode` 建议值
+### 10.1 `mode` Suggested Values
 
 - `analysis`
-  - 偏分析/解释
-  - 尽量只读
+  - Analysis / interpretation oriented
+  - Read-only as much as possible
 - `readonly`
-  - 严格只读
+  - Strictly read-only
 - `mutation`
-  - 有状态修改
+  - Has state modifications
 - `macro`
-  - 可视为候选宏流程
+  - Can be considered as a candidate macro flow
 
-### 10.2 toolNames 必须精准
+### 10.2 toolNames Must Be Precise
 
-skill 里只应该列出**本任务真正需要的工具**，不要把整个 namespace 的所有工具都塞进去。
+Skills should only list **tools truly needed for this task**, do not stuff all tools from the entire namespace.
 
-正确：
+Correct:
 
-- `form.update-profile` 只列 `form.profile.getProfile`、`form.profile.setProfile`、`fill_input`
+- `form.update-profile` only lists `form.profile.getProfile`, `form.profile.setProfile`, `fill_input`
 
-错误：
+Incorrect:
 
-- 把 `form.*` 下所有工具都放进去
-
----
-
-## 11. resource 设计规范
-
-resource 应该满足：
-
-- 只读
-- 易缓存
-- 结构稳定
-- 有明确用途
-
-推荐优先输出：
-
-- 页面摘要
-- 当前业务对象摘要
-- 表单快照
-- 最近日志
-- 列表数据摘要
-
-不建议把超大 DOM、超大原始状态树无脑塞进单个 resource。
+- Putting all tools under `form.*` in
 
 ---
 
-## 12. scene 设计规范
+## 11. Resource Design Specification
 
-`scene` 是能力裁剪的重要依据。
+Resources should satisfy:
 
-建议 scene 满足：
+- Read-only
+- Easy to cache
+- Stable structure
+- Clear purpose
 
-- 面向用户任务，而不是底层技术状态
-- 足够细，但不要碎到每个小组件一个 scene
+Recommended to output first:
 
-推荐示例：
+- Page summary
+- Current business object summary
+- Form snapshot
+- Recent logs
+- List data summary
+
+Not recommended to blindly stuff super large DOM or super large raw state tree into a single resource.
+
+---
+
+## 12. Scene Design Specification
+
+`scene` is an important basis for capability trimming.
+
+It is recommended that scene satisfies:
+
+- User task oriented, not low-level technical state
+- Fine enough, but not so fragmented that each small component has its own scene
+
+Recommended examples:
 
 - `catalog-list`
 - `catalog-detail`
@@ -540,7 +540,7 @@ resource 应该满足：
 - `checkout-payment`
 - `profile-edit`
 
-不推荐：
+Not recommended:
 
 - `page-1`
 - `component-ready`
@@ -548,87 +548,87 @@ resource 应该满足：
 
 ---
 
-## 13. namespace 裁剪要求
+## 13. Namespace Trimming Requirements
 
-你的实现必须默认支持 namespace 裁剪。
+Your implementation must support namespace trimming by default.
 
-这意味着：
+This means:
 
-- 页面能力可以很多，但对外暴露给 agent 的能力必须可裁剪
-- 如果某个 namespace 不在当前场景中，或者被配置关闭，它对应的：
+- Page capabilities can be many, but capabilities exposed to the agent must be trimmable
+- If a namespace is not in the current scene, or is configured off, its corresponding:
   - skill
   - resource
   - tool
-  应该都能被过滤
+  should all be filterable
 
-不要把全部能力直接暴露给 agent 再靠提示词约束。
-
----
-
-## 14. 接入时不要做的事
-
-### 不要这样做
-
-- 不要只暴露 `tools`，完全不暴露 `resources/skills`
-- 不要把页面所有业务逻辑都塞进一个巨大的 `runEverything()` 工具
-- 不要用模糊 namespace，比如 `common`、`misc`
-- 不要让 `skill.toolNames` 包含一大坨无关工具
-- 不要输出不稳定、会频繁变化字段名的 manifest
-- 不要继续使用旧名字 `__pageDebugTools__`
-
-### 应该这样做
-
-- 用业务域组织 namespace
-- 用 resource 表达页面状态
-- 用 skill 表达任务语义
-- 用 tool 表达原子动作
-- 让 manifest 稳定、可枚举、可调试
+Do not directly expose all capabilities to the agent and rely on prompt constraints.
 
 ---
 
-## 15. 交付标准
+## 14. What Not to Do When Integrating
 
-实现完成后，页面应至少满足：
+### Don't Do This
 
-1. `window.__pageContextBridge__` 存在
-2. `getManifest()` 返回完整对象
-3. `listResources()/readResource()` 可正常工作
-4. `listSkills()/getSkill()` 可正常工作
-5. `getNamespace().getInstance().listTools()/callTool()` 可正常工作
-6. skill 中的 `toolNames` 与实际可调用工具一致
-7. manifest 中的 `resourceIds` 与实际资源一致
-8. namespace 语义清晰，非技术性命名
+- Don't only expose `tools`, completely omit `resources/skills`
+- Don't stuff all business logic into a giant `runEverything()` tool
+- Don't use vague namespaces, like `common`, `misc`
+- Don't let `skill.toolNames` contain a bunch of unrelated tools
+- Don't output unstable manifests with frequently changing field names
+- Don't continue using the old name `__pageDebugTools__`
 
----
+### Should Do This
 
-## 16. 自测清单
-
-你完成后，至少自行检查下面这些项：
-
-- [ ] `window.__pageContextBridge__` 已注入
-- [ ] `listNamespaces()` 返回符合业务域的 namespace
-- [ ] `getScene()` 返回当前任务场景
-- [ ] `listResources()` 返回资源声明
-- [ ] `readResource(id)` 能返回 JSON/text 内容
-- [ ] `listSkills()` 返回技能声明
-- [ ] `getSkill(id)` 返回可读 prompt
-- [ ] `getManifest()` 返回完整快照
-- [ ] 同 namespace 多 instance 的同名工具可以正确路由
-- [ ] skill 只列出必要工具，不暴露冗余工具
-- [ ] 关闭某 namespace 后，对应资源/技能/工具可被裁剪
+- Organize namespaces by business domain
+- Use resources to express page state
+- Use skills to express task semantics
+- Use tools to express atomic actions
+- Make manifest stable, enumerable, and debuggable
 
 ---
 
-## 17. 给另一个 LLM 的可直接执行指令
+## 15. Delivery Standard
 
-你可以把下面这段直接复制给另一个模型：
+After implementation is complete, the page should at least satisfy:
+
+1. `window.__pageContextBridge__` exists
+2. `getManifest()` returns a complete object
+3. `listResources()/readResource()` works properly
+4. `listSkills()/getSkill()` works properly
+5. `getNamespace().getInstance().listTools()/callTool()` works properly
+6. `toolNames` in skill matches actual callable tools
+7. `resourceIds` in manifest matches actual resources
+8. Namespace semantics are clear, non-technical naming
+
+---
+
+## 16. Self-check List
+
+After completion, at least check the following items yourself:
+
+- [ ] `window.__pageContextBridge__` is injected
+- [ ] `listNamespaces()` returns namespaces matching business domains
+- [ ] `getScene()` returns current task scene
+- [ ] `listResources()` returns resource declarations
+- [ ] `readResource(id)` can return JSON/text content
+- [ ] `listSkills()` returns skill declarations
+- [ ] `getSkill(id)` returns readable prompt
+- [ ] `getManifest()` returns complete snapshot
+- [ ] Same-name tools under same namespace with multiple instances can be correctly routed
+- [ ] Skill only lists necessary tools, does not expose redundant tools
+- [ ] After disabling a namespace, corresponding resources/skills/tools can be trimmed
+
+---
+
+## 17. Directly Executable Instructions for Another LLM
+
+You can directly copy the following to another model:
 
 ```text
-请在当前业务页面实现 Page Context Bridge 接入。
+Please implement Page Context Bridge integration in the current business page.
 
-目标：
-1. 在页面上暴露 window.__pageContextBridge__（可同时赋值给 window.__pageContextTools__）。
-2. 实现以下方法：
+Goals:
+1. Expose window.__pageContextBridge__ on the page (can also assign to window.__pageContextTools__).
+2. Implement the following methods:
    - listNamespaces()
    - getNamespace(namespace)
    - getScene()
@@ -637,44 +637,44 @@ resource 应该满足：
    - listSkills()
    - getSkill(id, input?)
    - getManifest()
-3. 数据结构必须包含：
+3. Data structures must include:
    - PageContextManifest
    - ContextNamespaceDescriptor
    - ContextResourceDescriptor
    - ContextResourcePayload
    - ContextSkillDescriptor
    - ContextSkillPrompt
-4. namespace 必须按业务域划分，不要使用 misc/common/utils 这类技术性命名。
-5. skill 只描述任务，不要把所有工具都塞进去。
-6. resource 只读，内容统一通过 text 返回；结构化内容请返回 JSON 字符串。
-7. 同 namespace 多 instance 的场景必须支持。
-8. 输出最小但完整的页面实现代码，并给出一个 getManifest() 的实际示例结果。
+4. Namespace must be divided by business domain, do not use technical naming like misc/common/utils.
+5. Skill only describes tasks, do not stuff all tools in.
+6. Resource is read-only, content is returned via text; structured content should return JSON string.
+7. Must support multiple instances under same namespace.
+8. Output minimal but complete page implementation code, and provide an actual example result of getManifest().
 
-约束：
-- 不要使用旧名字 __pageDebugTools__。
-- 不要只实现 tools，必须同时实现 resources 和 skills。
-- 不要引入与 Chrome DevTools 语义耦合的命名。
-- 优先复用现有业务状态、路由和 DOM 信息来构建 scene/resource/skill。
+Constraints:
+- Do not use old name __pageDebugTools__.
+- Do not only implement tools, must also implement resources and skills.
+- Do not introduce naming coupled with Chrome DevTools semantics.
+- Prioritize reusing existing business state, routing, and DOM information to build scene/resource/skill.
 ```
 
 ---
 
-## 18. 与当前仓库实现对齐的参考点
+## 18. Reference Points Aligned with Current Repository Implementation
 
-如果需要对照当前仓库，可参考：
+If you need to compare with the current repository, you can refer to:
 
-- 设计说明：`docs/page-context-capability-pipeline.md`
-- 共享协议类型：`packages/shared-protocol/src/index.ts`
-- 页面示例实现：`packages/chrome-mcp-extension/src/example-page-core.ts`
+- Design documentation: `docs/page-context-capability-pipeline.md`
+- Shared protocol types: `packages/shared-protocol/src/index.ts`
+- Page example implementation: `packages/page-context-extension/src/example-page-core.ts`
 
 ---
 
-## 19. 一句话总结
+## 19. One-sentence Summary
 
-你不是在做“给页面多加几个工具”，而是在做：
+You are not "adding a few more tools to the page", you are doing:
 
-- **页面业务能力声明**
-- **可被 bridge 编译的标准输入**
-- **能被 agent 理解、裁剪、调度的上下文能力层**
+- **Page Business Capability Declaration**
+- **Standard Input Compilable by Bridge**
+- **Context Capability Layer Understandable, Trimmable, and Dispatchable by Agent**
 
-如果你严格按这份文档做，页面就能平滑接入 Page Context Bridge。 
+If you strictly follow this document, the page can smoothly integrate with Page Context Bridge.

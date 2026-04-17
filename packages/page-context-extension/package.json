@@ -1,0 +1,38 @@
+{
+  "name": "@page-context/bridge-extension",
+  "version": "0.0.1",
+  "description": "Page Context Bridge extension for exposing page-aware tools to MCP clients.",
+  "type": "module",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev-preview.mjs",
+    "build": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && vite build",
+    "typecheck": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --dir ../.. exec vitest run --project browser",
+    "watch": "web-ext run --source-dir=dist --target=chromium"
+  },
+  "dependencies": {
+    "@page-context/builtin-tools": "workspace:*",
+    "@page-context/shared-protocol": "workspace:*",
+    "lit": "^3.2.0"
+  },
+  "keywords": [
+    "page-context",
+    "mcp",
+    "context-bridge",
+    "browser"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.2.2",
+    "daisyui": "^5.5.19",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.8",
+    "vite-plugin-chrome-extension": "^0.0.7",
+    "web-ext": "^10.1.0"
+  }
+}
