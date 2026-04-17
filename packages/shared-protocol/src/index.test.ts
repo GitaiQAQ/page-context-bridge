@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BRIDGE_METHODS,
+  FEEDBACK_METHODS,
   RpcPeer,
   RpcProtocolError,
   parseMessage,
@@ -45,5 +46,11 @@ describe("RpcPeer", () => {
   it("serializes valid json-rpc envelopes", () => {
     const raw = serializeMessage({ jsonrpc: "2.0", method: BRIDGE_METHODS.sessionHeartbeat, params: { ok: true } });
     expect(parseMessage(raw)).toMatchObject({ method: BRIDGE_METHODS.sessionHeartbeat });
+  });
+
+  it("exports feedback method constants through the shared barrel", () => {
+    expect(BRIDGE_METHODS.feedbackStateSnapshot).toBe("feedback.state.snapshot");
+    expect(BRIDGE_METHODS.extensionFeedbackAnnotationCreate).toBe("extension.feedback.annotation.create");
+    expect(FEEDBACK_METHODS.feedbackAnnotationResolve).toBe("feedback.annotation.resolve");
   });
 });

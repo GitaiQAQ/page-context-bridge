@@ -41,6 +41,31 @@ export {
 } from "./context-manifest";
 
 export {
+  FEEDBACK_METHODS,
+  type FeedbackAnnotationStatus,
+  type FeedbackPriority,
+  type FeedbackActorSource,
+  type FeedbackActor,
+  type FeedbackSession,
+  type FeedbackTarget,
+  type FeedbackCapabilityLinks,
+  type FeedbackContext,
+  type FeedbackThreadMessage,
+  type FeedbackAnnotation,
+  type FeedbackEventType,
+  type FeedbackEvent,
+  type FeedbackStateSnapshotParams,
+  type FeedbackStateSnapshotResult,
+  type FeedbackStateDeltaParams,
+  type FeedbackStateDeltaResult,
+  type FeedbackAnnotationCreateParams,
+  type FeedbackAnnotationClaimParams,
+  type FeedbackAnnotationReplyParams,
+  type FeedbackAnnotationResolveParams,
+  type FeedbackAnnotationDismissParams,
+} from "./feedback";
+
+export {
   type ToolSpec,
   type ToolExecutionContext,
   type ToolDefinition,

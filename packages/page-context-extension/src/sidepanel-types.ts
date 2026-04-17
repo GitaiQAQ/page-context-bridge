@@ -2,7 +2,15 @@
  * Sidepanel type definitions for the tool tree and context manifest UI.
  */
 
-import type { ContextResourceDescriptor, ContextSkillDescriptor, PageContextManifest } from "@page-context/shared-protocol";
+import type {
+  ContextResourceDescriptor,
+  ContextSkillDescriptor,
+  FeedbackAnnotation,
+  FeedbackPriority,
+  FeedbackSession,
+  FeedbackStateSnapshotResult,
+  PageContextManifest,
+} from "@page-context/shared-protocol";
 
 import type { ContextManifestFilterDebug } from "./context-manifest-filter-debug";
 
@@ -99,4 +107,14 @@ export interface ContextManifestResponse {
 
 export interface ContextSkillResponse {
   prompt: { skill: ContextSkillDescriptor; text: string } | null;
+}
+
+export interface FeedbackCreateInput {
+  body: string;
+  priority: FeedbackPriority;
+}
+
+export interface FeedbackSnapshotResponse extends FeedbackStateSnapshotResult {
+  sessions: FeedbackSession[];
+  annotations: FeedbackAnnotation[];
 }

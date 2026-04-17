@@ -99,6 +99,56 @@ export const bridgeToolCallParamsSchema = z.object({
   tabId: z.number().optional(),
 });
 
+const feedbackActorSchema = z.object({
+  source: z.enum(["user", "agent", "bridge", "extension"]),
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+});
+
+export const feedbackStateSnapshotParamsSchema = z.object({
+  tabId: z.number().int().optional(),
+  sessionId: z.string().optional(),
+});
+
+export const feedbackStateDeltaParamsSchema = z.object({
+  afterSeq: z.number().int().nonnegative().default(0),
+  sessionId: z.string().optional(),
+});
+
+export const feedbackAnnotationCreateParamsSchema = z.object({
+  body: z.string().trim().min(1),
+  priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+  tabId: z.number().int(),
+  url: z.string().min(1),
+  title: z.string().optional(),
+  selectedText: z.string().optional(),
+  actor: feedbackActorSchema.optional(),
+});
+
+export const feedbackAnnotationClaimParamsSchema = z.object({
+  annotationId: z.string().min(1),
+  actor: feedbackActorSchema.optional(),
+});
+
+export const feedbackAnnotationReplyParamsSchema = z.object({
+  annotationId: z.string().min(1),
+  body: z.string().trim().min(1),
+  kind: z.enum(["comment", "action_note", "resolution_note"]).optional(),
+  actor: feedbackActorSchema.optional(),
+});
+
+export const feedbackAnnotationResolveParamsSchema = z.object({
+  annotationId: z.string().min(1),
+  resolution: z.string().optional(),
+  actor: feedbackActorSchema.optional(),
+});
+
+export const feedbackAnnotationDismissParamsSchema = z.object({
+  annotationId: z.string().min(1),
+  dismissReason: z.string().optional(),
+  actor: feedbackActorSchema.optional(),
+});
+
 /**
  * Validate params against a Zod schema, returning the parsed result
  * or throwing an Error with descriptive validation issues.

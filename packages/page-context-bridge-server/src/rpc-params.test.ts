@@ -6,6 +6,9 @@ import {
   bridgePageToolsUnregisteredParamsSchema,
   extensionPageToolsSetEnabledParamsSchema,
   bridgeToolCallParamsSchema,
+  feedbackStateDeltaParamsSchema,
+  feedbackAnnotationCreateParamsSchema,
+  feedbackAnnotationClaimParamsSchema,
 } from "./rpc-params.js";
 
 describe("rpc-params: validateParams", () => {
@@ -92,6 +95,35 @@ describe("rpc-params: validateParams", () => {
         bridgePageToolsUnregisteredParamsSchema,
         null,
         "bridge.pageTools.unregistered"
+      )
+    ).toThrow(/Invalid params/);
+  });
+
+  it("validates feedback create params with required tab context", () => {
+    const result = validateParams(
+      feedbackAnnotationCreateParamsSchema,
+      { body: "Need fix", tabId: 9, url: "https://example.com", priority: "high" },
+      "feedback.annotation.create"
+    );
+    expect(result.tabId).toBe(9);
+    expect(result.priority).toBe("high");
+  });
+
+  it("applies default cursor for feedback delta params", () => {
+    const result = validateParams(
+      feedbackStateDeltaParamsSchema,
+      {},
+      "feedback.state.delta"
+    );
+    expect(result.afterSeq).toBe(0);
+  });
+
+  it("rejects feedback claim request when annotationId is missing", () => {
+    expect(() =>
+      validateParams(
+        feedbackAnnotationClaimParamsSchema,
+        {},
+        "feedback.annotation.claim"
       )
     ).toThrow(/Invalid params/);
   });

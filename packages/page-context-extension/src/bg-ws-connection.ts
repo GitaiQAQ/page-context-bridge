@@ -19,6 +19,12 @@ export interface SessionRegisterResult {
   heartbeatIntervalMs?: number;
 }
 
+interface BridgeWsHandlers {
+  onToolCall: (params: unknown, requestId: string) => Promise<unknown>;
+  onToolsList: () => Promise<unknown>;
+  onTabsList: () => Promise<unknown>;
+}
+
 let ws: WebSocket | null = null;
 let rpcPeer: RpcPeer | null = null;
 let wsReady = false;
@@ -28,6 +34,7 @@ let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsEpoch = 0;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectHandlers: BridgeWsHandlers | null = null;
 
 const queuedNotifications: Array<{ method: string; params?: unknown }> = [];
 
@@ -53,6 +60,18 @@ export function setWsReady(ready: boolean): void {
 
 export function getRpcPeer(): RpcPeer | null {
   return rpcPeer;
+}
+
+// 统一桥接请求入口：background 其它模块不需要直接操作 RpcPeer。
+export async function requestBridge<TResult = unknown>(
+  method: string,
+  params?: unknown,
+  options?: { timeoutMs?: number },
+): Promise<TResult> {
+  if (!wsReady || !rpcPeer) {
+    throw new Error("Bridge is not connected");
+  }
+  return await rpcPeer.request<TResult>(method, params, options);
 }
 
 export function resetConnectPromise(): void {
@@ -120,7 +139,10 @@ function scheduleReconnect(): void {
   reconnectAttempts += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    void connectWebSocket();
+    if (!reconnectHandlers) {
+      return;
+    }
+    void connectWebSocket(reconnectHandlers.onToolCall, reconnectHandlers.onToolsList, reconnectHandlers.onTabsList);
   }, delay);
   log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
 }
@@ -130,6 +152,8 @@ export async function connectWebSocket(
   onToolsList: () => Promise<unknown>,
   onTabsList: () => Promise<unknown>,
 ): Promise<void> {
+  reconnectHandlers = { onToolCall, onToolsList, onTabsList };
+
   if (connectPromise) {
     return await connectPromise;
   }

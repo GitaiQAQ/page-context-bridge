@@ -7,6 +7,13 @@
 import { WebSocket, WebSocketServer } from "ws";
 import {
   BRIDGE_METHODS,
+  type FeedbackAnnotationClaimParams,
+  type FeedbackAnnotationCreateParams,
+  type FeedbackAnnotationDismissParams,
+  type FeedbackAnnotationReplyParams,
+  type FeedbackAnnotationResolveParams,
+  type FeedbackStateDeltaParams,
+  type FeedbackStateSnapshotParams,
   type ContextResourcePayload,
   type ContextSkillPrompt,
   type PageContextManifest,
@@ -22,6 +29,13 @@ import {
   bridgePageToolsUnregisteredParamsSchema,
   bridgeTabActivatedParamsSchema,
   bridgeTabUpdatedParamsSchema,
+  feedbackStateSnapshotParamsSchema,
+  feedbackStateDeltaParamsSchema,
+  feedbackAnnotationCreateParamsSchema,
+  feedbackAnnotationClaimParamsSchema,
+  feedbackAnnotationReplyParamsSchema,
+  feedbackAnnotationResolveParamsSchema,
+  feedbackAnnotationDismissParamsSchema,
 } from "./rpc-params.js";
 import type { McpRegistry, PageToolSpec } from "./mcp-registry.js";
 import { log } from "./mcp-registry.js";
@@ -185,6 +199,42 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
       registry.syncContextManifestOnAllServers(payload.tabId, manifest);
     }
     return { ok: true };
+  });
+
+  // 反馈相关 RPC 全部落到 registry，确保 extension 与 MCP 看到的是同一份状态。
+  peer.register(BRIDGE_METHODS.feedbackStateSnapshot, async (params: unknown) => {
+    const payload = validateParams(feedbackStateSnapshotParamsSchema, params ?? {}, BRIDGE_METHODS.feedbackStateSnapshot);
+    return registry.getFeedbackSnapshot(payload as FeedbackStateSnapshotParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackStateDelta, async (params: unknown) => {
+    const payload = validateParams(feedbackStateDeltaParamsSchema, params ?? {}, BRIDGE_METHODS.feedbackStateDelta);
+    return registry.getFeedbackDelta(payload as FeedbackStateDeltaParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackAnnotationCreate, async (params: unknown) => {
+    const payload = validateParams(feedbackAnnotationCreateParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationCreate);
+    return registry.createFeedbackAnnotation(payload as FeedbackAnnotationCreateParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackAnnotationClaim, async (params: unknown) => {
+    const payload = validateParams(feedbackAnnotationClaimParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationClaim);
+    return registry.claimFeedbackAnnotation(payload as FeedbackAnnotationClaimParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackAnnotationReply, async (params: unknown) => {
+    const payload = validateParams(feedbackAnnotationReplyParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationReply);
+    return registry.replyFeedbackAnnotation(payload as FeedbackAnnotationReplyParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackAnnotationResolve, async (params: unknown) => {
+    const payload = validateParams(feedbackAnnotationResolveParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationResolve);
+    return registry.resolveFeedbackAnnotation(payload as FeedbackAnnotationResolveParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackAnnotationDismiss, async (params: unknown) => {
+    const payload = validateParams(feedbackAnnotationDismissParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationDismiss);
+    return registry.dismissFeedbackAnnotation(payload as FeedbackAnnotationDismissParams);
   });
 
   return slot;
