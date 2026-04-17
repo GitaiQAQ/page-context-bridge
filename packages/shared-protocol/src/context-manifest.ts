@@ -2,6 +2,8 @@
  * Context manifest types and bridge method constants.
  */
 
+import { FEEDBACK_METHODS } from "./feedback";
+
 export const BRIDGE_METHODS = {
   sessionRegister: "session.register",
   sessionHeartbeat: "session.heartbeat",
@@ -27,6 +29,7 @@ export const BRIDGE_METHODS = {
   extensionToolExecute: "extension.tool.execute",
   extensionPageEvent: "extension.page.event",
   extensionPageToolsRegister: "extension.pageTools.register",
+  ...FEEDBACK_METHODS,
 } as const;
 
 export interface ContextNamespaceDescriptor {

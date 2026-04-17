@@ -26,7 +26,16 @@ import {
   renderContextResourceCard,
   renderContextSkillCard,
 } from "./sidepanel-context-panel";
-import type { ContextManifestResponse, ContextSkillResponse, RuntimeStatus, ToolDebugResponse, ToolTestSelection, ToolTreeResponse } from "./sidepanel-types";
+import type {
+  ContextManifestResponse,
+  ContextSkillResponse,
+  FeedbackCreateInput,
+  FeedbackSnapshotResponse,
+  RuntimeStatus,
+  ToolDebugResponse,
+  ToolTestSelection,
+  ToolTreeResponse,
+} from "./sidepanel-types";
 
 // Vite resolves this to the built CSS asset URL at runtime
 import sidepanelCssUrl from "./sidepanel.css?url";
@@ -77,7 +86,7 @@ export class SidePanelApp extends LitElement {
   @state() private _currentRawContextManifest: PageContextManifest | null = null;
   @state() private _currentEffectiveContextManifest: PageContextManifest | null = null;
   @state() private _currentContextDebug: ContextManifestFilterDebug | null = null;
-  @state() private _activeTab: "tools" | "context" | "diagnosis" = "tools";
+  @state() private _activeTab: "tools" | "context" | "feedback" | "diagnosis" = "tools";
   @state() private _urlBarVisible = true;
   @state() private _currentUrl = "";
   @state() private _manifestStatus = "";
@@ -105,6 +114,13 @@ export class SidePanelApp extends LitElement {
   @state() private _toolTestSubtitle = "Select a tool to run an RPC debug call.";
   @state() private _toolTestTabIdValue = "";
   @state() private _toolTestTabIdDisabled = false;
+  @state() private _feedbackBody = "";
+  @state() private _feedbackPriority: FeedbackCreateInput["priority"] = "normal";
+  @state() private _feedbackCreateStatus = "Idle";
+  @state() private _feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
+  @state() private _feedbackSnapshot: FeedbackSnapshotResponse | null = null;
+  @state() private _feedbackLoading = false;
+  @state() private _feedbackError = "";
 
   // ─── Query references (shadowRoot is guaranteed when using default createRenderRoot) ──
   @query("#iframeContainer") private _iframeContainer!: HTMLElement;
@@ -112,6 +128,7 @@ export class SidePanelApp extends LitElement {
   // ─── Private state (non-reactive) ─────────────────────────────
   private _currentIframe: HTMLIFrameElement | null = null;
   private _statusIntervalId: ReturnType<typeof setInterval> | null = null;
+  private _feedbackPollIntervalId: ReturnType<typeof setInterval> | null = null;
   private _tabActivatedListener?: (activeInfo: { tabId: number; windowId: number }) => void;
   private _tabUpdatedListener?: (tabId: number, changeInfo: { status?: string }, tab: chrome.tabs.Tab) => void;
 
@@ -135,6 +152,10 @@ export class SidePanelApp extends LitElement {
       clearInterval(this._statusIntervalId);
       this._statusIntervalId = null;
     }
+    if (this._feedbackPollIntervalId) {
+      clearInterval(this._feedbackPollIntervalId);
+      this._feedbackPollIntervalId = null;
+    }
     if (this._tabActivatedListener) {
       chrome.tabs.onActivated.removeListener(this._tabActivatedListener);
     }
@@ -157,6 +178,11 @@ export class SidePanelApp extends LitElement {
   private async _init(): Promise<void> {
     await this._refreshStatus();
     this._statusIntervalId = setInterval(() => this._refreshStatus(), 5000);
+    this._feedbackPollIntervalId = setInterval(() => {
+      if (this._activeTab === "feedback") {
+        void this._loadFeedbackSnapshot();
+      }
+    }, 10_000);
     await this._loadPageTools();
 
     const result = await chrome.storage.local.get("sidePanelUrl");
@@ -176,6 +202,9 @@ export class SidePanelApp extends LitElement {
       if (this._activeTab === "context") {
         void this._loadContextManifest();
       }
+      if (this._activeTab === "feedback") {
+        void this._loadFeedbackSnapshot();
+      }
     };
     chrome.tabs.onActivated.addListener(this._tabActivatedListener!);
 
@@ -187,6 +216,9 @@ export class SidePanelApp extends LitElement {
           }
           if (this._activeTab === "context") {
             void this._loadContextManifest();
+          }
+          if (this._activeTab === "feedback") {
+            void this._loadFeedbackSnapshot();
           }
         }, 1000);
       }
@@ -422,6 +454,66 @@ export class SidePanelApp extends LitElement {
     }
   }
 
+  // ─── Feedback ────────────────────────────────────────────────
+  private async _loadFeedbackSnapshot(): Promise<void> {
+    this._feedbackLoading = true;
+    this._feedbackError = "";
+    this.requestUpdate();
+
+    try {
+      this._feedbackSnapshot = await sendRuntimeRequest<FeedbackSnapshotResponse>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
+      this._feedbackCreateStatus = "Snapshot loaded";
+      this._feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._feedbackError = message;
+      this._feedbackSnapshot = null;
+    } finally {
+      this._feedbackLoading = false;
+    }
+  }
+
+  private async _submitFeedback(): Promise<void> {
+    const body = this._feedbackBody.trim();
+    if (!body) {
+      this._feedbackCreateStatus = "请输入反馈内容";
+      this._feedbackCreateStatusClass = "text-xs font-semibold text-error";
+      return;
+    }
+
+    this._feedbackCreateStatus = "Submitting...";
+    this._feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
+    this.requestUpdate();
+
+    try {
+      await sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, {
+        body,
+        priority: this._feedbackPriority,
+      } satisfies FeedbackCreateInput);
+      this._feedbackBody = "";
+      this._feedbackCreateStatus = "已创建";
+      this._feedbackCreateStatusClass = "text-xs font-semibold text-success";
+      await this._loadFeedbackSnapshot();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._feedbackCreateStatus = message;
+      this._feedbackCreateStatusClass = "text-xs font-semibold text-error";
+    }
+  }
+
+  private _feedbackStatusBadgeClass(status: string): string {
+    switch (status) {
+      case "resolved":
+        return "badge badge-success badge-sm";
+      case "claimed":
+        return "badge badge-info badge-sm";
+      case "dismissed":
+        return "badge badge-ghost badge-sm";
+      default:
+        return "badge badge-warning badge-sm";
+    }
+  }
+
   // ─── Tool Test Panel ───────────────────────────────────────────
   private _openToolTestPanel(selection: ToolTestSelection): void {
     this._currentToolTestSelection = selection;
@@ -541,7 +633,7 @@ export class SidePanelApp extends LitElement {
   };
 
   // ─── Event Handlers ────────────────────────────────────────────
-  private _handleTabClick(tab: "tools" | "context" | "diagnosis"): void {
+  private _handleTabClick(tab: "tools" | "context" | "feedback" | "diagnosis"): void {
     console.log("[side-panel] _handleTabClick called with:", tab, "current _activeTab:", this._activeTab);
     this._activeTab = tab;
     console.log("[side-panel] _activeTab set to:", this._activeTab, "about to requestUpdate");
@@ -551,6 +643,8 @@ export class SidePanelApp extends LitElement {
       void this._loadPageTools();
     } else if (tab === "context") {
       void this._loadContextManifest();
+    } else if (tab === "feedback") {
+      void this._loadFeedbackSnapshot();
     }
   }
 
@@ -647,6 +741,16 @@ export class SidePanelApp extends LitElement {
     this._toolTestTabIdValue = input.value;
   }
 
+  private _handleFeedbackBodyInput(event: Event): void {
+    const input = event.target as HTMLTextAreaElement;
+    this._feedbackBody = input.value;
+  }
+
+  private _handleFeedbackPriorityChange(event: Event): void {
+    const input = event.target as HTMLSelectElement;
+    this._feedbackPriority = input.value as FeedbackCreateInput["priority"];
+  }
+
   // ─── Render Tools Tree Content ─────────────────────────────────
   private _renderToolsTreeContent(): TemplateResult {
     if (!this._toolTreeResponse) {
@@ -678,6 +782,8 @@ export class SidePanelApp extends LitElement {
     const toolsCount = this._toolTreeResponse
       ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled)`
       : "";
+    const currentFeedbackSession = this._feedbackSnapshot?.sessions[0] ?? null;
+    const feedbackAnnotations = this._feedbackSnapshot?.annotations ?? [];
 
     return html`
       <!-- Header: status-dot (clickable refresh) / title / icon-nav (right) -->
@@ -695,6 +801,9 @@ export class SidePanelApp extends LitElement {
           </button>
           <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "context" })}" @click=${() => this._handleTabClick("context")} title="Context">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </button>
+          <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "feedback" })}" @click=${() => this._handleTabClick("feedback")} title="Feedback">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </button>
           <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "diagnosis" })}" @click=${() => this._handleTabClick("diagnosis")} title="Diagnosis">
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -833,6 +942,101 @@ export class SidePanelApp extends LitElement {
                 </div>
                 <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${this._skillOutput}</pre>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feedback Tab -->
+      <div class="tab-content ${classMap({ active: this._activeTab === "feedback" })} flex flex-col flex-1 min-h-0">
+        <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
+          <span class="text-xs font-bold uppercase tracking-wide opacity-60">Feedback</span>
+          <button class="btn btn-xs btn-ghost ml-auto" @click=${() => this._loadFeedbackSnapshot()}>Refresh</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3 bg-base-200 flex flex-col gap-3">
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body p-3 gap-2">
+              <div class="font-bold text-sm">Create Feedback</div>
+              <textarea
+                class="textarea textarea-sm textarea-bordered min-h-[6rem]"
+                placeholder="描述问题、预期行为、复现信息"
+                .value=${this._feedbackBody}
+                @input=${this._handleFeedbackBodyInput}
+              ></textarea>
+              <div class="flex gap-2 items-center">
+                <label class="text-xs opacity-70" for="feedbackPriority">Priority</label>
+                <select
+                  id="feedbackPriority"
+                  class="select select-sm select-bordered w-36"
+                  .value=${this._feedbackPriority}
+                  @change=${this._handleFeedbackPriorityChange}
+                >
+                  <option value="low">low</option>
+                  <option value="normal">normal</option>
+                  <option value="high">high</option>
+                  <option value="critical">critical</option>
+                </select>
+                <button class="btn btn-sm btn-primary ml-auto" @click=${() => this._submitFeedback()}>Submit</button>
+              </div>
+              <div class="text-xs opacity-70">
+                ${currentFeedbackSession
+                  ? html`Active Tab: #${currentFeedbackSession.tabId} · ${currentFeedbackSession.title || currentFeedbackSession.url}`
+                  : html`Active Tab: (未创建 session)`}
+              </div>
+              ${feedbackAnnotations[0]?.target.textQuote
+                ? html`<div class="text-xs opacity-70">Selected Text: ${feedbackAnnotations[0].target.textQuote}</div>`
+                : nothing}
+              <div class="${this._feedbackCreateStatusClass}">${this._feedbackCreateStatus}</div>
+            </div>
+          </div>
+
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body p-3 gap-2">
+              <div class="flex items-center justify-between">
+                <div class="font-bold text-sm">Current Session</div>
+                <div class="text-xs opacity-60">
+                  ${this._feedbackLoading ? "Loading..." : `${feedbackAnnotations.length} annotations`}
+                </div>
+              </div>
+              ${this._feedbackError
+                ? html`<div class="text-xs text-error">${this._feedbackError}</div>`
+                : nothing}
+              ${!currentFeedbackSession
+                ? html`<div class="text-xs opacity-60">当前页面还没有反馈记录。</div>`
+                : html`
+                  <div class="text-xs opacity-70">
+                    Session ${currentFeedbackSession.id} · seq ${currentFeedbackSession.lastEventSeq}
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    ${feedbackAnnotations.length === 0
+                      ? html`<div class="text-xs opacity-60">暂无 annotation。</div>`
+                      : html`${feedbackAnnotations.map((annotation) => html`
+                        <div class="border border-base-300 rounded-lg p-2 bg-base-100 flex flex-col gap-1.5">
+                          <div class="flex items-center gap-2">
+                            <span class="${this._feedbackStatusBadgeClass(annotation.status)}">${annotation.status}</span>
+                            <span class="badge badge-outline badge-sm">${annotation.priority}</span>
+                            <span class="text-[11px] opacity-50 ml-auto">${annotation.updatedAt}</span>
+                          </div>
+                          <div class="text-sm whitespace-pre-wrap break-words">${annotation.body}</div>
+                          ${(annotation.linkedCapabilities.relatedToolNames.length
+                            + annotation.linkedCapabilities.relatedResourceIds.length
+                            + annotation.linkedCapabilities.relatedSkillIds.length) > 0
+                            ? html`
+                              <div class="flex flex-wrap gap-1">
+                                ${annotation.linkedCapabilities.relatedToolNames.map((tool) => html`<span class="badge badge-ghost badge-xs">tool:${tool}</span>`)}
+                                ${annotation.linkedCapabilities.relatedResourceIds.map((resource) => html`<span class="badge badge-ghost badge-xs">resource:${resource}</span>`)}
+                                ${annotation.linkedCapabilities.relatedSkillIds.map((skill) => html`<span class="badge badge-ghost badge-xs">skill:${skill}</span>`)}
+                              </div>
+                            `
+                            : html`<div class="text-xs opacity-50">无关联 capability</div>`}
+                          ${annotation.thread.length > 0
+                            ? html`<div class="text-xs opacity-70">Thread: ${annotation.thread.length} replies</div>`
+                            : nothing}
+                        </div>
+                      `)}`
+                    }
+                  </div>
+                `}
             </div>
           </div>
         </div>

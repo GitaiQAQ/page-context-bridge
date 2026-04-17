@@ -5,12 +5,19 @@
 
 import {
   BRIDGE_METHODS,
+  type FeedbackAnnotationClaimParams,
+  type FeedbackAnnotationCreateParams,
+  type FeedbackAnnotationDismissParams,
+  type FeedbackAnnotationReplyParams,
+  type FeedbackAnnotationResolveParams,
+  type FeedbackStateSnapshotParams,
   type PageContextManifest,
   RpcProtocolError,
   RPC_ERROR_CODES,
 } from "@page-context/shared-protocol";
 
-import { connectWebSocket, forceReconnect, getWsReady, getSessionId, initDefaultWsUrl, log, queueNotification } from "./bg-ws-connection";
+import { connectWebSocket, forceReconnect, getWsReady, getSessionId, initDefaultWsUrl, log, queueNotification, requestBridge } from "./bg-ws-connection";
+import { captureActiveTabFeedbackContext } from "./bg-feedback-context";
 import { discoverPageToolsInTab, getRawPageContextManifest, getPageContextSkill, readPageContextResource, sleep } from "./bg-page-context";
 import { executeToolCall, getBuiltinToolDefinitions } from "./bg-tool-executor";
 import { buildContextManifestFilterDebug } from "./context-manifest-filter-debug";
@@ -178,6 +185,11 @@ async function listTabs() {
   }));
 }
 
+// background 统一通过 WS helper 访问 bridge，减少业务层重复判空与超时配置。
+async function requestBridgeMethod<TResult>(method: string, params?: unknown): Promise<TResult> {
+  return await requestBridge<TResult>(method, params, { timeoutMs: 20_000 });
+}
+
 // ── WS connection callbacks ──
 
 async function onToolCall(params: unknown, requestId: string): Promise<unknown> {
@@ -259,6 +271,46 @@ chrome.runtime.onMessage.addListener(
           throw new Error("tabId and skillId are required");
         }
         return { prompt: await getPageContextSkill(tabId, payload.skillId, payload.input) };
+      }
+      case BRIDGE_METHODS.extensionFeedbackStateSnapshot: {
+        const payload = (message.params ?? {}) as FeedbackStateSnapshotParams;
+        const params: FeedbackStateSnapshotParams = { ...payload };
+        if (params.tabId == null && !params.sessionId) {
+          const context = await captureActiveTabFeedbackContext().catch(() => null);
+          params.tabId = context?.tabId;
+        }
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackStateSnapshot, params);
+      }
+      case BRIDGE_METHODS.extensionFeedbackAnnotationCreate: {
+        const payload = (message.params ?? {}) as Pick<FeedbackAnnotationCreateParams, "body" | "priority">;
+        if (!payload.body?.trim()) {
+          throw new Error("Feedback body is required");
+        }
+        const context = await captureActiveTabFeedbackContext();
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, {
+          body: payload.body.trim(),
+          priority: payload.priority,
+          tabId: context.tabId,
+          url: context.url,
+          title: context.title,
+          selectedText: context.selectedText,
+        } satisfies FeedbackAnnotationCreateParams);
+      }
+      case BRIDGE_METHODS.extensionFeedbackAnnotationClaim: {
+        const payload = (message.params ?? {}) as FeedbackAnnotationClaimParams;
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationClaim, payload);
+      }
+      case BRIDGE_METHODS.extensionFeedbackAnnotationReply: {
+        const payload = (message.params ?? {}) as FeedbackAnnotationReplyParams;
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationReply, payload);
+      }
+      case BRIDGE_METHODS.extensionFeedbackAnnotationResolve: {
+        const payload = (message.params ?? {}) as FeedbackAnnotationResolveParams;
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationResolve, payload);
+      }
+      case BRIDGE_METHODS.extensionFeedbackAnnotationDismiss: {
+        const payload = (message.params ?? {}) as FeedbackAnnotationDismissParams;
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationDismiss, payload);
       }
       case BRIDGE_METHODS.extensionPageEvent:
         queueNotification(BRIDGE_METHODS.bridgePageEvent, {

@@ -25,8 +25,8 @@ const STDIO_TENANT_ID = process.env.TENANT_ID || "default";
 
 // ── Tenant Manager: creates isolated registries per tenant ──
 
-const tenantManager = new TenantManager({
-  createRegistry: (tenantId) => {
+const tenantManager: TenantManager = new TenantManager({
+  createRegistry: (tenantId: string): import("./mcp-registry.js").McpRegistry => {
     // Import here to avoid circular dependency at module level
     const { McpRegistry } = require("./mcp-registry.js") as typeof import("./mcp-registry.js");
     return new McpRegistry({
@@ -34,7 +34,7 @@ const tenantManager = new TenantManager({
       getContextManifest: (tabId) => getContextManifestFromExtension(tenantId, tenantManager, tabId),
       readContextResource: (tabId, resourceId) => readContextResourceFromExtension(tenantId, tenantManager, tabId, resourceId),
       getContextSkillPrompt: (tabId, skillId, input) => getContextSkillPromptFromExtension(tenantId, tenantManager, tabId, skillId, input),
-    });
+    }, tenantId);
   },
 });
 
