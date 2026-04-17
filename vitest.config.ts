@@ -23,6 +23,13 @@ export default defineConfig({
           environment: "jsdom",
         },
       },
+      {
+        test: {
+          name: "userscripts",
+          include: ["packages/page-context-userscripts/src/**/*.test.ts"],
+          environment: "jsdom",
+        },
+      },
     ],
   },
 });

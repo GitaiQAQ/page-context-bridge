@@ -108,21 +108,27 @@ packages/
 │       ├── index.ts          # WebSocket + MCP server, builtin tools, routing
 │       ├── schema.ts         # JSON Schema → Zod converter
 │       └── page-tool-routing.ts
-└── page-context-extension/     # Page Context Extension (Manifest V3)
+├── page-context-extension/     # Page Context Extension (Manifest V3)
+│   └── src/
+│       ├── background.ts              # Service worker: WebSocket, tool discovery, routing
+│       ├── content-script.ts          # Content script entry point
+│       ├── side-panel-app.ts          # Side panel UI
+│       ├── popup-main.ts              # Popup UI (connection status)
+│       ├── runtime-rpc.ts             # Chrome runtime JSON-RPC adapter
+│       ├── page-tool-registry.ts      # Page tool normalization
+│       ├── page-tool-visibility.ts    # Tool preference hierarchy
+│       ├── context-manifest-diff.ts   # Manifest diff computation
+│       ├── context-manifest-filter-debug.ts  # Filter reason tracking
+│       └── builtin-tool-filtering.ts  # Builtin tool filter
+├── page-context-example/       # Demo page that exposes full page-context protocol
+│   └── src/
+│       ├── example-page-core.ts       # Demo bridge core with tools/resources/skills
+│       └── example-page-main.ts       # Demo page bootstrap entry
+└── page-context-userscripts/   # Standalone userscript adapters with shared hub registry
     └── src/
-        ├── background.ts              # Service worker: WebSocket, tool discovery, routing
-        ├── content-script-core.ts     # Builtin tool implementations
-        ├── content-script.ts          # Content script entry point
-        ├── sidepanel-main.ts          # Side panel UI (tool tree, context, browser)
-        ├── popup-main.ts              # Popup UI (connection status)
-        ├── runtime-rpc.ts             # Chrome runtime JSON-RPC adapter
-        ├── page-tool-registry.ts      # Page tool normalization
-        ├── page-tool-visibility.ts    # Tool preference hierarchy
-        ├── context-manifest-diff.ts   # Manifest diff computation
-        ├── context-manifest-filter-debug.ts  # Filter reason tracking
-        ├── builtin-tool-filtering.ts  # Builtin tool filter
-        ├── example-page-core.ts       # Demo page with namespaces/resources/skills
-        └── example-page-main.ts       # Demo page entry point
+        ├── hub.ts                     # Shared registry/hub, merges multiple adapters into one bridge
+        ├── adapters/                  # React/Apollo/TanStack/Jotai/ReduxDevtools adapters
+        └── entries/                   # Userscript entry files, each builds one .user.js artifact
 ```
 
 ## Architecture
@@ -193,16 +199,34 @@ pnpm install
 pnpm build
 ```
 
+Build userscript bundle only:
+
+```bash
+pnpm userscripts:build
+```
+
 ### Type Check
 
 ```bash
 pnpm typecheck
 ```
 
+Typecheck userscripts only:
+
+```bash
+pnpm userscripts:typecheck
+```
+
 ### Test
 
 ```bash
 pnpm test
+```
+
+Run userscript tests only:
+
+```bash
+pnpm userscripts:test
 ```
 
 ### Development
@@ -394,6 +418,14 @@ Not yet completed:
 - [Architecture: Browser Extension ↔ MCP Bridge](./docs/architecture/browser-extension-mcp-bridge.md)
 - [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
 - [Capability Pipeline Design](./docs/page-context-capability-pipeline.md)
+- [Userscript Adapter Package](./packages/page-context-userscripts/README.md)
+
+Userscript build artifacts:
+- `packages/page-context-userscripts/dist/react-inspector.user.js`
+- `packages/page-context-userscripts/dist/apollo-client.user.js`
+- `packages/page-context-userscripts/dist/tanstack-query.user.js`
+- `packages/page-context-userscripts/dist/jotai-devtools.user.js`
+- `packages/page-context-userscripts/dist/redux-devtools.user.js`
 
 ## License
 

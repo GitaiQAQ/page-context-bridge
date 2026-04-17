@@ -1,0 +1,30 @@
+{
+  "name": "@page-context/userscripts",
+  "version": "0.0.1",
+  "description": "Userscript bridges that expose page context protocol for third-party pages.",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "pnpm --filter @page-context/shared-protocol build && node scripts/build-userscripts.mjs",
+    "build:one": "vite build --config vite.config.ts",
+    "typecheck": "pnpm --filter @page-context/shared-protocol build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --dir ../.. exec vitest run --project userscripts"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@page-context/shared-protocol": "*"
+  },
+  "keywords": [
+    "userscript",
+    "react",
+    "page-context",
+    "bridge"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@page-context/shared-protocol": "workspace:*",
+    "vite": "^8.0.8"
+  }
+}
