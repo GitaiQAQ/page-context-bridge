@@ -34,14 +34,10 @@ export function startSseServer(mcpHttpPort: number, manager: TenantManager): Pro
           return;
         }
 
-        // Find transport matching this sessionId under any tenant
-        let entry: typeof transports extends Map<infer K, infer V> ? V : never | undefined;
-        for (const [key, val] of transports.entries()) {
-          if (key.endsWith(`::${session}`)) {
-            entry = val;
-            break;
-          }
-        }
+        // 直接从已注册传输里找目标 session，避免让 TS 跟踪“先声明后赋值”的分支。
+        const entry = Array.from(transports.entries())
+          .find(([key]) => key.endsWith(`::${session}`))
+          ?.[1];
 
         if (!entry) {
           res.writeHead(400).end("No active SSE session for this sessionId");
