@@ -15,6 +15,7 @@ import type {
   FeedbackStateSnapshotParams,
   FeedbackStateSnapshotResult,
   FeedbackThreadMessage,
+  FeedbackUiAnchor,
 } from "@page-context/shared-protocol";
 
 const DEFAULT_EVENT_RING_SIZE = 500;
@@ -52,6 +53,7 @@ export interface CreateFeedbackAnnotationInput {
   url: string;
   title?: string;
   selectedText?: string;
+  uiAnchor?: FeedbackUiAnchor;
   pageInfoExtra?: {
     app?: string;
     scene?: string;
@@ -169,6 +171,9 @@ export class FeedbackStore {
     });
 
     const now = this.now();
+    const normalizedUiAnchor = normalizeUiAnchor(input.uiAnchor);
+    const targetUiAnchor = normalizedUiAnchor ? cloneValue(normalizedUiAnchor) : undefined;
+    const contextUiAnchor = normalizedUiAnchor ? cloneValue(normalizedUiAnchor) : undefined;
     const annotation: FeedbackAnnotation = {
       id: this.createId("annotation"),
       sessionId: session.id,
@@ -181,6 +186,7 @@ export class FeedbackStore {
         url: input.url,
         title: input.title,
         textQuote: normalizeText(input.selectedText),
+        uiAnchor: targetUiAnchor,
       },
       context: {
         pageInfo: {
@@ -192,6 +198,7 @@ export class FeedbackStore {
           route: input.pageInfoExtra?.route,
         },
         selectedText: normalizeText(input.selectedText),
+        uiAnchor: contextUiAnchor,
         manifestSummary: input.manifestSummary,
       },
       linkedCapabilities: {
@@ -454,6 +461,84 @@ export class FeedbackStore {
   private bumpSnapshotVersion(): void {
     this.state.snapshotVersion += 1;
   }
+}
+
+function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): FeedbackUiAnchor | undefined {
+  if (!anchor) {
+    return undefined;
+  }
+
+  // 锚点只做“轻清洗 + 合法性过滤”，不做重计算，保证仓库层职责单一。
+  const framePath = Array.isArray(anchor.framePath)
+    ? anchor.framePath.filter((item) => Number.isInteger(item) && item >= 0)
+    : undefined;
+  const textRange = normalizeUiTextRange(anchor.textRange);
+  const rect = normalizeUiRect(anchor.rect);
+  const meta = anchor.meta && Object.keys(anchor.meta).length > 0 ? cloneValue(anchor.meta) : undefined;
+
+  const normalized: FeedbackUiAnchor = {
+    elementId: normalizeText(anchor.elementId),
+    cssSelector: normalizeText(anchor.cssSelector),
+    xpath: normalizeText(anchor.xpath),
+    textQuote: normalizeText(anchor.textQuote),
+    framePath: framePath?.length ? framePath : undefined,
+    textRange,
+    rect,
+    meta,
+  };
+
+  if (
+    normalized.elementId ||
+    normalized.cssSelector ||
+    normalized.xpath ||
+    normalized.textQuote ||
+    normalized.framePath ||
+    normalized.textRange ||
+    normalized.rect ||
+    normalized.meta
+  ) {
+    return normalized;
+  }
+  return undefined;
+}
+
+function normalizeUiRect(
+  rect: FeedbackUiAnchor["rect"] | undefined,
+): FeedbackUiAnchor["rect"] | undefined {
+  if (!rect) {
+    return undefined;
+  }
+  // 非法几何数据直接丢弃，避免后续回放链路出现 NaN/负尺寸。
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return undefined;
+  }
+  if (width < 0 || height < 0) {
+    return undefined;
+  }
+  return { x, y, width, height };
+}
+
+function normalizeUiTextRange(
+  range: FeedbackUiAnchor["textRange"] | undefined,
+): FeedbackUiAnchor["textRange"] | undefined {
+  if (!range) {
+    return undefined;
+  }
+
+  // 文本范围需要满足 [start, end] 且 start/end 为非负整数。
+  const start = Number(range.start);
+  const end = Number(range.end);
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    return undefined;
+  }
+  if (start < 0 || end < start) {
+    return undefined;
+  }
+  return { start, end };
 }
 
 function normalizeText(value: string | undefined): string | undefined {

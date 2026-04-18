@@ -17,7 +17,7 @@ import {
 } from "@page-context/shared-protocol";
 
 import { connectWebSocket, forceReconnect, getWsReady, getSessionId, initDefaultWsUrl, log, queueNotification, requestBridge } from "./bg-ws-connection";
-import { captureActiveTabFeedbackContext } from "./bg-feedback-context";
+import { captureActiveTabFeedbackContext, type ActiveTabFeedbackContext } from "./bg-feedback-context";
 import { discoverPageToolsInTab, getRawPageContextManifest, getPageContextSkill, readPageContextResource, sleep } from "./bg-page-context";
 import { executeToolCall, getBuiltinToolDefinitions } from "./bg-tool-executor";
 import { buildContextManifestFilterDebug } from "./context-manifest-filter-debug";
@@ -28,6 +28,13 @@ import { createRuntimeListener } from "./runtime-rpc";
 const PAGE_TOOL_PREFERENCES_KEY = "pageToolPreferences";
 
 type JsonRecord = Record<string, unknown>;
+type FeedbackCreatePayloadFromUi = Pick<FeedbackAnnotationCreateParams, "body" | "priority" | "selectedText" | "uiAnchor"> & {
+  /**
+   * 给 UI 壳最小 fork 的字段别名做兼容，避免前后端联调卡在命名差异上。
+   * 后续若统一字段，可直接删掉这个别名映射。
+   */
+  anchor?: FeedbackAnnotationCreateParams["uiAnchor"];
+};
 
 let pageToolPreferences: PageToolPreferences = {};
 let pageToolPreferencesReady: Promise<void> | null = null;
@@ -193,6 +200,62 @@ async function listTabs() {
 // background 统一通过 WS helper 访问 bridge，减少业务层重复判空与超时配置。
 async function requestBridgeMethod<TResult>(method: string, params?: unknown): Promise<TResult> {
   return await requestBridge<TResult>(method, params, { timeoutMs: 20_000 });
+}
+
+function buildFeedbackAnnotationCreateParams(
+  payload: FeedbackCreatePayloadFromUi,
+  context: ActiveTabFeedbackContext,
+): FeedbackAnnotationCreateParams {
+  // 这里作为 background 的轻量 adapter 边界：
+  // 1) 统一 body/选区清洗规则
+  // 2) 接住 UI 壳新增字段（uiAnchor/anchor）并映射到 bridge 协议
+  // 3) 后续动作链路要扩展字段时，只改这一处即可
+  return {
+    body: payload.body.trim(),
+    priority: payload.priority,
+    tabId: context.tabId,
+    url: context.url,
+    title: context.title,
+    selectedText: payload.selectedText?.trim() || context.selectedText,
+    uiAnchor: normalizeFeedbackUiAnchor(payload.uiAnchor ?? payload.anchor),
+  };
+}
+
+function normalizeFeedbackUiAnchor(anchor: FeedbackAnnotationCreateParams["uiAnchor"]): FeedbackAnnotationCreateParams["uiAnchor"] {
+  if (!anchor) {
+    return undefined;
+  }
+
+  const framePath = Array.isArray(anchor.framePath)
+    ? anchor.framePath.filter((item) => Number.isInteger(item) && item >= 0)
+    : undefined;
+  const textQuote = anchor.textQuote?.trim();
+
+  const normalized: FeedbackAnnotationCreateParams["uiAnchor"] = {
+    elementId: anchor.elementId?.trim() || undefined,
+    cssSelector: anchor.cssSelector?.trim() || undefined,
+    xpath: anchor.xpath?.trim() || undefined,
+    textQuote: textQuote || undefined,
+    framePath: framePath?.length ? framePath : undefined,
+    rect: anchor.rect,
+    textRange: anchor.textRange,
+    meta: anchor.meta && Object.keys(anchor.meta).length > 0 ? anchor.meta : undefined,
+  };
+
+  // 只要任意定位信号存在就保留；全部为空时回退为 undefined，避免污染存储。
+  if (
+    normalized.elementId ||
+    normalized.cssSelector ||
+    normalized.xpath ||
+    normalized.textQuote ||
+    normalized.framePath ||
+    normalized.rect ||
+    normalized.textRange ||
+    normalized.meta
+  ) {
+    return normalized;
+  }
+  return undefined;
 }
 
 async function ensureMainWorldBridgeHostOnTab(tabId: number, frameId?: number): Promise<{ ok: true }> {
@@ -570,22 +633,13 @@ chrome.runtime.onMessage.addListener(
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackStateSnapshot, params);
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationCreate: {
-        const payload = (message.params ?? {}) as Pick<FeedbackAnnotationCreateParams, "body" | "priority" | "selectedText">;
+        const payload = (message.params ?? {}) as FeedbackCreatePayloadFromUi;
         if (!payload.body?.trim()) {
           throw new Error("Feedback body is required");
         }
         // content-script 的 UI 标注必须绑定消息发送者 tab，避免串到当前活动 tab。
         const context = await captureActiveTabFeedbackContext(sender);
-        // 页面浮层会提前缓存选区；若未提供则回退到后台即时采集，兼容 sidepanel 老调用。
-        const selectedText = payload.selectedText?.trim() || context.selectedText;
-        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, {
-          body: payload.body.trim(),
-          priority: payload.priority,
-          tabId: context.tabId,
-          url: context.url,
-          title: context.title,
-          selectedText,
-        } satisfies FeedbackAnnotationCreateParams);
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, buildFeedbackAnnotationCreateParams(payload, context));
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationClaim: {
         const payload = (message.params ?? {}) as FeedbackAnnotationClaimParams;

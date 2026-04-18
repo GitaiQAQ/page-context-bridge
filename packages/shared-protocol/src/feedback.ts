@@ -57,6 +57,34 @@ export interface FeedbackTarget {
   url: string;
   title?: string;
   textQuote?: string;
+  uiAnchor?: FeedbackUiAnchor;
+}
+
+/**
+ * 结构化 UI 定位锚点。
+ * 字段全部可选，保证老数据和老调用无需改动即可继续工作。
+ */
+export interface FeedbackUiAnchor {
+  elementId?: string;
+  cssSelector?: string;
+  xpath?: string;
+  textQuote?: string;
+  framePath?: number[];
+  rect?: FeedbackUiRect;
+  textRange?: FeedbackUiTextRange;
+  meta?: Record<string, unknown>;
+}
+
+export interface FeedbackUiRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface FeedbackUiTextRange {
+  start: number;
+  end: number;
 }
 
 export interface FeedbackCapabilityLinks {
@@ -77,6 +105,7 @@ export interface FeedbackContext {
     route?: string;
   };
   selectedText?: string;
+  uiAnchor?: FeedbackUiAnchor;
   manifestSummary?: {
     namespaceCount: number;
     resourceCount: number;
@@ -161,6 +190,7 @@ export interface FeedbackAnnotationCreateParams {
   url: string;
   title?: string;
   selectedText?: string;
+  uiAnchor?: FeedbackUiAnchor;
   actor?: FeedbackActor;
 }
 

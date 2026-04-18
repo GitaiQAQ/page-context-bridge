@@ -23,6 +23,16 @@ describe("feedback-store", () => {
       url: "https://example.com/a",
       title: "Example A",
       selectedText: "立即购买",
+      uiAnchor: {
+        elementId: " buy-now-btn ",
+        cssSelector: " #buy-now ",
+        xpath: "//*[@id='buy-now']",
+        textQuote: " 立即购买 ",
+        framePath: [0, 1, -2],
+        rect: { x: 12, y: 34, width: 56, height: 20 },
+        textRange: { start: 0, end: 4 },
+        meta: { from: "ui-shell" },
+      },
       linkedCapabilities: {
         namespaceHints: ["catalog"],
         relatedToolNames: ["catalog.inspect"],
@@ -49,6 +59,45 @@ describe("feedback-store", () => {
     expect(snapshot.snapshotVersion).toBe(1);
     expect(annotation.context.pageInfo.route).toBe("/item/1");
     expect(annotation.target.textQuote).toBe("立即购买");
+    expect(annotation.target.uiAnchor).toMatchObject({
+      elementId: "buy-now-btn",
+      cssSelector: "#buy-now",
+      textQuote: "立即购买",
+      framePath: [0, 1],
+    });
+    expect(snapshot.annotations[0]?.context.uiAnchor).toEqual(annotation.context.uiAnchor);
+  });
+
+  it("keeps lifecycle behavior unchanged when uiAnchor is absent (legacy payload)", () => {
+    const store = createDeterministicStore();
+    const created = store.createAnnotation({
+      actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
+      body: "老版本不带 anchor",
+      tabId: 18,
+      url: "https://example.com/legacy",
+      linkedCapabilities: {
+        namespaceHints: [],
+        relatedToolNames: [],
+        relatedResourceIds: [],
+        relatedSkillIds: [],
+        linkReasons: [],
+      },
+    });
+
+    expect(created.target.uiAnchor).toBeUndefined();
+    expect(created.context.uiAnchor).toBeUndefined();
+
+    store.claimAnnotation({
+      annotationId: created.id,
+      actor: { source: "agent", id: "bot-legacy", displayName: "Agent Legacy" },
+    });
+    const resolved = store.resolveAnnotation({
+      annotationId: created.id,
+      actor: { source: "agent", id: "bot-legacy", displayName: "Agent Legacy" },
+      resolution: "保持兼容",
+    });
+
+    expect(resolved.status).toBe("resolved");
   });
 
   it("supports claim -> resolve and appends delta events in order", () => {
