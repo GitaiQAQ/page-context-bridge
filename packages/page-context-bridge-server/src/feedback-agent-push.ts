@@ -2,6 +2,8 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { join } from "node:path";
 import type { FeedbackAnnotation } from "@page-context/shared-protocol";
 
+import { getRuntimeEnv } from "./runtime-env.js";
+
 export interface FeedbackAgentPushAdapter {
   pushNewAnnotation(annotation: FeedbackAnnotation): void;
 }
@@ -30,7 +32,7 @@ const DEFAULT_RUNTIME_DIR_NAME = ".feedback-agent-opencode";
  */
 export function createFeedbackAgentPushAdapterFromEnv(
   tenantId: string,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = getRuntimeEnv(),
   log: (message: string) => void = defaultLog,
 ): FeedbackAgentPushAdapter | null {
   if (!isEnvEnabled(env.FEEDBACK_PUSH_AGENT_ENABLED)) {

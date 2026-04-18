@@ -29,6 +29,7 @@ import { buildRegisteredPageToolName } from "./page-tool-routing.js";
 import { buildZodSchema, type JsonSchemaLike } from "./schema.js";
 import { FeedbackStore } from "./feedback-store.js";
 import { createFeedbackAgentPushAdapterFromEnv, type FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
+import { getRuntimeEnv } from "./runtime-env.js";
 
 export interface PageToolSpec {
   name: string;
@@ -87,7 +88,7 @@ export class McpRegistry {
     // 允许测试注入 adapter；未注入时才按环境变量自动创建。
     this.feedbackAgentPushAdapter = options.feedbackAgentPushAdapter !== undefined
       ? options.feedbackAgentPushAdapter
-      : createFeedbackAgentPushAdapterFromEnv(tenantId, options.env ?? process.env, (message) => log(message));
+      : createFeedbackAgentPushAdapterFromEnv(tenantId, options.env ?? getRuntimeEnv(), (message) => log(message));
   }
 
   addServer(server: McpServer): void {

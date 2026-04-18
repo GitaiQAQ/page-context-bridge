@@ -18,10 +18,12 @@ import {
   startHeartbeatWatchdog,
 } from "./extension-session.js";
 import { startSseServer } from "./http-servers.js";
+import { getRuntimeEnv } from "./runtime-env.js";
 
-const EXT_WS_PORT = Number.parseInt(process.env.EXT_WS_PORT || "22335", 10);
-const MCP_HTTP_PORT = Number.parseInt(process.env.MCP_HTTP_PORT || "22334", 10);
-const STDIO_TENANT_ID = process.env.TENANT_ID || "default";
+const runtimeEnv = getRuntimeEnv();
+const EXT_WS_PORT = Number.parseInt(runtimeEnv.EXT_WS_PORT || "22335", 10);
+const MCP_HTTP_PORT = Number.parseInt(runtimeEnv.MCP_HTTP_PORT || "22334", 10);
+const STDIO_TENANT_ID = runtimeEnv.TENANT_ID || "default";
 
 // ── Tenant Manager: creates isolated registries per tenant ──
 
