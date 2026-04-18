@@ -1,6 +1,12 @@
 import {
   BRIDGE_METHODS,
   type ContextResourcePayload,
+  type FeedbackAnnotation,
+  type FeedbackAnnotationClaimParams,
+  type FeedbackAnnotationDismissParams,
+  type FeedbackAnnotationReplyParams,
+  type FeedbackAnnotationResolveParams,
+  type FeedbackAnnotationStatus,
   type PageContextManifest,
 } from "@page-context/shared-protocol";
 
@@ -58,6 +64,20 @@ const customRules = css`
   .tab-content { display: none; }
   .tab-content.active { display: flex; }
 `;
+
+type FeedbackActionFormMode = "reply" | "resolve" | "dismiss" | null;
+type FeedbackActionInputField = "replyBody" | "resolveNote" | "dismissReason";
+
+// sidepanel 只维护交互态；业务真值依然来自 bridge snapshot。
+interface FeedbackAnnotationActionState {
+  mode: FeedbackActionFormMode;
+  replyBody: string;
+  resolveNote: string;
+  dismissReason: string;
+  submitting: boolean;
+  error: string;
+  success: string;
+}
 
 @customElement("side-panel-app")
 export class SidePanelApp extends LitElement {
@@ -121,6 +141,7 @@ export class SidePanelApp extends LitElement {
   @state() private _feedbackSnapshot: FeedbackSnapshotResponse | null = null;
   @state() private _feedbackLoading = false;
   @state() private _feedbackError = "";
+  @state() private _feedbackActionStateByAnnotationId: Record<string, FeedbackAnnotationActionState> = {};
 
   // ─── Query references (shadowRoot is guaranteed when using default createRenderRoot) ──
   @query("#iframeContainer") private _iframeContainer!: HTMLElement;
@@ -462,6 +483,7 @@ export class SidePanelApp extends LitElement {
 
     try {
       this._feedbackSnapshot = await sendRuntimeRequest<FeedbackSnapshotResponse>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
+      this._reconcileFeedbackActionStates(this._feedbackSnapshot.annotations);
       this._feedbackCreateStatus = "Snapshot loaded";
       this._feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
     } catch (error) {
@@ -512,6 +534,291 @@ export class SidePanelApp extends LitElement {
       default:
         return "badge badge-warning badge-sm";
     }
+  }
+
+  private _createFeedbackActionState(): FeedbackAnnotationActionState {
+    return {
+      mode: null,
+      replyBody: "",
+      resolveNote: "",
+      dismissReason: "",
+      submitting: false,
+      error: "",
+      success: "",
+    };
+  }
+
+  private _reconcileFeedbackActionStates(annotations: FeedbackAnnotation[]): void {
+    // 仅保留当前快照里的 annotation 状态，避免轮询后残留无效本地状态。
+    const next: Record<string, FeedbackAnnotationActionState> = {};
+    for (const annotation of annotations) {
+      next[annotation.id] = this._feedbackActionStateByAnnotationId[annotation.id] ?? this._createFeedbackActionState();
+    }
+    this._feedbackActionStateByAnnotationId = next;
+  }
+
+  private _readFeedbackActionState(annotationId: string): FeedbackAnnotationActionState {
+    return this._feedbackActionStateByAnnotationId[annotationId] ?? this._createFeedbackActionState();
+  }
+
+  private _updateFeedbackActionState(
+    annotationId: string,
+    updater: (current: FeedbackAnnotationActionState) => FeedbackAnnotationActionState,
+  ): void {
+    const current = this._readFeedbackActionState(annotationId);
+    this._feedbackActionStateByAnnotationId = {
+      ...this._feedbackActionStateByAnnotationId,
+      [annotationId]: updater(current),
+    };
+  }
+
+  private _setFeedbackActionMode(annotationId: string, mode: FeedbackActionFormMode): void {
+    this._updateFeedbackActionState(annotationId, (current) => ({
+      ...current,
+      mode: current.mode === mode ? null : mode,
+      error: "",
+      success: "",
+    }));
+  }
+
+  private _handleFeedbackActionInput(annotationId: string, field: FeedbackActionInputField, event: Event): void {
+    const value = (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+    this._updateFeedbackActionState(annotationId, (current) => ({
+      ...current,
+      [field]: value,
+      error: "",
+      success: "",
+    }));
+  }
+
+  private async _runFeedbackMutation(
+    annotationId: string,
+    request: () => Promise<unknown>,
+    successMessage: string,
+    onSuccess: (state: FeedbackAnnotationActionState) => FeedbackAnnotationActionState,
+  ): Promise<void> {
+    // 统一 mutation 流程：先更新本地提交态，再走 RPC，成功后强制 reload snapshot。
+    this._updateFeedbackActionState(annotationId, (current) => ({
+      ...current,
+      submitting: true,
+      error: "",
+      success: "",
+    }));
+
+    try {
+      await request();
+      this._updateFeedbackActionState(annotationId, (current) => ({
+        ...onSuccess(current),
+        submitting: false,
+        error: "",
+        success: successMessage,
+      }));
+      await this._loadFeedbackSnapshot();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._updateFeedbackActionState(annotationId, (current) => ({
+        ...current,
+        submitting: false,
+        error: message,
+      }));
+    }
+  }
+
+  private async _claimFeedbackAnnotation(annotationId: string): Promise<void> {
+    await this._runFeedbackMutation(
+      annotationId,
+      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationClaim, {
+        annotationId,
+      } satisfies FeedbackAnnotationClaimParams),
+      "已认领",
+      (state) => ({ ...state, mode: null }),
+    );
+  }
+
+  private async _replyFeedbackAnnotation(annotationId: string): Promise<void> {
+    const state = this._readFeedbackActionState(annotationId);
+    const body = state.replyBody.trim();
+    if (!body) {
+      this._updateFeedbackActionState(annotationId, (current) => ({
+        ...current,
+        error: "回复内容不能为空",
+      }));
+      return;
+    }
+
+    await this._runFeedbackMutation(
+      annotationId,
+      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationReply, {
+        annotationId,
+        body,
+      } satisfies FeedbackAnnotationReplyParams),
+      "回复已提交",
+      (current) => ({ ...current, mode: null, replyBody: "" }),
+    );
+  }
+
+  private async _resolveFeedbackAnnotation(annotationId: string): Promise<void> {
+    const state = this._readFeedbackActionState(annotationId);
+    await this._runFeedbackMutation(
+      annotationId,
+      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationResolve, {
+        annotationId,
+        resolution: state.resolveNote.trim() || undefined,
+      } satisfies FeedbackAnnotationResolveParams),
+      "已标记为 resolved",
+      (current) => ({ ...current, mode: null, resolveNote: "" }),
+    );
+  }
+
+  private async _dismissFeedbackAnnotation(annotationId: string): Promise<void> {
+    const state = this._readFeedbackActionState(annotationId);
+    await this._runFeedbackMutation(
+      annotationId,
+      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, {
+        annotationId,
+        dismissReason: state.dismissReason.trim() || undefined,
+      } satisfies FeedbackAnnotationDismissParams),
+      "已 dismiss",
+      (current) => ({ ...current, mode: null, dismissReason: "" }),
+    );
+  }
+
+  private _canClaimAnnotation(status: FeedbackAnnotationStatus): boolean {
+    // 与 bridge 侧状态机保持一致，避免前端发起必然失败的转移。
+    return status === "open" || status === "needs_info";
+  }
+
+  private _canReplyAnnotation(status: FeedbackAnnotationStatus): boolean {
+    return status !== "resolved" && status !== "dismissed";
+  }
+
+  private _canResolveAnnotation(status: FeedbackAnnotationStatus): boolean {
+    return status === "claimed" || status === "in_progress" || status === "needs_info";
+  }
+
+  private _canDismissAnnotation(status: FeedbackAnnotationStatus): boolean {
+    return status !== "resolved" && status !== "dismissed";
+  }
+
+  private _formatFeedbackTime(timestamp: string): string {
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString("zh-CN", { hour12: false });
+  }
+
+  private _renderFeedbackThread(annotation: FeedbackAnnotation): TemplateResult {
+    // 线程详情直接展示 actor/kind/time，便于在 sidepanel 内完成最基本协作沟通。
+    if (annotation.thread.length === 0) {
+      return html`<div class="text-xs opacity-50">暂无 thread 消息</div>`;
+    }
+
+    return html`
+      <div class="flex flex-col gap-1">
+        ${annotation.thread.map((message) => html`
+          <div class="border border-base-300 rounded-md p-2 bg-base-200/60 flex flex-col gap-1">
+            <div class="flex items-center gap-1 text-[11px] opacity-70">
+              <span class="font-semibold">${message.author.displayName}</span>
+              <span class="badge badge-ghost badge-xs">${message.author.source}</span>
+              <span class="badge badge-outline badge-xs">${message.kind}</span>
+              <span class="ml-auto">${this._formatFeedbackTime(message.createdAt)}</span>
+            </div>
+            <div class="text-xs whitespace-pre-wrap break-words">${message.body}</div>
+          </div>
+        `)}
+      </div>
+    `;
+  }
+
+  private _renderFeedbackActionForm(annotation: FeedbackAnnotation, state: FeedbackAnnotationActionState): TemplateResult {
+    // 内联表单只负责采集输入，真正状态变化由 RPC 成功后的 snapshot 刷新决定。
+    if (state.mode === "reply") {
+      return html`
+        <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
+          <textarea
+            class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
+            placeholder="补充处理进展或追问信息"
+            .value=${state.replyBody}
+            @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "replyBody", event)}
+          ></textarea>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>取消</button>
+            <button class="btn btn-xs btn-primary ml-auto" .disabled=${state.submitting} @click=${() => this._replyFeedbackAnnotation(annotation.id)}>
+              ${state.submitting ? "Submitting..." : "提交回复"}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (state.mode === "resolve") {
+      return html`
+        <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
+          <textarea
+            class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
+            placeholder="可选：填写 resolution 说明"
+            .value=${state.resolveNote}
+            @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "resolveNote", event)}
+          ></textarea>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>取消</button>
+            <button class="btn btn-xs btn-success ml-auto" .disabled=${state.submitting} @click=${() => this._resolveFeedbackAnnotation(annotation.id)}>
+              ${state.submitting ? "Submitting..." : "确认 Resolve"}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (state.mode === "dismiss") {
+      return html`
+        <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
+          <input
+            class="input input-sm input-bordered"
+            placeholder="可选：填写 dismiss 原因"
+            .value=${state.dismissReason}
+            @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "dismissReason", event)}
+          />
+          <div class="flex items-center gap-2">
+            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>取消</button>
+            <button class="btn btn-xs btn-warning ml-auto" .disabled=${state.submitting} @click=${() => this._dismissFeedbackAnnotation(annotation.id)}>
+              ${state.submitting ? "Submitting..." : "确认 Dismiss"}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    return html``;
+  }
+
+  private _renderFeedbackActions(annotation: FeedbackAnnotation): TemplateResult {
+    const state = this._readFeedbackActionState(annotation.id);
+    const canClaim = this._canClaimAnnotation(annotation.status);
+    const canReply = this._canReplyAnnotation(annotation.status);
+    const canResolve = this._canResolveAnnotation(annotation.status);
+    const canDismiss = this._canDismissAnnotation(annotation.status);
+
+    return html`
+      <div class="flex flex-wrap items-center gap-1.5">
+        ${canClaim
+          ? html`<button class="btn btn-xs btn-info" .disabled=${state.submitting} @click=${() => this._claimFeedbackAnnotation(annotation.id)}>${state.submitting ? "Submitting..." : "Claim"}</button>`
+          : nothing}
+        ${canReply
+          ? html`<button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "reply")}>Reply</button>`
+          : nothing}
+        ${canResolve
+          ? html`<button class="btn btn-xs btn-success btn-outline" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "resolve")}>Resolve</button>`
+          : nothing}
+        ${canDismiss
+          ? html`<button class="btn btn-xs btn-warning btn-outline" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "dismiss")}>Dismiss</button>`
+          : nothing}
+        ${(!canClaim && !canReply && !canResolve && !canDismiss)
+          ? html`<span class="text-xs opacity-50">当前状态无可执行动作</span>`
+          : nothing}
+      </div>
+      ${state.error ? html`<div class="text-xs text-error">${state.error}</div>` : nothing}
+      ${state.success ? html`<div class="text-xs text-success">${state.success}</div>` : nothing}
+      ${this._renderFeedbackActionForm(annotation, state)}
+    `;
   }
 
   // ─── Tool Test Panel ───────────────────────────────────────────
@@ -1015,9 +1322,26 @@ export class SidePanelApp extends LitElement {
                           <div class="flex items-center gap-2">
                             <span class="${this._feedbackStatusBadgeClass(annotation.status)}">${annotation.status}</span>
                             <span class="badge badge-outline badge-sm">${annotation.priority}</span>
-                            <span class="text-[11px] opacity-50 ml-auto">${annotation.updatedAt}</span>
+                            <span class="text-[11px] opacity-50 ml-auto">${this._formatFeedbackTime(annotation.updatedAt)}</span>
                           </div>
                           <div class="text-sm whitespace-pre-wrap break-words">${annotation.body}</div>
+                          <div class="text-xs opacity-70">
+                            #${annotation.id} · by ${annotation.author.displayName} ·
+                            created ${this._formatFeedbackTime(annotation.createdAt)}
+                          </div>
+                          ${annotation.target.textQuote
+                            ? html`<div class="text-xs opacity-80">Quote: ${annotation.target.textQuote}</div>`
+                            : nothing}
+                          ${annotation.claimedBy || annotation.resolvedBy || annotation.resolution || annotation.dismissReason
+                            ? html`
+                              <div class="text-xs opacity-70 flex flex-wrap gap-2">
+                                ${annotation.claimedBy ? html`<span>Claimed by: ${annotation.claimedBy.displayName}</span>` : nothing}
+                                ${annotation.resolvedBy ? html`<span>Resolved by: ${annotation.resolvedBy.displayName}</span>` : nothing}
+                                ${annotation.resolution ? html`<span>Resolution: ${annotation.resolution}</span>` : nothing}
+                                ${annotation.dismissReason ? html`<span>Dismiss reason: ${annotation.dismissReason}</span>` : nothing}
+                              </div>
+                            `
+                            : nothing}
                           ${(annotation.linkedCapabilities.relatedToolNames.length
                             + annotation.linkedCapabilities.relatedResourceIds.length
                             + annotation.linkedCapabilities.relatedSkillIds.length) > 0
@@ -1029,9 +1353,8 @@ export class SidePanelApp extends LitElement {
                               </div>
                             `
                             : html`<div class="text-xs opacity-50">无关联 capability</div>`}
-                          ${annotation.thread.length > 0
-                            ? html`<div class="text-xs opacity-70">Thread: ${annotation.thread.length} replies</div>`
-                            : nothing}
+                          ${this._renderFeedbackActions(annotation)}
+                          ${this._renderFeedbackThread(annotation)}
                         </div>
                       `)}`
                     }
