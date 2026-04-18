@@ -97,7 +97,6 @@ describe("connectWebSocket", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-
   it("fails fast when socket closes before open and allows next connect", async () => {
     const wsModule = await import("./bg-ws-connection");
     const noop = vi.fn(async () => ({}));
