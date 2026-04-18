@@ -95,11 +95,11 @@ const NAMESPACE: ContextNamespaceDescriptor = {
 const TOOLS: ToolSpec[] = [
   {
     name: "listRoots",
-    description: "列出当前页面检测到的 React roots 摘要。",
+    description: "List the React root summaries detected on the current page.",
     inputSchema: {
       type: "object",
       properties: {
-        includeDiagnostics: { type: "boolean", description: "是否附带 diagnostics。" },
+        includeDiagnostics: { type: "boolean", description: "Include diagnostics in the response." },
       },
       additionalProperties: false,
     },
@@ -107,11 +107,11 @@ const TOOLS: ToolSpec[] = [
   },
   {
     name: "inspectComponent",
-    description: "按 componentId 检查组件摘要。",
+    description: "Inspect a component summary by componentId.",
     inputSchema: {
       type: "object",
       properties: {
-        componentId: { type: "string", description: "来自 listRoots 或 inspectSelectedElement 的 componentId。" },
+        componentId: { type: "string", description: "A componentId returned by listRoots or inspectSelectedElement." },
       },
       required: ["componentId"],
       additionalProperties: false,
@@ -120,7 +120,7 @@ const TOOLS: ToolSpec[] = [
   },
   {
     name: "inspectSelectedElement",
-    description: "检查当前选区所在元素并回溯最近的 React 组件。",
+    description: "Inspect the current selection and trace back to the nearest React component.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
@@ -131,7 +131,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.summary,
     namespace: NS,
     title: "React Summary",
-    description: "React 检测摘要和最近检查状态。",
+    description: "React detection summary and recent inspection state.",
     mimeType: "application/json",
     kind: "json",
     tags: ["summary"],
@@ -140,7 +140,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.roots,
     namespace: NS,
     title: "React Roots",
-    description: "React roots 摘要列表。",
+    description: "List of React root summaries.",
     mimeType: "application/json",
     kind: "json",
     tags: ["roots"],
@@ -149,7 +149,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.selection,
     namespace: NS,
     title: "React Selection",
-    description: "当前选区对应元素和组件定位结果。",
+    description: "Current selection, matching element, and nearest component summary.",
     mimeType: "application/json",
     kind: "json",
     tags: ["selection"],
@@ -158,7 +158,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.component,
     namespace: NS,
     title: "React Component",
-    description: "最近一次 inspectComponent 的结果。",
+    description: "Result of the most recent inspectComponent call.",
     mimeType: "application/json",
     kind: "json",
     tags: ["component"],
@@ -167,7 +167,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
     title: "React Diagnostics",
-    description: "React hook 检测与降级诊断信息。",
+    description: "React hook detection and fallback diagnostics.",
     mimeType: "application/json",
     kind: "json",
     tags: ["diagnostics"],
@@ -179,7 +179,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.rootLandscape,
     namespace: NS,
     title: "Analyze React Root Landscape",
-    description: "分析 roots 数量、拓扑和潜在异常区域。",
+    description: "Analyze root count, topology, and suspicious areas.",
     intentTags: ["analysis", "react", "roots"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.roots, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!]),
@@ -189,7 +189,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.selectionTrace,
     namespace: NS,
     title: "Trace Selected Element to Component",
-    description: "把当前选区映射到组件并解释上下文。",
+    description: "Map the current selection to a component and explain the context.",
     intentTags: ["analysis", "selection", "react"],
     resourceIds: [RESOURCE_IDS.selection, RESOURCE_IDS.component, RESOURCE_IDS.roots],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[2]!, TOOLS[1]!]),
@@ -199,7 +199,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.componentReview,
     namespace: NS,
     title: "Review Component Props and State",
-    description: "分析组件 props/state 预览并输出证据链。",
+    description: "Review component props/state previews and summarize the evidence chain.",
     intentTags: ["analysis", "component", "state"],
     resourceIds: [RESOURCE_IDS.component, RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[1]!, TOOLS[0]!]),
@@ -248,7 +248,7 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
   if (name === "inspectComponent") {
     const componentId = typeof input.componentId === "string" ? input.componentId : "";
     if (!componentId) {
-      return { ok: false, reason: "componentId 不能为空。" };
+      return { ok: false, reason: "componentId must not be empty." };
     }
 
     const snapshot = collectReactSnapshot(win, doc);
@@ -258,8 +258,8 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
     if (!component) {
       return {
         ok: false,
-        reason: `找不到组件：${componentId}`,
-        suggestion: "先执行 listRoots 或 inspectSelectedElement 获取 componentId。",
+        reason: `Component not found: ${componentId}`,
+        suggestion: "Run listRoots or inspectSelectedElement first to get a valid componentId.",
       };
     }
     return { ok: true, component };
@@ -379,15 +379,15 @@ function collectReactSnapshot(win: Window, doc: Document): ReactSnapshot {
   });
 
   if (rendererIds.length === 0) {
-    diagnostics.push("DevTools hook 存在，但 renderers 为空。");
+    diagnostics.push("The DevTools hook exists, but renderers is empty.");
   }
   if (rendererIds.length > 0 && roots.length === 0) {
-    diagnostics.push("检测到 renderers 但没有 roots，可能是页面尚未挂载。");
+    diagnostics.push("Renderers were detected but no roots were found. The page may not have mounted yet.");
   }
 
   const containerHints = countReactContainerHints(doc);
   if (containerHints > 0 && roots.length === 0) {
-    diagnostics.push(`DOM 上发现 ${containerHints} 个 React container 标记，但无法构建 root 摘要。`);
+    diagnostics.push(`Found ${containerHints} React container markers in the DOM, but could not build root summaries.`);
   }
 
   return {
@@ -465,7 +465,7 @@ function collectFiberChildren(fiber: FiberNodeLike): Array<FiberNodeLike | null>
 function getDevtoolsHook(win: Window, diagnostics: string[]): ReactDevtoolsHookLike | undefined {
   const hook = (win as Window & { __REACT_DEVTOOLS_GLOBAL_HOOK__?: ReactDevtoolsHookLike }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
   if (!hook) {
-    diagnostics.push("未检测到 __REACT_DEVTOOLS_GLOBAL_HOOK__。");
+    diagnostics.push("Did not detect __REACT_DEVTOOLS_GLOBAL_HOOK__.");
     return undefined;
   }
   return hook;
@@ -473,14 +473,14 @@ function getDevtoolsHook(win: Window, diagnostics: string[]): ReactDevtoolsHookL
 
 function getRendererIds(hook: ReactDevtoolsHookLike, diagnostics: string[]): number[] {
   if (!(hook.renderers instanceof Map)) {
-    diagnostics.push("DevTools hook 没有 renderers Map。");
+    diagnostics.push("The DevTools hook does not expose a renderers Map.");
     return [];
   }
   const ids: number[] = [];
   for (const key of hook.renderers.keys()) {
     const numeric = Number(key);
     if (!Number.isFinite(numeric)) {
-      diagnostics.push(`忽略非法 renderer id: ${String(key)}`);
+      diagnostics.push(`Ignoring invalid renderer id: ${String(key)}`);
       continue;
     }
     ids.push(numeric);
@@ -490,18 +490,18 @@ function getRendererIds(hook: ReactDevtoolsHookLike, diagnostics: string[]): num
 
 function getFiberRoots(hook: ReactDevtoolsHookLike, rendererId: number, diagnostics: string[]): FiberRootLike[] {
   if (typeof hook.getFiberRoots !== "function") {
-    diagnostics.push("DevTools hook 缺少 getFiberRoots 方法。");
+    diagnostics.push("The DevTools hook does not expose getFiberRoots.");
     return [];
   }
   try {
     const roots = hook.getFiberRoots(rendererId);
     if (!(roots instanceof Set)) {
-      diagnostics.push(`renderer ${rendererId} roots 不是 Set。`);
+      diagnostics.push(`Renderer ${rendererId} returned roots in a non-Set shape.`);
       return [];
     }
     return Array.from(roots).filter((item): item is FiberRootLike => isObjectRecord(item));
   } catch (error) {
-    diagnostics.push(`读取 renderer ${rendererId} roots 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Failed to read roots for renderer ${rendererId}: ${toErrorMessage(error)}`);
     return [];
   }
 }

@@ -33,16 +33,16 @@ export function buildSkillPrompt(
     `Recommended resources: ${(skill.resourceIds ?? []).join(", ") || "(none)"}`,
     `Allowed tools: ${(skill.toolNames ?? []).join(", ") || "(none)"}`,
     "Checklist:",
-    "1) 先给出可验证事实，再给出推断。",
-    "2) 明确缺失信息和下一步可执行检查。",
-    "3) 结论保持只读分析，不建议直接变更页面状态。",
+    "1) Start with verifiable facts, then move to inference.",
+    "2) Call out missing information and the next useful inspection step.",
+    "3) Keep the conclusion read-only and avoid proposing page mutations.",
   ];
   return { skill, text: lines.join("\n") };
 }
 
 export function normalizeSkillInput(input: ToolInput): { goal: string; focus: string } {
-  const goal = typeof input.goal === "string" && input.goal.trim() ? input.goal.trim() : "排查当前运行态问题并给出证据链。";
-  const focus = typeof input.focus === "string" && input.focus.trim() ? input.focus.trim() : "稳定性与可解释性";
+  const goal = typeof input.goal === "string" && input.goal.trim() ? input.goal.trim() : "Inspect the current runtime issue and build an evidence chain.";
+  const focus = typeof input.focus === "string" && input.focus.trim() ? input.focus.trim() : "stability and explainability";
   return { goal, focus };
 }
 

@@ -34,6 +34,28 @@ export interface PageContextBridgeLike {
   getManifest(): PageContextManifest;
 }
 
+export interface PageContextBridgeHostSource {
+  sourceId: string;
+  bridge: PageContextBridgeLike;
+  priority: number;
+  tags: string[];
+  registeredAt: string;
+}
+
+export interface PageContextBridgeHost {
+  version: string;
+  bridge: PageContextBridgeLike;
+  registerSource(input: {
+    sourceId: string;
+    bridge: PageContextBridgeLike;
+    priority?: number;
+    tags?: string[];
+  }): () => void;
+  unregisterSource(sourceId: string): void;
+  listSources(): PageContextBridgeHostSource[];
+  listDiagnostics(): string[];
+}
+
 export interface UserscriptBridgeAdapter {
   adapterId: string;
   namespace: ContextNamespaceDescriptor;

@@ -27,6 +27,7 @@ export const BRIDGE_METHODS = {
   extensionContextSkillGet: "extension.context.skill.get",
   extensionToolDebugCall: "extension.tool.debug.call",
   extensionToolExecute: "extension.tool.execute",
+  extensionMainWorldHostEnsure: "extension.mainWorld.host.ensure",
   extensionPageEvent: "extension.page.event",
   extensionPageToolsRegister: "extension.pageTools.register",
   ...FEEDBACK_METHODS,

@@ -57,17 +57,17 @@ const NAMESPACE: ContextNamespaceDescriptor = {
 const TOOLS: ToolSpec[] = [
   {
     name: "listMountedAtoms",
-    description: "列出 Jotai mounted atoms 摘要。",
+    description: "List summaries of mounted Jotai atoms.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
     name: "inspectAtom",
-    description: "按 atomId 查看 atom 预览信息。",
+    description: "Inspect atom preview data by atomId.",
     inputSchema: {
       type: "object",
       properties: {
-        atomId: { type: "string", description: "来自 listMountedAtoms 的 atomId。" },
+        atomId: { type: "string", description: "An atomId returned by listMountedAtoms." },
       },
       additionalProperties: false,
     },
@@ -80,7 +80,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.summary,
     namespace: NS,
     title: "Jotai Summary",
-    description: "Jotai dev store 检测摘要。",
+    description: "Jotai dev store detection summary.",
     mimeType: "application/json",
     kind: "json",
     tags: ["summary"],
@@ -89,7 +89,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
     title: "Jotai Diagnostics",
-    description: "Jotai dev 方法读取降级信息。",
+    description: "Jotai dev method fallback diagnostics.",
     mimeType: "application/json",
     kind: "json",
     tags: ["diagnostics"],
@@ -98,7 +98,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.atoms,
     namespace: NS,
     title: "Jotai Atoms",
-    description: "当前 mounted atoms 列表。",
+    description: "Current mounted atom list.",
     mimeType: "application/json",
     kind: "json",
     tags: ["atoms"],
@@ -110,7 +110,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.atomTopology,
     namespace: NS,
     title: "Analyze Mounted Atoms",
-    description: "分析 mounted atoms 分布和可观察值。",
+    description: "Analyze mounted atom distribution and observable values.",
     intentTags: ["analysis", "jotai", "atoms"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.atoms, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!]),
@@ -120,7 +120,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.atomValueTrace,
     namespace: NS,
     title: "Trace Atom Value",
-    description: "按 atomId 检查当前值与可读性。",
+    description: "Inspect the current value and readability of an atom by atomId.",
     intentTags: ["analysis", "jotai", "state"],
     resourceIds: [RESOURCE_IDS.atoms, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[1]!]),
@@ -130,7 +130,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.missingDevtools,
     namespace: NS,
     title: "Explain Missing Jotai Dev Hooks",
-    description: "解释为什么当前页面拿不到 Jotai dev store 数据。",
+    description: "Explain why the current page cannot expose Jotai dev store data.",
     intentTags: ["analysis", "jotai", "diagnostics"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!]),
@@ -174,11 +174,11 @@ function callJotaiTool(name: string, input: ToolInput, state: JotaiAdapterState)
   if (name === "inspectAtom") {
     const atomId = typeof input.atomId === "string" && input.atomId ? input.atomId : snapshot.atoms[0]?.atomId;
     if (!atomId) {
-      return { ok: false, reason: "没有 mounted atoms，且未提供 atomId。" };
+      return { ok: false, reason: "No mounted atoms are available and no atomId was provided." };
     }
     const atom = snapshot.atoms.find((item) => item.atomId === atomId) ?? null;
     if (!atom) {
-      return { ok: false, reason: `找不到 atomId=${atomId}` };
+      return { ok: false, reason: `Could not find atomId=${atomId}` };
     }
     return { ok: true, atom };
   }
@@ -228,7 +228,7 @@ function collectJotaiSnapshot(): JotaiSnapshot {
   const diagnostics: string[] = [];
   const store = (globalThis as { __JOTAI_DEFAULT_STORE__?: unknown }).__JOTAI_DEFAULT_STORE__;
   if (!isObjectRecord(store)) {
-    diagnostics.push("未检测到 globalThis.__JOTAI_DEFAULT_STORE__。");
+    diagnostics.push("Did not detect globalThis.__JOTAI_DEFAULT_STORE__.");
     return {
       detected: false,
       atoms: [],
@@ -265,21 +265,21 @@ function collectJotaiSnapshot(): JotaiSnapshot {
 
 function readMountedAtoms(store: JotaiDevStoreLike, diagnostics: string[]): unknown[] {
   if (typeof store.dev4_get_mounted_atoms !== "function") {
-    diagnostics.push("Jotai dev4_get_mounted_atoms 不可用。");
+    diagnostics.push("Jotai dev4_get_mounted_atoms is not available.");
     return [];
   }
   try {
     const atoms = store.dev4_get_mounted_atoms();
     return atoms instanceof Set ? Array.from(atoms.values()) : [];
   } catch (error) {
-    diagnostics.push(`读取 mounted atoms 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Failed to read mounted atoms: ${toErrorMessage(error)}`);
     return [];
   }
 }
 
 function readInternalWeakMap(store: JotaiDevStoreLike, diagnostics: string[]): WeakMap<object, unknown> | null {
   if (typeof store.dev4_get_internal_weak_map !== "function") {
-    diagnostics.push("Jotai dev4_get_internal_weak_map 不可用。");
+    diagnostics.push("Jotai dev4_get_internal_weak_map is not available.");
     return null;
   }
   try {
@@ -287,10 +287,10 @@ function readInternalWeakMap(store: JotaiDevStoreLike, diagnostics: string[]): W
     if (weakMap instanceof WeakMap) {
       return weakMap;
     }
-    diagnostics.push("Jotai internal weak map 返回值异常。");
+    diagnostics.push("Jotai internal weak map returned an unexpected value.");
     return null;
   } catch (error) {
-    diagnostics.push(`读取 internal weak map 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Failed to read the internal weak map: ${toErrorMessage(error)}`);
     return null;
   }
 }
@@ -331,7 +331,7 @@ function readAtomValuePreview(
     try {
       return previewValue(store.get(atom));
     } catch (error) {
-      diagnostics.push(`store.get(atom) 失败: ${toErrorMessage(error)}`);
+      diagnostics.push(`store.get(atom) failed: ${toErrorMessage(error)}`);
       return "unreadable";
     }
   }

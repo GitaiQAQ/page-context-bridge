@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { executeContentScriptTool } from "@page-context/builtin-tools";
-import { bootstrapExamplePage } from "./example-page-core";
+import { bootstrapExamplePage } from "../../page-context-example/src/example-page-core";
 
 function mountFixture(): void {
   document.body.innerHTML = `

@@ -51,23 +51,23 @@ const NAMESPACE: ContextNamespaceDescriptor = {
 const TOOLS: ToolSpec[] = [
   {
     name: "listActiveQueries",
-    description: "列出 Apollo query manager 中可见的活动查询。",
+    description: "List active queries visible from the Apollo query manager.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
     name: "inspectCache",
-    description: "读取 Apollo cache.extract() 摘要。",
+    description: "Read a summary from Apollo cache.extract().",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
     name: "inspectQuery",
-    description: "按 queryId 查看查询摘要。",
+    description: "Inspect a query summary by queryId.",
     inputSchema: {
       type: "object",
       properties: {
-        queryId: { type: "string", description: "query manager 的 query key。" },
+        queryId: { type: "string", description: "The query key from the Apollo query manager." },
       },
       additionalProperties: false,
     },
@@ -80,7 +80,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.summary,
     namespace: NS,
     title: "Apollo Summary",
-    description: "Apollo client 检测摘要。",
+    description: "Apollo client detection summary.",
     mimeType: "application/json",
     kind: "json",
     tags: ["summary"],
@@ -89,7 +89,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
     title: "Apollo Diagnostics",
-    description: "Apollo 读取降级信息。",
+    description: "Apollo fallback and degradation diagnostics.",
     mimeType: "application/json",
     kind: "json",
     tags: ["diagnostics"],
@@ -98,7 +98,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.cache,
     namespace: NS,
     title: "Apollo Cache",
-    description: "Apollo cache.extract() 内容（如果可读）。",
+    description: "Apollo cache.extract() output, when readable.",
     mimeType: "application/json",
     kind: "json",
     tags: ["cache"],
@@ -110,7 +110,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.cacheAudit,
     namespace: NS,
     title: "Audit Apollo Cache Shape",
-    description: "检查 cache 结构和实体分布。",
+    description: "Inspect cache shape and entity distribution.",
     intentTags: ["analysis", "cache", "apollo"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.cache, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[1]!]),
@@ -120,7 +120,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.queryFlow,
     namespace: NS,
     title: "Trace Active Apollo Queries",
-    description: "分析当前 active queries 的命名、变量和状态。",
+    description: "Analyze active query names, variables, and runtime state.",
     intentTags: ["analysis", "query", "apollo"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[2]!]),
@@ -130,7 +130,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.cacheGap,
     namespace: NS,
     title: "Find Apollo Cache Gaps",
-    description: "定位查询与 cache 命中之间的差异线索。",
+    description: "Find gaps between queries and cache hits.",
     intentTags: ["analysis", "cache", "consistency"],
     resourceIds: [RESOURCE_IDS.cache, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[1]!, TOOLS[2]!]),
@@ -184,11 +184,11 @@ function callApolloTool(name: string, input: ToolInput, win: Window, state: Apol
   if (name === "inspectQuery") {
     const queryId = typeof input.queryId === "string" && input.queryId ? input.queryId : snapshot.activeQueries[0]?.queryId;
     if (!queryId) {
-      return { ok: false, reason: "没有可用 query，且未提供 queryId。" };
+      return { ok: false, reason: "No query is available and no queryId was provided." };
     }
     const query = snapshot.activeQueries.find((item) => item.queryId === queryId) ?? null;
     if (!query) {
-      return { ok: false, reason: `找不到 queryId=${queryId}` };
+      return { ok: false, reason: `Could not find queryId=${queryId}` };
     }
     return { ok: true, query };
   }
@@ -239,14 +239,14 @@ function collectApolloSnapshot(win: Window): ApolloSnapshot {
   const diagnostics: string[] = [];
   const client = (win as Window & { __APOLLO_CLIENT__?: unknown }).__APOLLO_CLIENT__;
   if (!client || !isObjectRecord(client)) {
-    diagnostics.push("未检测到 window.__APOLLO_CLIENT__。");
+    diagnostics.push("Did not detect window.__APOLLO_CLIENT__.");
     return { detected: false, cacheExtract: null, activeQueries: [], diagnostics };
   }
 
   const cacheExtract = readCacheExtract(client, diagnostics);
   const activeQueries = readActiveQueries(client, diagnostics);
   if (activeQueries.length === 0) {
-    diagnostics.push("Apollo queryManager 未提供可读的 active queries。");
+    diagnostics.push("Apollo queryManager did not provide readable active queries.");
   }
   return {
     detected: true,
@@ -259,14 +259,14 @@ function collectApolloSnapshot(win: Window): ApolloSnapshot {
 function readCacheExtract(client: Record<string, unknown>, diagnostics: string[]): Record<string, unknown> | null {
   const cache = client.cache;
   if (!isObjectRecord(cache) || typeof cache.extract !== "function") {
-    diagnostics.push("Apollo cache.extract() 不可用。");
+    diagnostics.push("Apollo cache.extract() is not available.");
     return null;
   }
   try {
     const extracted = cache.extract();
     return isObjectRecord(extracted) ? extracted : {};
   } catch (error) {
-    diagnostics.push(`执行 cache.extract() 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`cache.extract() failed: ${toErrorMessage(error)}`);
     return null;
   }
 }
@@ -274,12 +274,12 @@ function readCacheExtract(client: Record<string, unknown>, diagnostics: string[]
 function readActiveQueries(client: Record<string, unknown>, diagnostics: string[]): ApolloQuerySummary[] {
   const manager = client.queryManager;
   if (!isObjectRecord(manager)) {
-    diagnostics.push("Apollo queryManager 不存在。");
+    diagnostics.push("Apollo queryManager is missing.");
     return [];
   }
   const queries = manager.queries;
   if (!queries) {
-    diagnostics.push("Apollo queryManager.queries 不存在。");
+    diagnostics.push("Apollo queryManager.queries is missing.");
     return [];
   }
 
@@ -293,7 +293,7 @@ function readActiveQueries(client: Record<string, unknown>, diagnostics: string[
       entries.push([key, value]);
     }
   } else {
-    diagnostics.push("Apollo queryManager.queries 不是 Map/Object。");
+    diagnostics.push("Apollo queryManager.queries is neither a Map nor an object.");
     return [];
   }
 

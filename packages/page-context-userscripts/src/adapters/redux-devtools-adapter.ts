@@ -80,17 +80,17 @@ const NAMESPACE: ContextNamespaceDescriptor = {
 const TOOLS: ToolSpec[] = [
   {
     name: "listStores",
-    description: "列出已被 recorder 捕获的 store 实例。",
+    description: "List store instances captured by the recorder.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
     name: "inspectStore",
-    description: "查看指定 store 的最近状态与动作。",
+    description: "Inspect the latest state and actions for a store.",
     inputSchema: {
       type: "object",
       properties: {
-        storeId: { type: "string", description: "来自 listStores 的 storeId。" },
+        storeId: { type: "string", description: "A storeId returned by listStores." },
       },
       additionalProperties: false,
     },
@@ -98,11 +98,11 @@ const TOOLS: ToolSpec[] = [
   },
   {
     name: "listRecentActions",
-    description: "读取指定 store 的最近 actions。",
+    description: "Read recent actions for a store.",
     inputSchema: {
       type: "object",
       properties: {
-        storeId: { type: "string", description: "可选，不填则取第一个 store。" },
+        storeId: { type: "string", description: "Optional. Defaults to the first known store." },
       },
       additionalProperties: false,
     },
@@ -115,7 +115,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.summary,
     namespace: NS,
     title: "Redux DevTools Summary",
-    description: "Redux DevTools recorder 检测摘要。",
+    description: "Redux DevTools recorder detection summary.",
     mimeType: "application/json",
     kind: "json",
     tags: ["summary"],
@@ -124,7 +124,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
     title: "Redux DevTools Diagnostics",
-    description: "扩展对象拦截与降级信息。",
+    description: "Extension interception and fallback diagnostics.",
     mimeType: "application/json",
     kind: "json",
     tags: ["diagnostics"],
@@ -133,7 +133,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.stores,
     namespace: NS,
     title: "Redux DevTools Stores",
-    description: "当前 recorder 捕获到的 store 清单。",
+    description: "Current store list captured by the recorder.",
     mimeType: "application/json",
     kind: "json",
     tags: ["stores"],
@@ -145,7 +145,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.storeHealth,
     namespace: NS,
     title: "Analyze Store Health",
-    description: "分析 store 活跃度和状态更新线索。",
+    description: "Analyze store activity and state update signals.",
     intentTags: ["analysis", "redux", "state"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.stores, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[1]!]),
@@ -155,7 +155,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.actionFlow,
     namespace: NS,
     title: "Trace Action Flow",
-    description: "基于最近 actions 追踪状态变化链路。",
+    description: "Trace state changes from recent actions.",
     intentTags: ["analysis", "redux", "actions"],
     resourceIds: [RESOURCE_IDS.stores, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[2]!, TOOLS[1]!]),
@@ -165,7 +165,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.connectionGap,
     namespace: NS,
     title: "Explain Recorder Coverage Gaps",
-    description: "解释 recorder 为什么没有捕获到目标 store。",
+    description: "Explain why the recorder did not capture the target store.",
     intentTags: ["analysis", "diagnostics", "redux-devtools"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!]),
@@ -215,7 +215,7 @@ function callReduxTool(name: string, input: ToolInput, recorder: ReturnType<type
   if (name === "inspectStore") {
     const store = resolveStore(snapshot.stores, input.storeId);
     if (!store) {
-      return { ok: false, reason: "找不到 store，请先调用 listStores。" };
+      return { ok: false, reason: "Store not found. Run listStores first." };
     }
     return {
       ok: true,
@@ -232,7 +232,7 @@ function callReduxTool(name: string, input: ToolInput, recorder: ReturnType<type
   if (name === "listRecentActions") {
     const store = resolveStore(snapshot.stores, input.storeId);
     if (!store) {
-      return { ok: false, reason: "找不到 store，请先调用 listStores。" };
+      return { ok: false, reason: "Store not found. Run listStores first." };
     }
     return {
       ok: true,
@@ -314,7 +314,7 @@ function createReduxDevtoolsRecorder(win: Window) {
 function observeReduxExtension(win: Window, state: RecorderState): void {
   const target = win as Window & { __REDUX_DEVTOOLS_EXTENSION__?: unknown };
 
-  // 先尝试处理“扩展已挂载”场景，再安装 setter 处理后挂载场景。
+  // Handle the already-mounted extension first, then install a setter for late attachment.
   const immediate = target[REDUX_EXTENSION_KEY as keyof Window];
   if (immediate) {
     wrapReduxExtension(immediate, state);
@@ -322,7 +322,7 @@ function observeReduxExtension(win: Window, state: RecorderState): void {
 
   const descriptor = Object.getOwnPropertyDescriptor(win, REDUX_EXTENSION_KEY);
   if (descriptor && descriptor.configurable === false) {
-    state.diagnostics.push("window.__REDUX_DEVTOOLS_EXTENSION__ 不可重定义，无法安装拦截 setter。");
+    state.diagnostics.push("window.__REDUX_DEVTOOLS_EXTENSION__ cannot be redefined, so the interception setter cannot be installed.");
     return;
   }
 
@@ -353,7 +353,7 @@ function wrapReduxExtension(extensionLike: unknown, state: RecorderState): void 
   }
   const originalConnect = extension.connect;
   if (typeof originalConnect !== "function") {
-    state.diagnostics.push("Redux DevTools extension 缺少 connect()。");
+    state.diagnostics.push("The Redux DevTools extension does not expose connect().");
     return;
   }
 
@@ -402,7 +402,7 @@ function wrapConnection(connection: ReduxDevtoolsConnectionLike, store: StoreRec
     },
     subscribe(listener) {
       if (typeof connection.subscribe !== "function") {
-        state.diagnostics.push(`store ${store.storeId} connection.subscribe 不可用。`);
+        state.diagnostics.push(`store ${store.storeId} connection.subscribe is not available.`);
         return () => undefined;
       }
       return connection.subscribe((message) => {
@@ -412,12 +412,12 @@ function wrapConnection(connection: ReduxDevtoolsConnectionLike, store: StoreRec
     },
   };
 
-  // 主动订阅一次，确保应用不调用 subscribe 时也能记录来自扩展的状态消息。
+  // Subscribe once proactively so extension-driven messages are still recorded when the app never calls subscribe.
   if (typeof connection.subscribe === "function") {
     try {
       connection.subscribe((message) => handleDevtoolsMessage(store, message));
     } catch (error) {
-      state.diagnostics.push(`store ${store.storeId} 自动订阅失败: ${toErrorMessage(error)}`);
+      state.diagnostics.push(`store ${store.storeId} auto-subscribe failed: ${toErrorMessage(error)}`);
     }
   }
 
@@ -438,7 +438,7 @@ function handleDevtoolsMessage(store: StoreRecord, message: unknown): void {
       const parsed = JSON.parse(message.state);
       updateStoreState(store, parsed);
     } catch {
-      // state 解析失败不算致命，保持 preview 为字符串即可。
+      // A parse failure is non-fatal. Keep the raw string preview instead.
       updateStoreState(store, message.state);
     }
   }

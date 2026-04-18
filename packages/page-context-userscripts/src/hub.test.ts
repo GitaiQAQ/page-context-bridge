@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { getOrCreatePageContextBridgeHost } from "./bridge-host";
 import { getOrCreateUserscriptBridgeHub } from "./hub";
 import type { UserscriptBridgeAdapter } from "./types";
 
@@ -8,9 +9,11 @@ describe("userscript bridge hub", () => {
     delete window.__pageContextBridge__;
     delete window.__pageContextTools__;
     delete window.__pageContextUserscriptHub__;
+    delete window.__pageContextBridgeHost__;
   });
 
   it("merges multiple adapters on one shared bridge without replacing bridge object", () => {
+    getOrCreatePageContextBridgeHost(window, document);
     const hub = getOrCreateUserscriptBridgeHub(window, document);
     const alpha = createDummyAdapter("alpha", "alpha-adapter");
     const beta = createDummyAdapter("beta", "beta-adapter");
@@ -29,15 +32,28 @@ describe("userscript bridge hub", () => {
     expect(JSON.parse(betaResource?.text ?? "{}")).toMatchObject({ namespace: "beta" });
   });
 
-  it("keeps existing non-hub page bridge untouched", () => {
+  it("adopts existing page bridge and composes namespaces", () => {
     const foreignBridge = {
       version: "foreign",
-      listNamespaces: () => ["foreign"],
-      getNamespace: () => undefined,
+      listNamespaces: () => ["foreign", "alpha"],
+      getNamespace: (namespace: string) => {
+        if (namespace !== "foreign" && namespace !== "alpha") {
+          return undefined;
+        }
+        return {
+          namespace,
+          listInstances: () => ["primary"],
+          getInstance: () => ({
+            instanceId: "primary",
+            listTools: () => [{ name: "foreignRead", description: "foreignRead", inputSchema: { type: "object", properties: {}, additionalProperties: false } }],
+            callTool: () => ({ ok: true }),
+          }),
+        };
+      },
       getScene: () => "foreign",
-      listResources: () => [],
+      listResources: () => [{ id: "foreign.summary", namespace: "foreign", title: "Summary", mimeType: "application/json", kind: "json" as const }],
       readResource: () => ({ id: "foreign.summary", mimeType: "application/json", text: "{}" }),
-      listSkills: () => [],
+      listSkills: () => [{ id: "foreign.analyze", namespace: "foreign", title: "Analyze", description: "Analyze foreign", mode: "analysis" as const }],
       getSkill: () => undefined,
       getManifest: () => ({
         version: "foreign",
@@ -51,13 +67,17 @@ describe("userscript bridge hub", () => {
       }),
     };
     window.__pageContextBridge__ = foreignBridge;
+    getOrCreatePageContextBridgeHost(window, document);
 
     const hub = getOrCreateUserscriptBridgeHub(window, document);
     hub.registerAdapter(createDummyAdapter("alpha", "alpha-adapter"));
 
-    expect(window.__pageContextBridge__).toBe(foreignBridge);
-    expect(hub.bridge.listNamespaces()).toEqual(["alpha"]);
-    expect(hub.listDiagnostics().join("\n")).toContain("keeps page bridge untouched");
+    const activeBridge = window.__pageContextBridge__;
+    expect(activeBridge).toBeDefined();
+    expect(activeBridge).not.toBe(foreignBridge);
+    expect(activeBridge?.listNamespaces()).toEqual(["alpha", "foreign"]);
+    expect(activeBridge?.readResource("foreign.summary").id).toBe("foreign.summary");
+    expect(activeBridge?.listSkills().map((skill) => skill.id)).toContain("foreign.analyze");
   });
 });
 

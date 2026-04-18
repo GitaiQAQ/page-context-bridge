@@ -9,6 +9,7 @@ import type {
 
 import type {
   PageContextBridgeLike,
+  PageContextBridgeHost,
   PageToolInstance,
   PageToolNamespace,
   ToolInput,
@@ -20,7 +21,8 @@ import { safeRoute, toJsonResource } from "./utils";
 const HUB_VERSION = "userscript-hub/1.0.0";
 const HUB_SCENE = "userscript-adapter-hub";
 const HUB_KEY = "__pageContextUserscriptHub__";
-const HUB_BRIDGE_MARKER = "__pageContextUserscriptHubBridge__";
+const HUB_SOURCE_ID = "userscript-adapter-hub";
+const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = "page-context-bridge-host:ready";
 
 export interface BrowserHost {
   window: Window;
@@ -31,6 +33,8 @@ interface HubState {
   adaptersByNamespace: Map<string, UserscriptBridgeAdapter>;
   adapterOrder: string[];
   diagnostics: string[];
+  bridgeHost?: PageContextBridgeHost;
+  unregisterHubSource?: () => void;
 }
 
 export interface UserscriptBridgeHub {
@@ -50,13 +54,25 @@ export function getOrCreateUserscriptBridgeHub(win: Window, doc: Document): User
     adaptersByNamespace: new Map(),
     adapterOrder: [],
     diagnostics: [],
+    bridgeHost: getPageContextBridgeHost(win),
+    unregisterHubSource: undefined,
   };
   const bridge = createHubBridge(win, doc, state);
+  registerHubSourceOnHost(state, bridge);
+  // host 由 extension content-script 注入。userscript 只监听 ready 并注册自身 source。
+  win.addEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, (event) => {
+    const host = (event as CustomEvent<unknown>).detail;
+    if (!isPageContextBridgeHost(host)) {
+      return;
+    }
+    state.bridgeHost = host;
+    registerHubSourceOnHost(state, bridge);
+  });
   const hub: UserscriptBridgeHub = {
     bridge,
-    registerAdapter: (adapter) => registerAdapterOnHub(win, adapter, bridge, state),
+    registerAdapter: (adapter) => registerAdapterOnHub(adapter, bridge, state),
     listAdapterIds: () => [...state.adapterOrder],
-    listDiagnostics: () => [...state.diagnostics],
+    listDiagnostics: () => [...state.diagnostics, ...(state.bridgeHost?.listDiagnostics() ?? [])],
   };
 
   (win as WindowWithUserscriptHub)[HUB_KEY] = hub;
@@ -75,7 +91,11 @@ export function autoRegisterUserscriptAdapter(
   return hub;
 }
 
-function registerAdapterOnHub(win: Window, adapter: UserscriptBridgeAdapter, bridge: PageContextBridgeLike, state: HubState): void {
+function registerAdapterOnHub(
+  adapter: UserscriptBridgeAdapter,
+  bridge: PageContextBridgeLike,
+  state: HubState,
+): void {
   const namespace = adapter.namespace.namespace;
   const existing = state.adaptersByNamespace.get(namespace);
   if (existing && existing.adapterId !== adapter.adapterId) {
@@ -86,25 +106,26 @@ function registerAdapterOnHub(win: Window, adapter: UserscriptBridgeAdapter, bri
   if (!state.adapterOrder.includes(adapter.adapterId)) {
     state.adapterOrder.push(adapter.adapterId);
   }
-  attachHubBridgeIfAllowed(win, bridge, state.diagnostics);
+  registerHubSourceOnHost(state, bridge);
 }
 
-function attachHubBridgeIfAllowed(win: Window, bridge: PageContextBridgeLike, diagnostics: string[]): void {
-  const target = win as WindowWithBridge;
-  const existingBridge = target.__pageContextBridge__;
-
-  if (!existingBridge || isHubBridge(existingBridge)) {
-    target.__pageContextBridge__ = bridge;
-    target.__pageContextTools__ = bridge;
+function registerHubSourceOnHost(state: HubState, bridge: PageContextBridgeLike): void {
+  const bridgeHost = state.bridgeHost;
+  if (!bridgeHost) {
     return;
   }
-
-  // 页面已有自定义 bridge 时不强行覆盖，避免破坏原站逻辑。
-  diagnostics.push("Detected existing window.__pageContextBridge__; userscript hub keeps page bridge untouched.");
+  state.unregisterHubSource?.();
+  // userscript hub 始终通过 host 注册，不直接操作 window.__pageContextBridge__，避免多来源互相覆盖。
+  state.unregisterHubSource = bridgeHost.registerSource({
+    sourceId: HUB_SOURCE_ID,
+    bridge,
+    priority: 80,
+    tags: ["userscript", "hub"],
+  });
 }
 
 function createHubBridge(win: Window, doc: Document, state: HubState): PageContextBridgeLike {
-  const bridge: PageContextBridgeLike = {
+  return {
     version: HUB_VERSION,
     listNamespaces: () => Array.from(state.adaptersByNamespace.keys()),
     getNamespace: (namespace) => getNamespaceProxy(state, namespace),
@@ -115,8 +136,6 @@ function createHubBridge(win: Window, doc: Document, state: HubState): PageConte
     getSkill: (id, input) => getSkillById(state, id, input ?? {}),
     getManifest: () => buildManifest(win, doc, state),
   };
-  Object.defineProperty(bridge, HUB_BRIDGE_MARKER, { value: true, enumerable: false, configurable: false });
-  return bridge;
 }
 
 function getNamespaceProxy(state: HubState, namespace: string): PageToolNamespace | undefined {
@@ -193,10 +212,6 @@ function extractNamespaceFromId(id: string): string | undefined {
   return id.slice(0, dotIndex);
 }
 
-function isHubBridge(value: unknown): boolean {
-  return Boolean((value as Record<string, unknown> | undefined)?.[HUB_BRIDGE_MARKER]);
-}
-
 function isBrowserHost(value: unknown): value is BrowserHost {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -205,19 +220,23 @@ function isBrowserHost(value: unknown): value is BrowserHost {
   return typeof host.window !== "undefined" && typeof host.document !== "undefined";
 }
 
-interface WindowWithBridge extends Window {
-  __pageContextBridge__?: PageContextBridgeLike;
-  __pageContextTools__?: PageContextBridgeLike;
-}
-
-interface WindowWithUserscriptHub extends WindowWithBridge {
+interface WindowWithUserscriptHub extends Window {
   __pageContextUserscriptHub__?: UserscriptBridgeHub;
+  __pageContextBridgeHost__?: PageContextBridgeHost;
 }
 
 declare global {
   interface Window {
-    __pageContextBridge__?: PageContextBridgeLike;
-    __pageContextTools__?: PageContextBridgeLike;
     __pageContextUserscriptHub__?: UserscriptBridgeHub;
   }
+}
+
+function getPageContextBridgeHost(win: Window): PageContextBridgeHost | undefined {
+  const host = (win as WindowWithUserscriptHub).__pageContextBridgeHost__;
+  return isPageContextBridgeHost(host) ? host : undefined;
+}
+
+function isPageContextBridgeHost(value: unknown): value is PageContextBridgeHost {
+  const record = value as Partial<PageContextBridgeHost> | undefined;
+  return Boolean(record && typeof record.registerSource === "function");
 }

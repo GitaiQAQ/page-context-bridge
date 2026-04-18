@@ -5,6 +5,12 @@ export {
   type UserscriptBridgeHub,
 } from "./hub";
 export {
+  PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT,
+  getOrCreatePageContextBridgeHost,
+} from "./bridge-host";
+export {
+  type PageContextBridgeHost,
+  type PageContextBridgeHostSource,
   type PageContextBridgeLike,
   type PageToolInstance,
   type PageToolNamespace,

@@ -23,6 +23,15 @@
         "<all_urls>"
       ],
       "js": [
+        "src/content-script-main.ts"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
         "src/content-script.ts"
       ],
       "run_at": "document_idle"

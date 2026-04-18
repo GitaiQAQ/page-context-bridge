@@ -60,17 +60,17 @@ const NAMESPACE: ContextNamespaceDescriptor = {
 const TOOLS: ToolSpec[] = [
   {
     name: "listQueries",
-    description: "列出 QueryCache 中的查询摘要。",
+    description: "List query summaries from QueryCache.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
     name: "inspectQuery",
-    description: "按 queryHash 查看查询详情。",
+    description: "Inspect a query by queryHash.",
     inputSchema: {
       type: "object",
       properties: {
-        queryHash: { type: "string", description: "query.queryHash 值。" },
+        queryHash: { type: "string", description: "The query.queryHash value." },
       },
       additionalProperties: false,
     },
@@ -78,7 +78,7 @@ const TOOLS: ToolSpec[] = [
   },
   {
     name: "listMutations",
-    description: "列出 MutationCache 中的 mutation 摘要。",
+    description: "List mutation summaries from MutationCache.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
@@ -89,7 +89,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.summary,
     namespace: NS,
     title: "TanStack Query Summary",
-    description: "TanStack Query 检测和缓存摘要。",
+    description: "TanStack Query detection and cache summary.",
     mimeType: "application/json",
     kind: "json",
     tags: ["summary"],
@@ -98,7 +98,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
     title: "TanStack Query Diagnostics",
-    description: "TanStack Query 读取降级信息。",
+    description: "TanStack Query fallback and degradation diagnostics.",
     mimeType: "application/json",
     kind: "json",
     tags: ["diagnostics"],
@@ -107,7 +107,7 @@ const RESOURCES: ContextResourceDescriptor[] = [
     id: RESOURCE_IDS.queries,
     namespace: NS,
     title: "TanStack Query Cache",
-    description: "QueryCache 查询清单。",
+    description: "QueryCache query list.",
     mimeType: "application/json",
     kind: "json",
     tags: ["queries"],
@@ -119,7 +119,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.queryHealth,
     namespace: NS,
     title: "Analyze Query Health",
-    description: "分析查询状态分布与加载压力。",
+    description: "Analyze query state distribution and loading pressure.",
     intentTags: ["analysis", "query", "tanstack"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.queries, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[1]!]),
@@ -129,7 +129,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.staleData,
     namespace: NS,
     title: "Detect Stale Data Risks",
-    description: "定位高风险 stale query 线索。",
+    description: "Detect high-risk stale query signals.",
     intentTags: ["analysis", "stale", "cache"],
     resourceIds: [RESOURCE_IDS.queries, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[1]!]),
@@ -139,7 +139,7 @@ const SKILLS: ContextSkillDescriptor[] = [
     id: SKILL_IDS.mutationFlow,
     namespace: NS,
     title: "Trace Mutation Flow",
-    description: "检查 mutation 执行状态和变量摘要。",
+    description: "Inspect mutation status and variable summaries.",
     intentTags: ["analysis", "mutation", "tanstack"],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[2]!]),
@@ -182,11 +182,11 @@ function callTanstackTool(name: string, input: ToolInput, win: Window, state: Ta
   if (name === "inspectQuery") {
     const queryHash = typeof input.queryHash === "string" && input.queryHash ? input.queryHash : snapshot.queries[0]?.queryHash;
     if (!queryHash) {
-      return { ok: false, reason: "没有可用 query，且未提供 queryHash。" };
+      return { ok: false, reason: "No query is available and no queryHash was provided." };
     }
     const query = snapshot.queries.find((item) => item.queryHash === queryHash) ?? null;
     if (!query) {
-      return { ok: false, reason: `找不到 queryHash=${queryHash}` };
+      return { ok: false, reason: `Could not find queryHash=${queryHash}` };
     }
     return { ok: true, query };
   }
@@ -248,7 +248,7 @@ function collectTanstackSnapshot(win: Window): TanstackSnapshot {
   const diagnostics: string[] = [];
   const client = (win as Window & { TANSTACK_QUERY_CLIENT?: unknown }).TANSTACK_QUERY_CLIENT;
   if (!isObjectRecord(client)) {
-    diagnostics.push("未检测到 window.TANSTACK_QUERY_CLIENT。");
+    diagnostics.push("Did not detect window.TANSTACK_QUERY_CLIENT.");
     return {
       detected: false,
       isFetching: 0,
@@ -284,14 +284,14 @@ function readCache(
 ): Record<string, unknown> | null {
   const method = client[methodName];
   if (typeof method !== "function") {
-    diagnostics.push(`TanStack QueryClient.${methodName} 不可用。`);
+    diagnostics.push(`TanStack QueryClient.${methodName} is not available.`);
     return null;
   }
   try {
     const cache = method.call(client);
     return isObjectRecord(cache) ? cache : null;
   } catch (error) {
-    diagnostics.push(`调用 ${methodName} 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Calling ${methodName} failed: ${toErrorMessage(error)}`);
     return null;
   }
 }
@@ -302,18 +302,18 @@ function readQueries(queryCache: Record<string, unknown> | null, diagnostics: st
   }
   const getAll = queryCache.getAll;
   if (typeof getAll !== "function") {
-    diagnostics.push("QueryCache.getAll 不可用。");
+    diagnostics.push("QueryCache.getAll is not available.");
     return [];
   }
   try {
     const list = getAll.call(queryCache);
     if (!Array.isArray(list)) {
-      diagnostics.push("QueryCache.getAll 返回非数组。");
+      diagnostics.push("QueryCache.getAll returned a non-array value.");
       return [];
     }
     return list.map((item, index) => summarizeQuery(item, index));
   } catch (error) {
-    diagnostics.push(`读取 query cache 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Failed to read query cache: ${toErrorMessage(error)}`);
     return [];
   }
 }
@@ -345,18 +345,18 @@ function readMutations(mutationCache: Record<string, unknown> | null, diagnostic
   }
   const getAll = mutationCache.getAll;
   if (typeof getAll !== "function") {
-    diagnostics.push("MutationCache.getAll 不可用。");
+    diagnostics.push("MutationCache.getAll is not available.");
     return [];
   }
   try {
     const list = getAll.call(mutationCache);
     if (!Array.isArray(list)) {
-      diagnostics.push("MutationCache.getAll 返回非数组。");
+      diagnostics.push("MutationCache.getAll returned a non-array value.");
       return [];
     }
     return list.map((item, index) => summarizeMutation(item, index));
   } catch (error) {
-    diagnostics.push(`读取 mutation cache 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Failed to read mutation cache: ${toErrorMessage(error)}`);
     return [];
   }
 }
@@ -380,14 +380,14 @@ function summarizeMutation(mutationLike: unknown, index: number): TanstackMutati
 function readCounter(client: Record<string, unknown>, methodName: "isFetching" | "isMutating", diagnostics: string[]): number {
   const method = client[methodName];
   if (typeof method !== "function") {
-    diagnostics.push(`QueryClient.${methodName} 不可用，按 0 处理。`);
+    diagnostics.push(`QueryClient.${methodName} is not available, defaulting to 0.`);
     return 0;
   }
   try {
     const value = method.call(client);
     return Number.isFinite(Number(value)) ? Number(value) : 0;
   } catch (error) {
-    diagnostics.push(`调用 ${methodName} 失败: ${toErrorMessage(error)}`);
+    diagnostics.push(`Calling ${methodName} failed: ${toErrorMessage(error)}`);
     return 0;
   }
 }

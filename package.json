@@ -14,7 +14,7 @@
     "userscripts:typecheck": "pnpm --filter @page-context/userscripts typecheck",
     "userscripts:test": "pnpm --filter @page-context/userscripts test",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @page-context/shared-protocol build && vitest run"
+    "test": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && vitest run"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.30",

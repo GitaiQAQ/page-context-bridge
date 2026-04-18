@@ -107,7 +107,7 @@ describe("userscript adapters", () => {
     const originalConnect = vi.fn((_options?: Record<string, unknown>) => rawConnection);
     const extension = { connect: originalConnect };
 
-    // adapter 会安装 setter，这里模拟“扩展对象稍后挂到 window”。
+    // The adapter installs a setter, so this simulates the extension appearing later on window.
     (window as Window & { __REDUX_DEVTOOLS_EXTENSION__?: unknown }).__REDUX_DEVTOOLS_EXTENSION__ = extension;
     const wrappedConnection = extension.connect({ name: "app-store" });
     wrappedConnection.init?.({ count: 0 });
