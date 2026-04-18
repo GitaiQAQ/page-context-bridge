@@ -64,9 +64,16 @@ describe("mcp-registry feedback tools", () => {
       priority: "high",
       tabId: 5,
       url: "https://example.com/lead/1",
+      uiAnchor: {
+        cssSelector: ".lead-phone",
+        framePath: [0],
+        rect: { x: 1, y: 2, width: 3, height: 4 },
+      },
     });
 
     expect(created.context.pageInfo.app).toBe("crm");
+    expect(created.target.uiAnchor?.cssSelector).toBe(".lead-phone");
+    expect(created.context.uiAnchor?.rect).toEqual({ x: 1, y: 2, width: 3, height: 4 });
     expect(created.linkedCapabilities.namespaceHints).toContain("lead");
     expect(created.linkedCapabilities.relatedToolNames).toContain("lead.inspect");
     expect(created.linkedCapabilities.relatedResourceIds).toContain("lead.profile");

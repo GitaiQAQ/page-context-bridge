@@ -128,6 +128,8 @@ export class McpRegistry {
       url: params.url,
       title: params.title,
       selectedText: params.selectedText,
+      // 透传 uiAnchor，保持 bridge 只做编排，不重复实现锚点清洗逻辑。
+      uiAnchor: params.uiAnchor,
       pageInfoExtra: {
         app: derived.manifest?.app,
         scene: derived.manifest?.scene,

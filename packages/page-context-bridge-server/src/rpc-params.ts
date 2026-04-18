@@ -105,6 +105,33 @@ const feedbackActorSchema = z.object({
   displayName: z.string().min(1),
 });
 
+// uiAnchor 结构只做必要约束：保证基本类型正确，详细清洗仍交给 store 层处理。
+const feedbackUiRectSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+
+const feedbackUiTextRangeSchema = z.object({
+  start: z.number().int().nonnegative(),
+  end: z.number().int().nonnegative(),
+}).refine((value) => value.end >= value.start, {
+  path: ["end"],
+  message: "end must be greater than or equal to start",
+});
+
+const feedbackUiAnchorSchema = z.object({
+  elementId: z.string().optional(),
+  cssSelector: z.string().optional(),
+  xpath: z.string().optional(),
+  textQuote: z.string().optional(),
+  framePath: z.array(z.number().int().nonnegative()).optional(),
+  rect: feedbackUiRectSchema.optional(),
+  textRange: feedbackUiTextRangeSchema.optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const feedbackStateSnapshotParamsSchema = z.object({
   tabId: z.number().int().optional(),
   sessionId: z.string().optional(),
@@ -122,6 +149,7 @@ export const feedbackAnnotationCreateParamsSchema = z.object({
   url: z.string().min(1),
   title: z.string().optional(),
   selectedText: z.string().optional(),
+  uiAnchor: feedbackUiAnchorSchema.optional(),
   actor: feedbackActorSchema.optional(),
 });
 

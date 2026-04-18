@@ -109,6 +109,27 @@ describe("rpc-params: validateParams", () => {
     expect(result.priority).toBe("high");
   });
 
+  it("validates feedback create params with optional uiAnchor", () => {
+    const result = validateParams(
+      feedbackAnnotationCreateParamsSchema,
+      {
+        body: "Need fix",
+        tabId: 9,
+        url: "https://example.com",
+        uiAnchor: {
+          cssSelector: "#submit",
+          framePath: [0, 1],
+          rect: { x: 10, y: 20, width: 100, height: 40 },
+          textRange: { start: 2, end: 8 },
+          meta: { source: "overlay", score: 0.98 },
+        },
+      },
+      "feedback.annotation.create"
+    );
+    expect(result.uiAnchor?.cssSelector).toBe("#submit");
+    expect(result.uiAnchor?.textRange).toEqual({ start: 2, end: 8 });
+  });
+
   it("applies default cursor for feedback delta params", () => {
     const result = validateParams(
       feedbackStateDeltaParamsSchema,
