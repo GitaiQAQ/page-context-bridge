@@ -187,9 +187,29 @@ export async function connectWebSocket(
     rpcPeer.register(BRIDGE_METHODS.bridgeToolsList, async () => onToolsList());
     rpcPeer.register(BRIDGE_METHODS.bridgeTabsList, async () => onTabsList());
 
-    await new Promise<void>((resolve) => {
-      socket.onopen = () => {
+    await new Promise<void>((resolve, reject) => {
+      // 连接握手必须“只结算一次”：成功走 resolve，失败走 reject。
+      // 否则 CONNECTING 阶段先报错/关闭会让 connectPromise 永远悬挂。
+      let settled = false;
+      let opened = false;
+      const resolveOnce = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
         resolve();
+      };
+      const rejectOnce = (error: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(error);
+      };
+
+      socket.onopen = () => {
+        opened = true;
+        resolveOnce();
       };
 
       socket.onmessage = (event) => {
@@ -204,13 +224,22 @@ export async function connectWebSocket(
           return;
         }
         log("WebSocket error", error);
+        // 握手尚未完成时，主动结束本次握手，避免 connectPromise 卡死。
+        if (!opened) {
+          rejectOnce(new Error("WebSocket errored before open"));
+          // 统一复用 onclose 的清理和重连逻辑，避免分叉处理。
+          socket.close();
+        }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (ws !== socket || epoch !== wsEpoch) {
           return;
         }
         log("WebSocket closed");
+        if (!opened) {
+          rejectOnce(new Error(`WebSocket closed before open (code=${event.code})`));
+        }
         wsReady = false;
         sessionId = null;
         rpcPeer?.failAllPending("Bridge transport closed");

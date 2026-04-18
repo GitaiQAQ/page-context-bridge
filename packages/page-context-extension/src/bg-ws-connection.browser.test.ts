@@ -1,0 +1,128 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+class FakeRpcPeer {
+  private static nextSessionId = 0;
+
+  register(): void {}
+
+  async request<T>(method: string): Promise<T> {
+    if (method === BRIDGE_METHODS.sessionRegister) {
+      FakeRpcPeer.nextSessionId += 1;
+      return {
+        sessionId: `session-${FakeRpcPeer.nextSessionId}`,
+      } as T;
+    }
+    return {} as T;
+  }
+
+  async notify(): Promise<void> {}
+
+  async receive(): Promise<void> {}
+
+  failAllPending(): void {}
+}
+
+class FakeWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  static instances: FakeWebSocket[] = [];
+
+  readyState = FakeWebSocket.CONNECTING;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(public readonly url: string) {
+    FakeWebSocket.instances.push(this);
+  }
+
+  send(): void {}
+
+  close(): void {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.(new CloseEvent("close", { code: 1000 }));
+  }
+
+  emitOpen(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.onopen?.();
+  }
+
+  emitClose(code = 1006): void {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.(new CloseEvent("close", { code }));
+  }
+}
+
+const BRIDGE_METHODS = {
+  bridgeToolCall: "bridge/toolCall",
+  bridgeToolsList: "bridge/toolsList",
+  bridgeTabsList: "bridge/tabsList",
+  sessionRegister: "session/register",
+  sessionHeartbeat: "session/heartbeat",
+} as const;
+
+vi.mock("@page-context/shared-protocol", () => ({
+  BRIDGE_METHODS,
+  RpcPeer: FakeRpcPeer,
+}));
+
+function installChromeMock(): void {
+  (globalThis as { chrome?: unknown }).chrome = {
+    storage: {
+      local: {
+        get: vi.fn(async (defaults: Record<string, string>) => defaults),
+        set: vi.fn(async () => undefined),
+      },
+    },
+    runtime: {
+      id: "test-extension-id",
+      getManifest: () => ({ version: "0.0.0-test" }),
+    },
+  };
+}
+
+describe("connectWebSocket", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    FakeWebSocket.instances = [];
+    (globalThis as { WebSocket: typeof WebSocket }).WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    installChromeMock();
+  });
+
+  it("fails fast when socket closes before open and allows next connect", async () => {
+    const wsModule = await import("./bg-ws-connection");
+    const noop = vi.fn(async () => ({}));
+
+    // 第一次连接在握手阶段直接关闭：应立即失败，而不是悬挂。
+    const firstConnect = wsModule.connectWebSocket(noop, noop, noop);
+    await flushMicrotasks();
+    const firstSocket = FakeWebSocket.instances[0];
+    if (!firstSocket) {
+      throw new Error("Missing first socket instance");
+    }
+    firstSocket.emitClose(1006);
+    await expect(firstConnect).rejects.toThrow("before open");
+    expect(wsModule.getWsState().connectPromise).toBeNull();
+
+    // 第二次连接仍然可用，说明前一次失败不会卡住全局 connectPromise。
+    const secondConnect = wsModule.connectWebSocket(noop, noop, noop);
+    await flushMicrotasks();
+    const secondSocket = FakeWebSocket.instances[1];
+    if (!secondSocket) {
+      throw new Error("Missing second socket instance");
+    }
+    secondSocket.emitOpen();
+    await expect(secondConnect).resolves.toBeUndefined();
+    expect(wsModule.getWsReady()).toBe(true);
+  });
+});
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
