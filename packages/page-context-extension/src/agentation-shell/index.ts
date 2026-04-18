@@ -1,0 +1,796 @@
+import type { FeedbackPriority } from "@page-context/shared-protocol";
+
+import { identifyElement } from "./element-identification";
+import type {
+  AgentationShellBridgeAdapter,
+  AgentationShellCreateAnnotationInput,
+  AgentationShellCreateAnnotationResult,
+  AgentationShellDeps,
+} from "./types";
+
+const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
+const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
+const PRIORITY_ORDER: FeedbackPriority[] = ["low", "normal", "high", "critical"];
+
+interface MarkerRecord {
+  id: string;
+  body: string;
+  priority: FeedbackPriority;
+  selectedText?: string;
+  elementName: string;
+  x: number;
+  y: number;
+}
+
+interface PopupState {
+  anchorX: number;
+  anchorY: number;
+  selectedText?: string;
+  targetInput: AgentationShellCreateAnnotationInput["target"];
+}
+
+/**
+ * content-script 调用入口。
+ * 成功挂载返回 true；若页面不适合注入则返回 false。
+ */
+export function installAgentationShell(deps: AgentationShellDeps): boolean {
+  const doc = deps.doc ?? document;
+  const win = deps.win ?? window;
+  if (!shouldInstallShell(doc, win)) {
+    return false;
+  }
+  if (doc.getElementById(AGENTATION_SHELL_HOST_ID)) {
+    return true;
+  }
+
+  const runtime = new AgentationShellRuntime({
+    adapter: deps.adapter,
+    doc,
+    win,
+    logger: deps.logger,
+  });
+  runtime.mount();
+  return true;
+}
+
+function shouldInstallShell(doc: Document, win: Window): boolean {
+  if (!doc.body) {
+    return false;
+  }
+  if (!SUPPORTED_PROTOCOLS.has(win.location.protocol)) {
+    return false;
+  }
+  return isTopWindow(win);
+}
+
+function isTopWindow(win: Window): boolean {
+  try {
+    return win.top === win;
+  } catch {
+    return false;
+  }
+}
+
+class AgentationShellRuntime {
+  private readonly adapter: AgentationShellBridgeAdapter;
+  private readonly doc: Document;
+  private readonly win: Window;
+  private readonly logger?: AgentationShellDeps["logger"];
+
+  private readonly host: HTMLDivElement;
+  private readonly shadow: ShadowRoot;
+
+  private readonly toolbarToggle: HTMLButtonElement;
+  private readonly toolbarHint: HTMLSpanElement;
+  private readonly hoverBox: HTMLDivElement;
+  private readonly markerLayer: HTMLDivElement;
+  private readonly popupForm: HTMLFormElement;
+  private readonly popupTargetView: HTMLParagraphElement;
+  private readonly popupSelectionView: HTMLParagraphElement;
+  private readonly popupBodyInput: HTMLTextAreaElement;
+  private readonly popupPrioritySelect: HTMLSelectElement;
+  private readonly popupStatusView: HTMLParagraphElement;
+  private readonly popupCancelButton: HTMLButtonElement;
+  private readonly popupSubmitButton: HTMLButtonElement;
+
+  private annotating = false;
+  private submitting = false;
+  private popupState: PopupState | null = null;
+  private hoveredElement: HTMLElement | null = null;
+  private hoveredElementLabel = "";
+  private markerIdSeq = 0;
+  private readonly markers: MarkerRecord[] = [];
+
+  constructor(args: {
+    adapter: AgentationShellBridgeAdapter;
+    doc: Document;
+    win: Window;
+    logger?: AgentationShellDeps["logger"];
+  }) {
+    this.adapter = args.adapter;
+    this.doc = args.doc;
+    this.win = args.win;
+    this.logger = args.logger;
+
+    this.host = this.doc.createElement("div");
+    this.host.id = AGENTATION_SHELL_HOST_ID;
+    this.shadow = this.host.attachShadow({ mode: "open" });
+    this.shadow.innerHTML = SHELL_TEMPLATE;
+
+    this.toolbarToggle = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-toggle]");
+    this.toolbarHint = queryRequired<HTMLSpanElement>(this.shadow, "[data-toolbar-hint]");
+    this.hoverBox = queryRequired<HTMLDivElement>(this.shadow, "[data-hover-box]");
+    this.markerLayer = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-layer]");
+    this.popupForm = queryRequired<HTMLFormElement>(this.shadow, "[data-popup]");
+    this.popupTargetView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-target]");
+    this.popupSelectionView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-selection]");
+    this.popupBodyInput = queryRequired<HTMLTextAreaElement>(this.shadow, "[data-popup-body]");
+    this.popupPrioritySelect = queryRequired<HTMLSelectElement>(this.shadow, "[data-popup-priority]");
+    this.popupStatusView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-status]");
+    this.popupCancelButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-cancel]");
+    this.popupSubmitButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-submit]");
+  }
+
+  mount(): void {
+    this.doc.body.appendChild(this.host);
+    this.toolbarToggle.addEventListener("click", this.onToolbarToggleClick);
+    this.popupCancelButton.addEventListener("click", this.onPopupCancelClick);
+    this.popupForm.addEventListener("submit", this.onPopupSubmit);
+    this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
+  }
+
+  private readonly onToolbarToggleClick = (): void => {
+    if (this.annotating) {
+      this.stopAnnotating();
+      return;
+    }
+    this.startAnnotating();
+  };
+
+  private startAnnotating(): void {
+    this.annotating = true;
+    this.toolbarToggle.dataset.active = "true";
+    this.toolbarToggle.textContent = "标注中";
+    this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Esc 可退出。";
+    this.doc.addEventListener("pointermove", this.onDocumentPointerMove, true);
+    this.doc.addEventListener("click", this.onDocumentClick, true);
+    this.doc.addEventListener("keydown", this.onDocumentKeyDown, true);
+    this.win.addEventListener("scroll", this.onWindowScroll, true);
+  }
+
+  private stopAnnotating(): void {
+    this.annotating = false;
+    this.toolbarToggle.dataset.active = "false";
+    this.toolbarToggle.textContent = "UI 标注";
+    this.toolbarHint.textContent = "开启后，点击页面元素创建反馈。";
+    this.doc.removeEventListener("pointermove", this.onDocumentPointerMove, true);
+    this.doc.removeEventListener("click", this.onDocumentClick, true);
+    this.doc.removeEventListener("keydown", this.onDocumentKeyDown, true);
+    this.win.removeEventListener("scroll", this.onWindowScroll, true);
+    this.hoveredElement = null;
+    this.hoveredElementLabel = "";
+    this.hideHoverBox();
+    this.closePopup();
+  }
+
+  private readonly onDocumentPointerMove = (event: PointerEvent): void => {
+    if (!this.annotating || this.isEventFromShell(event)) {
+      return;
+    }
+    const target = deepElementFromPoint(this.doc, event.clientX, event.clientY);
+    if (!target || this.isNodeInsideShell(target)) {
+      this.hoveredElement = null;
+      this.hoveredElementLabel = "";
+      this.hideHoverBox();
+      return;
+    }
+
+    if (target !== this.hoveredElement) {
+      this.hoveredElement = target;
+      this.hoveredElementLabel = identifyElement(target).name;
+    }
+    this.syncHoverBox(target, this.hoveredElementLabel);
+  };
+
+  private readonly onDocumentClick = (event: MouseEvent): void => {
+    if (!this.annotating || this.isEventFromShell(event)) {
+      return;
+    }
+    const target = deepElementFromPoint(this.doc, event.clientX, event.clientY);
+    if (!target || this.isNodeInsideShell(target)) {
+      return;
+    }
+
+    // 标注模式下接管点击，避免触发页面真实交互（跳转、提交等）。
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    this.openPopupForTarget(target, event.clientX, event.clientY);
+  };
+
+  private readonly onDocumentKeyDown = (event: KeyboardEvent): void => {
+    if (!this.annotating) {
+      return;
+    }
+    if (event.key !== "Escape") {
+      return;
+    }
+
+    // Esc 优先关闭弹窗；若弹窗已关闭，则退出标注模式。
+    if (!this.popupForm.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closePopup();
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.stopAnnotating();
+  };
+
+  private readonly onWindowScroll = (): void => {
+    // hover 框跟随目标元素滚动，避免视觉错位。
+    if (this.hoveredElement && this.annotating) {
+      this.syncHoverBox(this.hoveredElement, this.hoveredElementLabel);
+    }
+  };
+
+  private readonly onPopupCancelClick = (event: MouseEvent): void => {
+    event.preventDefault();
+    this.closePopup();
+  };
+
+  private readonly onPriorityChange = (): void => {
+    if (!isFeedbackPriority(this.popupPrioritySelect.value)) {
+      this.popupPrioritySelect.value = "normal";
+    }
+  };
+
+  private readonly onPopupSubmit = async (event: SubmitEvent): Promise<void> => {
+    event.preventDefault();
+    if (this.submitting || !this.popupState) {
+      return;
+    }
+
+    const body = this.popupBodyInput.value.trim();
+    if (!body) {
+      this.setPopupStatus("请输入反馈内容", "error");
+      this.popupBodyInput.focus();
+      return;
+    }
+
+    const priority = normalizePriority(this.popupPrioritySelect.value);
+    const payload: AgentationShellCreateAnnotationInput = {
+      body,
+      priority,
+      selectedText: this.popupState.selectedText,
+      target: this.popupState.targetInput,
+    };
+
+    this.submitting = true;
+    this.syncPopupSubmittingState();
+    this.setPopupStatus("Submitting...", "info");
+
+    try {
+      const result = await this.adapter.createAnnotation(payload);
+      this.applyAnnotationSuccess(result, payload);
+      this.setPopupStatus("反馈已创建", "success");
+      this.popupBodyInput.value = "";
+      this.closePopup();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setPopupStatus(`提交失败: ${message}`, "error");
+      this.log("error", "Agentation shell create annotation failed", error);
+    } finally {
+      this.submitting = false;
+      this.syncPopupSubmittingState();
+    }
+  };
+
+  private applyAnnotationSuccess(
+    result: AgentationShellCreateAnnotationResult,
+    input: AgentationShellCreateAnnotationInput,
+  ): void {
+    const idFromResult = typeof result?.id === "string" ? result.id : "";
+    const markerId = idFromResult.trim() || `local-${Date.now()}-${this.markerIdSeq++}`;
+    if (!this.popupState) {
+      return;
+    }
+
+    this.markers.push({
+      id: markerId,
+      body: input.body,
+      priority: input.priority,
+      selectedText: input.selectedText,
+      elementName: input.target.elementName,
+      x: this.popupState.anchorX,
+      y: this.popupState.anchorY,
+    });
+    this.renderMarkers();
+  }
+
+  private renderMarkers(): void {
+    this.markerLayer.innerHTML = "";
+    this.markers.forEach((marker, index) => {
+      const button = this.doc.createElement("button");
+      button.type = "button";
+      button.className = "pc-agent-marker";
+      button.style.left = `${marker.x}px`;
+      button.style.top = `${marker.y}px`;
+      button.style.background = markerColor(marker.priority);
+      button.textContent = String(index + 1);
+      button.setAttribute("aria-label", `annotation-marker-${index + 1}`);
+
+      const tooltip = this.doc.createElement("span");
+      tooltip.className = "pc-agent-marker-tooltip";
+      tooltip.textContent = buildMarkerTooltip(marker);
+      button.appendChild(tooltip);
+
+      this.markerLayer.appendChild(button);
+    });
+  }
+
+  private openPopupForTarget(target: HTMLElement, clientX: number, clientY: number): void {
+    const elementInfo = identifyElement(target);
+    const rect = target.getBoundingClientRect();
+    const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
+
+    this.popupState = {
+      anchorX: clientX,
+      anchorY: clientY,
+      selectedText: selectedText || undefined,
+      targetInput: {
+        elementName: elementInfo.name,
+        elementPath: elementInfo.path,
+        rect,
+      },
+    };
+
+    const nextTop = computePopupTop(clientY, this.win.innerHeight);
+    const nextLeft = computePopupLeft(clientX, this.win.innerWidth);
+    this.popupForm.style.top = `${nextTop}px`;
+    this.popupForm.style.left = `${nextLeft}px`;
+    this.popupTargetView.textContent = `${elementInfo.name} · ${elementInfo.path || "unknown path"}`;
+    this.popupSelectionView.textContent = selectedText || "未检测到页面选中内容";
+    this.popupPrioritySelect.value = "normal";
+    this.popupForm.hidden = false;
+    this.setPopupStatus("Idle", "info");
+    this.win.setTimeout(() => {
+      this.popupBodyInput.focus();
+    }, 0);
+  }
+
+  private closePopup(): void {
+    this.popupState = null;
+    this.popupForm.hidden = true;
+    this.popupBodyInput.value = "";
+    this.popupPrioritySelect.value = "normal";
+    this.setPopupStatus("Idle", "info");
+  }
+
+  private syncHoverBox(target: HTMLElement, label: string): void {
+    const rect = target.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) {
+      this.hideHoverBox();
+      return;
+    }
+    this.hoverBox.hidden = false;
+    this.hoverBox.style.left = `${rect.left}px`;
+    this.hoverBox.style.top = `${rect.top}px`;
+    this.hoverBox.style.width = `${rect.width}px`;
+    this.hoverBox.style.height = `${rect.height}px`;
+    this.hoverBox.setAttribute("data-label", label || target.tagName.toLowerCase());
+  }
+
+  private hideHoverBox(): void {
+    this.hoverBox.hidden = true;
+    this.hoverBox.removeAttribute("data-label");
+  }
+
+  private setPopupStatus(message: string, level: "info" | "success" | "error"): void {
+    this.popupStatusView.textContent = message;
+    this.popupStatusView.className = `pc-agent-popup-status ${level}`;
+  }
+
+  private syncPopupSubmittingState(): void {
+    this.popupSubmitButton.disabled = this.submitting;
+    this.popupCancelButton.disabled = this.submitting;
+    this.popupPrioritySelect.disabled = this.submitting;
+    this.popupBodyInput.readOnly = this.submitting;
+  }
+
+  private isEventFromShell(event: Event): boolean {
+    return event.composedPath().includes(this.host);
+  }
+
+  private isNodeInsideShell(node: Node): boolean {
+    if (node.getRootNode() === this.shadow) {
+      return true;
+    }
+    return this.host.contains(node);
+  }
+
+  private log(level: "debug" | "error", message: string, extra?: unknown): void {
+    if (this.logger) {
+      this.logger(level, message, extra);
+      return;
+    }
+    if (level === "error") {
+      console.error("[AGENTATION-SHELL]", message, extra);
+      return;
+    }
+    console.debug("[AGENTATION-SHELL]", message, extra);
+  }
+}
+
+function deepElementFromPoint(doc: Document, x: number, y: number): HTMLElement | null {
+  let element = doc.elementFromPoint(x, y) as HTMLElement | null;
+  if (!element) {
+    return null;
+  }
+  while (element.shadowRoot) {
+    const deeper = element.shadowRoot.elementFromPoint(x, y) as HTMLElement | null;
+    if (!deeper || deeper === element) {
+      break;
+    }
+    element = deeper;
+  }
+  return element;
+}
+
+function capturePageSelection(win: Window, doc: Document): string {
+  const fromSelection = win.getSelection?.()?.toString?.() ?? "";
+  if (fromSelection.trim()) {
+    return fromSelection;
+  }
+
+  const activeElement = doc.activeElement;
+  if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
+    return "";
+  }
+
+  const start = activeElement.selectionStart ?? 0;
+  const end = activeElement.selectionEnd ?? 0;
+  if (start === end) {
+    return "";
+  }
+  return activeElement.value.slice(start, end);
+}
+
+function normalizeSelectionText(value: string): string {
+  return value.trim().slice(0, 2_000);
+}
+
+function normalizePriority(value: string): FeedbackPriority {
+  if (isFeedbackPriority(value)) {
+    return value;
+  }
+  return "normal";
+}
+
+function isFeedbackPriority(value: string): value is FeedbackPriority {
+  return PRIORITY_ORDER.includes(value as FeedbackPriority);
+}
+
+function markerColor(priority: FeedbackPriority): string {
+  switch (priority) {
+    case "low":
+      return "#00c3d0";
+    case "high":
+      return "#ff8d28";
+    case "critical":
+      return "#ff383c";
+    case "normal":
+    default:
+      return "#0088ff";
+  }
+}
+
+function buildMarkerTooltip(marker: MarkerRecord): string {
+  const selected = marker.selectedText ? `“${marker.selectedText.slice(0, 40)}”` : "无选中文本";
+  return `${marker.elementName} | ${selected} | ${marker.body.slice(0, 80)}`;
+}
+
+function computePopupLeft(clientX: number, viewportWidth: number): number {
+  const width = 320;
+  const min = 12;
+  const max = Math.max(min, viewportWidth - width - 12);
+  return clamp(clientX - width / 2, min, max);
+}
+
+function computePopupTop(clientY: number, viewportHeight: number): number {
+  const height = 260;
+  const spacing = 12;
+  const preferTop = clientY + spacing;
+  if (preferTop + height <= viewportHeight - spacing) {
+    return preferTop;
+  }
+  return clamp(clientY - height - spacing, spacing, Math.max(spacing, viewportHeight - height - spacing));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
+function queryRequired<T extends Element>(root: ParentNode, selector: string): T {
+  const node = root.querySelector(selector);
+  if (!node) {
+    throw new Error(`Agentation shell missing node: ${selector}`);
+  }
+  return node as T;
+}
+
+const SHELL_TEMPLATE = `
+  <style>
+    .pc-agent-root {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      pointer-events: none;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .pc-agent-toolbar {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: 304px;
+      background: #1a1a1a;
+      color: #fff;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .pc-agent-toolbar-toggle {
+      width: 88px;
+      height: 30px;
+      border: 0;
+      border-radius: 999px;
+      background: #0088ff;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    .pc-agent-toolbar-toggle[data-active="true"] {
+      background: #34c759;
+    }
+
+    .pc-agent-toolbar-toggle:hover {
+      transform: translateY(-1px);
+    }
+
+    .pc-agent-toolbar-hint {
+      display: block;
+      line-height: 1.35;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.72);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pc-agent-hover-box {
+      position: fixed;
+      box-sizing: border-box;
+      border: 2px solid rgba(0, 136, 255, 0.95);
+      background: rgba(0, 136, 255, 0.08);
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    .pc-agent-hover-box::before {
+      content: attr(data-label);
+      position: absolute;
+      left: 0;
+      top: -24px;
+      max-width: min(60vw, 520px);
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(0, 136, 255, 0.96);
+      color: #fff;
+      font-size: 11px;
+      line-height: 18px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pc-agent-marker-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .pc-agent-marker {
+      position: fixed;
+      width: 22px;
+      height: 22px;
+      border: 0;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .pc-agent-marker-tooltip {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 8px);
+      transform: translateX(-50%);
+      min-width: 120px;
+      max-width: 260px;
+      border-radius: 10px;
+      background: #1a1a1a;
+      color: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      white-space: normal;
+      text-align: left;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+    }
+
+    .pc-agent-marker:hover .pc-agent-marker-tooltip {
+      opacity: 1;
+    }
+
+    .pc-agent-popup {
+      position: fixed;
+      width: 320px;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      background: #1a1a1a;
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+      padding: 12px;
+      color: #fff;
+      pointer-events: auto;
+    }
+
+    .pc-agent-popup[hidden] {
+      display: none;
+    }
+
+    .pc-agent-popup-title {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .pc-agent-popup-target,
+    .pc-agent-popup-selection {
+      margin: 0 0 8px 0;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.74);
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      max-height: 72px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .pc-agent-popup-label {
+      display: block;
+      margin: 8px 0 4px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .pc-agent-popup-body,
+    .pc-agent-popup-priority {
+      box-sizing: border-box;
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 12px;
+      padding: 8px;
+    }
+
+    .pc-agent-popup-body {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .pc-agent-popup-actions {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pc-agent-popup-btn {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.88);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+
+    .pc-agent-popup-btn.primary {
+      border-color: #0088ff;
+      background: #0088ff;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .pc-agent-popup-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .pc-agent-popup-status {
+      margin: 8px 0 0;
+      min-height: 16px;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .pc-agent-popup-status.info { color: rgba(255, 255, 255, 0.62); }
+    .pc-agent-popup-status.success { color: #34c759; }
+    .pc-agent-popup-status.error { color: #ff7b7b; }
+  </style>
+  <div class="pc-agent-root">
+    <div class="pc-agent-marker-layer" data-marker-layer></div>
+    <div class="pc-agent-hover-box" data-hover-box hidden></div>
+
+    <div class="pc-agent-toolbar">
+      <button type="button" class="pc-agent-toolbar-toggle" data-active="false" data-toolbar-toggle>UI 标注</button>
+      <span class="pc-agent-toolbar-hint" data-toolbar-hint>开启后，点击页面元素创建反馈。</span>
+    </div>
+
+    <form class="pc-agent-popup" data-popup hidden>
+      <p class="pc-agent-popup-title">Create Annotation</p>
+      <p class="pc-agent-popup-target" data-popup-target>unknown target</p>
+
+      <label class="pc-agent-popup-label">当前选中文本</label>
+      <p class="pc-agent-popup-selection" data-popup-selection>未检测到页面选中内容</p>
+
+      <label class="pc-agent-popup-label" for="pc-agent-popup-body">反馈内容</label>
+      <textarea id="pc-agent-popup-body" class="pc-agent-popup-body" data-popup-body maxlength="2000" placeholder="描述问题或建议"></textarea>
+
+      <label class="pc-agent-popup-label" for="pc-agent-popup-priority">优先级</label>
+      <select id="pc-agent-popup-priority" class="pc-agent-popup-priority" data-popup-priority>
+        <option value="low">low</option>
+        <option value="normal" selected>normal</option>
+        <option value="high">high</option>
+        <option value="critical">critical</option>
+      </select>
+
+      <div class="pc-agent-popup-actions">
+        <button type="button" class="pc-agent-popup-btn" data-popup-cancel>取消</button>
+        <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交</button>
+      </div>
+      <p class="pc-agent-popup-status info" data-popup-status>Idle</p>
+    </form>
+  </div>
+`;

@@ -1,6 +1,8 @@
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } from "@page-context/builtin-tools";
 
+import { installAgentationShell } from "./agentation-shell";
+import type { AgentationShellCreateAnnotationInput } from "./agentation-shell/types";
 import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
 
@@ -11,7 +13,7 @@ function log(...args: unknown[]): void {
 }
 
 createConsoleCapture(window, consoleEntries);
-installFeedbackOverlay();
+installFeedbackUiWithFallback();
 
 chrome.runtime.onMessage.addListener(
   createRuntimeListener(async (message) => {
@@ -64,6 +66,65 @@ window.__PAGE_CONTEXT_BRIDGE_DEMO__ = () => {
     "*",
   );
 };
+
+function installFeedbackUiWithFallback(): void {
+  try {
+    const installed = installAgentationShell({
+      adapter: {
+        createAnnotation: createAnnotationFromShell,
+      },
+      // 统一复用 content-script 日志前缀，便于定位现场问题。
+      logger(level, message, extra) {
+        if (level === "error") {
+          log(`[agentation-shell] ${message}`, extra);
+          return;
+        }
+        log(`[agentation-shell] ${message}`, extra);
+      },
+    });
+
+    if (installed) {
+      log("Agentation shell installed");
+      return;
+    }
+
+    // 非 http/https 或非顶层窗口会走到这里，保底回退老 overlay。
+    log("Agentation shell skipped, fallback to legacy overlay");
+    installFeedbackOverlay();
+  } catch (error) {
+    // 壳体挂载是增强能力，不应拖垮原有反馈入口。
+    log("Agentation shell install failed, fallback to legacy overlay", error);
+    installFeedbackOverlay();
+  }
+}
+
+async function createAnnotationFromShell(
+  input: AgentationShellCreateAnnotationInput,
+): Promise<{ id?: string; raw?: unknown }> {
+  // 只发送当前协议确认过的字段，避免跨 worker 边界引入耦合。
+  const payload = {
+    body: input.body,
+    priority: input.priority,
+    selectedText: input.selectedText,
+  };
+  const raw = await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, payload);
+  return normalizeCreateResult(raw);
+}
+
+function normalizeCreateResult(raw: unknown): { id?: string; raw?: unknown } {
+  if (!raw || typeof raw !== "object") {
+    return { raw };
+  }
+  const record = raw as Record<string, unknown>;
+  if (typeof record.id === "string") {
+    return { id: record.id, raw };
+  }
+  const annotation = record.annotation;
+  if (annotation && typeof annotation === "object" && typeof (annotation as { id?: unknown }).id === "string") {
+    return { id: (annotation as { id: string }).id, raw };
+  }
+  return { raw };
+}
 
 declare global {
   interface Window {
