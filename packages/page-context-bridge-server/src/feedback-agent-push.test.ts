@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { FeedbackAnnotation } from "@page-context/shared-protocol";
 
 import {
+  buildFeedbackAgentSpawnEnv,
   buildFeedbackAgentPrompt,
   createFeedbackAgentPushAdapterFromEnv,
   LocalFeedbackAgentPushAdapter,
@@ -57,6 +58,32 @@ describe("feedback-agent-push adapter", () => {
     expect(adapter).toBeInstanceOf(LocalFeedbackAgentPushAdapter);
   });
 
+  it("builds isolated HOME/XDG_* env for opencode by default", () => {
+    const spawnEnv = buildFeedbackAgentSpawnEnv({ PATH: "/usr/bin" }, "/tmp/project");
+    expect(spawnEnv.PATH).toBe("/usr/bin");
+    expect(spawnEnv.HOME).toBe("/tmp/project/.feedback-agent-opencode/home");
+    expect(spawnEnv.XDG_CONFIG_HOME).toBe("/tmp/project/.feedback-agent-opencode/config");
+    expect(spawnEnv.XDG_DATA_HOME).toBe("/tmp/project/.feedback-agent-opencode/data");
+    expect(spawnEnv.XDG_STATE_HOME).toBe("/tmp/project/.feedback-agent-opencode/state");
+    expect(spawnEnv.XDG_CACHE_HOME).toBe("/tmp/project/.feedback-agent-opencode/cache");
+  });
+
+  it("respects FEEDBACK_PUSH_AGENT_* env overrides for isolation paths", () => {
+    const spawnEnv = buildFeedbackAgentSpawnEnv({
+      FEEDBACK_PUSH_AGENT_RUNTIME_ROOT: "/tmp/custom-root",
+      FEEDBACK_PUSH_AGENT_HOME: "/tmp/custom-home",
+      FEEDBACK_PUSH_AGENT_XDG_CONFIG_HOME: "/tmp/custom-config",
+      FEEDBACK_PUSH_AGENT_XDG_DATA_HOME: "/tmp/custom-data",
+      FEEDBACK_PUSH_AGENT_XDG_STATE_HOME: "/tmp/custom-state",
+      FEEDBACK_PUSH_AGENT_XDG_CACHE_HOME: "/tmp/custom-cache",
+    }, "/tmp/project");
+    expect(spawnEnv.HOME).toBe("/tmp/custom-home");
+    expect(spawnEnv.XDG_CONFIG_HOME).toBe("/tmp/custom-config");
+    expect(spawnEnv.XDG_DATA_HOME).toBe("/tmp/custom-data");
+    expect(spawnEnv.XDG_STATE_HOME).toBe("/tmp/custom-state");
+    expect(spawnEnv.XDG_CACHE_HOME).toBe("/tmp/custom-cache");
+  });
+
   it("spawns opencode run once per annotation id", () => {
     const spawnCalls: Array<{ cmd: string; args: readonly string[]; options: SpawnOptions }> = [];
     const spawnProcess = vi.fn((command: string, args: readonly string[], options: SpawnOptions) => {
@@ -73,6 +100,14 @@ describe("feedback-agent-push adapter", () => {
       workingDirectory: "/tmp/browser-debug-extension-feedback-agent-push",
       model: "gpt-5",
       agentName: "feedback-bot",
+      spawnEnv: {
+        PATH: "/usr/bin",
+        HOME: "/tmp/agent-home",
+        XDG_CONFIG_HOME: "/tmp/agent-config",
+        XDG_DATA_HOME: "/tmp/agent-data",
+        XDG_STATE_HOME: "/tmp/agent-state",
+        XDG_CACHE_HOME: "/tmp/agent-cache",
+      },
       spawnProcess,
     });
 
@@ -83,6 +118,8 @@ describe("feedback-agent-push adapter", () => {
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0]?.cmd).toBe("opencode");
     expect(spawnCalls[0]?.options.cwd).toBe("/tmp/browser-debug-extension-feedback-agent-push");
+    expect(spawnCalls[0]?.options.env?.HOME).toBe("/tmp/agent-home");
+    expect(spawnCalls[0]?.options.env?.XDG_CONFIG_HOME).toBe("/tmp/agent-config");
     expect(spawnCalls[0]?.args[0]).toBe("run");
     expect(spawnCalls[0]?.args).toContain("-m");
     expect(spawnCalls[0]?.args).toContain("gpt-5");

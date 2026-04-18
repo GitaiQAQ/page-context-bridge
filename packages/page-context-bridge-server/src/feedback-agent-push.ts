@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { join } from "node:path";
 import type { FeedbackAnnotation } from "@page-context/shared-protocol";
 
 export interface FeedbackAgentPushAdapter {
@@ -11,6 +12,7 @@ export interface LocalFeedbackAgentPushAdapterOptions {
   workingDirectory: string;
   model?: string;
   agentName?: string;
+  spawnEnv?: NodeJS.ProcessEnv;
   spawnProcess?: (
     command: string,
     args: readonly string[],
@@ -20,6 +22,7 @@ export interface LocalFeedbackAgentPushAdapterOptions {
 }
 
 const ENABLED_VALUES = new Set(["1", "true", "yes", "on"]);
+const DEFAULT_RUNTIME_DIR_NAME = ".feedback-agent-opencode";
 
 /**
  * 从环境变量构建本地 auto-push 适配器。
@@ -38,14 +41,39 @@ export function createFeedbackAgentPushAdapterFromEnv(
   const workingDirectory = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_CWD) ?? process.cwd();
   const model = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_MODEL) ?? undefined;
   const agentName = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_NAME) ?? undefined;
+  const spawnEnv = buildFeedbackAgentSpawnEnv(env, workingDirectory);
   return new LocalFeedbackAgentPushAdapter({
     tenantId,
     opencodeBin,
     workingDirectory,
     model,
     agentName,
+    spawnEnv,
     log,
   });
+}
+
+/**
+ * 为 feedback agent 构建隔离的 opencode 运行环境。
+ * 目标：默认不读取用户全局 ~/.config/opencode，且允许通过 FEEDBACK_PUSH_AGENT_* 精确覆盖。
+ */
+export function buildFeedbackAgentSpawnEnv(env: NodeJS.ProcessEnv, workingDirectory: string): NodeJS.ProcessEnv {
+  const runtimeRoot = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_RUNTIME_ROOT)
+    ?? join(workingDirectory, DEFAULT_RUNTIME_DIR_NAME);
+  const home = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_HOME) ?? join(runtimeRoot, "home");
+  const xdgConfigHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_XDG_CONFIG_HOME) ?? join(runtimeRoot, "config");
+  const xdgDataHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_XDG_DATA_HOME) ?? join(runtimeRoot, "data");
+  const xdgStateHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_XDG_STATE_HOME) ?? join(runtimeRoot, "state");
+  const xdgCacheHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_XDG_CACHE_HOME) ?? join(runtimeRoot, "cache");
+
+  return {
+    ...env,
+    HOME: home,
+    XDG_CONFIG_HOME: xdgConfigHome,
+    XDG_DATA_HOME: xdgDataHome,
+    XDG_STATE_HOME: xdgStateHome,
+    XDG_CACHE_HOME: xdgCacheHome,
+  };
 }
 
 /**
@@ -81,6 +109,7 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter {
     try {
       const child = this.spawnProcess(this.options.opencodeBin, args, {
         cwd: this.options.workingDirectory,
+        env: this.options.spawnEnv,
         detached: true,
         stdio: "ignore",
         windowsHide: true,
