@@ -1,6 +1,7 @@
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } from "@page-context/builtin-tools";
 
+import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
 
 const consoleEntries: ConsoleEntry[] = [];
@@ -10,6 +11,7 @@ function log(...args: unknown[]): void {
 }
 
 createConsoleCapture(window, consoleEntries);
+installFeedbackOverlay();
 
 chrome.runtime.onMessage.addListener(
   createRuntimeListener(async (message) => {

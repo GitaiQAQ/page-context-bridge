@@ -569,18 +569,20 @@ chrome.runtime.onMessage.addListener(
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackStateSnapshot, params);
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationCreate: {
-        const payload = (message.params ?? {}) as Pick<FeedbackAnnotationCreateParams, "body" | "priority">;
+        const payload = (message.params ?? {}) as Pick<FeedbackAnnotationCreateParams, "body" | "priority" | "selectedText">;
         if (!payload.body?.trim()) {
           throw new Error("Feedback body is required");
         }
         const context = await captureActiveTabFeedbackContext();
+        // 页面浮层会提前缓存选区；若未提供则回退到后台即时采集，兼容 sidepanel 老调用。
+        const selectedText = payload.selectedText?.trim() || context.selectedText;
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, {
           body: payload.body.trim(),
           priority: payload.priority,
           tabId: context.tabId,
           url: context.url,
           title: context.title,
-          selectedText: context.selectedText,
+          selectedText,
         } satisfies FeedbackAnnotationCreateParams);
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationClaim: {
