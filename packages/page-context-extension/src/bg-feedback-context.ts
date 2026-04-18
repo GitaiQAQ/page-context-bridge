@@ -10,10 +10,10 @@ export interface ActiveTabFeedbackContext {
   selectedText?: string;
 }
 
-export async function captureActiveTabFeedbackContext(): Promise<ActiveTabFeedbackContext> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+export async function captureActiveTabFeedbackContext(sender?: chrome.runtime.MessageSender): Promise<ActiveTabFeedbackContext> {
+  const tab = await resolveFeedbackTab(sender);
   if (!tab?.id || !tab.url) {
-    throw new Error("No active tab available for feedback");
+    throw new Error("No tab available for feedback");
   }
 
   return {
@@ -22,6 +22,23 @@ export async function captureActiveTabFeedbackContext(): Promise<ActiveTabFeedba
     title: tab.title,
     selectedText: await readSelectedText(tab.id),
   };
+}
+
+async function resolveFeedbackTab(sender?: chrome.runtime.MessageSender): Promise<chrome.tabs.Tab | undefined> {
+  const senderTab = sender?.tab;
+  const senderTabId = senderTab?.id;
+  if (typeof senderTabId === "number") {
+    // content-script 发来的消息必须绑定原始 tab，避免误用当前活动 tab。
+    if (senderTab?.url) {
+      return senderTab;
+    }
+    // 某些场景 sender 只带 tabId，不带 url/title；补一次 tabs.get 保持数据完整。
+    return await chrome.tabs.get(senderTabId);
+  }
+
+  // sidepanel 等旧调用路径没有 sender.tab，保持历史行为回退到当前活动 tab。
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return activeTab;
 }
 
 async function readSelectedText(tabId: number): Promise<string | undefined> {

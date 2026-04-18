@@ -563,7 +563,8 @@ chrome.runtime.onMessage.addListener(
         const payload = (message.params ?? {}) as FeedbackStateSnapshotParams;
         const params: FeedbackStateSnapshotParams = { ...payload };
         if (params.tabId == null && !params.sessionId) {
-          const context = await captureActiveTabFeedbackContext().catch(() => null);
+          // 优先使用 sender.tab；仅在 sidepanel 无 sender.tab 时回退 active tab。
+          const context = await captureActiveTabFeedbackContext(sender).catch(() => null);
           params.tabId = context?.tabId;
         }
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackStateSnapshot, params);
@@ -573,7 +574,8 @@ chrome.runtime.onMessage.addListener(
         if (!payload.body?.trim()) {
           throw new Error("Feedback body is required");
         }
-        const context = await captureActiveTabFeedbackContext();
+        // content-script 的 UI 标注必须绑定消息发送者 tab，避免串到当前活动 tab。
+        const context = await captureActiveTabFeedbackContext(sender);
         // 页面浮层会提前缓存选区；若未提供则回退到后台即时采集，兼容 sidepanel 老调用。
         const selectedText = payload.selectedText?.trim() || context.selectedText;
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, {
