@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { PageContextManifest } from "@page-context/shared-protocol";
 
 import { McpRegistry } from "./mcp-registry.js";
+import type { FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
 
 class FakeMcpServer {
   public readonly tools = new Map<string, (args: Record<string, unknown>) => Promise<unknown>>();
@@ -27,13 +28,13 @@ class FakeMcpServer {
   }
 }
 
-function createRegistry() {
+function createRegistry(feedbackAgentPushAdapter: FeedbackAgentPushAdapter | null = null) {
   return new McpRegistry({
     sendToolCall: async () => ({}),
     getContextManifest: async () => null,
     readContextResource: async () => ({ id: "r", text: "{}" }),
     getContextSkillPrompt: async () => null,
-  }, "tenant-z");
+  }, "tenant-z", { feedbackAgentPushAdapter });
 }
 
 function parseTextResponse(payload: unknown) {
@@ -70,6 +71,23 @@ describe("mcp-registry feedback tools", () => {
     expect(created.linkedCapabilities.relatedToolNames).toContain("lead.inspect");
     expect(created.linkedCapabilities.relatedResourceIds).toContain("lead.profile");
     expect(created.linkedCapabilities.relatedSkillIds).toContain("lead.fix");
+  });
+
+  it("triggers local feedback agent push after annotation is created", () => {
+    const pushedIds: string[] = [];
+    const registry = createRegistry({
+      pushNewAnnotation: (annotation) => {
+        pushedIds.push(annotation.id);
+      },
+    });
+
+    const created = registry.createFeedbackAnnotation({
+      body: "提交按钮无响应",
+      tabId: 7,
+      url: "https://example.com/form",
+    });
+
+    expect(pushedIds).toEqual([created.id]);
   });
 
   it("registers MCP feedback tools and returns cursor-based events", async () => {

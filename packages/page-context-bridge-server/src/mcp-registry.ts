@@ -28,6 +28,7 @@ import { z } from "zod";
 import { buildRegisteredPageToolName } from "./page-tool-routing.js";
 import { buildZodSchema, type JsonSchemaLike } from "./schema.js";
 import { FeedbackStore } from "./feedback-store.js";
+import { createFeedbackAgentPushAdapterFromEnv, type FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
 
 export interface PageToolSpec {
   name: string;
@@ -60,6 +61,11 @@ export interface ExtensionRpcCaller {
   getContextSkillPrompt(tabId: number, skillId: string, input?: Record<string, unknown>): Promise<ContextSkillPrompt | null>;
 }
 
+export interface McpRegistryOptions {
+  feedbackAgentPushAdapter?: FeedbackAgentPushAdapter | null;
+  env?: NodeJS.ProcessEnv;
+}
+
 export class McpRegistry {
   private readonly mcpServers = new Set<McpServer>();
   private readonly pageToolHandlesByServer = new WeakMap<McpServer, Map<string, RegisteredPageTool>>();
@@ -70,13 +76,18 @@ export class McpRegistry {
   private readonly pageToolsByTab = new Map<number, PageToolSpec[]>();
   private readonly pageContextManifestByTab = new Map<number, PageContextManifest>();
   private readonly feedbackStore: FeedbackStore;
+  private readonly feedbackAgentPushAdapter: FeedbackAgentPushAdapter | null;
 
   private enabledBuiltinToolNames: Set<string>;
   private readonly toolProviders: BridgeToolProvider[] = [new BuiltinBridgeProvider()];
 
-  constructor(private readonly rpcCaller: ExtensionRpcCaller, tenantId = "default") {
+  constructor(private readonly rpcCaller: ExtensionRpcCaller, tenantId = "default", options: McpRegistryOptions = {}) {
     this.enabledBuiltinToolNames = new Set(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
     this.feedbackStore = new FeedbackStore(tenantId);
+    // 允许测试注入 adapter；未注入时才按环境变量自动创建。
+    this.feedbackAgentPushAdapter = options.feedbackAgentPushAdapter !== undefined
+      ? options.feedbackAgentPushAdapter
+      : createFeedbackAgentPushAdapterFromEnv(tenantId, options.env ?? process.env, (message) => log(message));
   }
 
   addServer(server: McpServer): void {
@@ -108,7 +119,7 @@ export class McpRegistry {
 
   createFeedbackAnnotation(params: FeedbackAnnotationCreateParams) {
     const derived = this.deriveFeedbackLinks(params.tabId);
-    return this.feedbackStore.createAnnotation({
+    const created = this.feedbackStore.createAnnotation({
       actor: params.actor ?? createFeedbackActor({ source: "extension", id: "extension.user", displayName: "Extension User" }),
       body: params.body,
       priority: params.priority,
@@ -130,6 +141,13 @@ export class McpRegistry {
         : undefined,
       linkedCapabilities: derived.links,
     });
+    // bridge 状态先落库，随后 fire-and-forget 触发本地 agent，保证仓库仍是唯一权威来源。
+    try {
+      this.feedbackAgentPushAdapter?.pushNewAnnotation(created);
+    } catch (error) {
+      log(`[feedback-agent-push] unexpected trigger error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return created;
   }
 
   claimFeedbackAnnotation(params: FeedbackAnnotationClaimParams) {
