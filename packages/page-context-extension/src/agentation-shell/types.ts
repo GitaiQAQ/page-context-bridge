@@ -1,4 +1,4 @@
-import type { FeedbackPriority } from "@page-context/shared-protocol";
+import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
 
 /**
  * UI 壳对 bridge 的最小输入结构。
@@ -8,6 +8,8 @@ export interface AgentationShellCreateAnnotationInput {
   body: string;
   priority: FeedbackPriority;
   selectedText?: string;
+  // 与 shared-protocol 对齐的锚点，供 content-script 直接透传给 background。
+  uiAnchor?: FeedbackUiAnchor;
   target: {
     elementName: string;
     elementPath: string;

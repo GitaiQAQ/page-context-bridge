@@ -1,4 +1,4 @@
-import type { FeedbackPriority } from "@page-context/shared-protocol";
+import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
 
 import { identifyElement } from "./element-identification";
 import type {
@@ -260,10 +260,12 @@ class AgentationShellRuntime {
     }
 
     const priority = normalizePriority(this.popupPrioritySelect.value);
+    const uiAnchor = buildUiAnchorFromTarget(this.popupState.targetInput, this.popupState.selectedText);
     const payload: AgentationShellCreateAnnotationInput = {
       body,
       priority,
       selectedText: this.popupState.selectedText,
+      uiAnchor,
       target: this.popupState.targetInput,
     };
 
@@ -459,6 +461,77 @@ function capturePageSelection(win: Window, doc: Document): string {
 
 function normalizeSelectionText(value: string): string {
   return value.trim().slice(0, 2_000);
+}
+
+/**
+ * 将 UI 壳内部的 target 结构映射成 shared-protocol 的 uiAnchor。
+ * 这里坚持“保守可用”策略：能稳定提供的字段先给出，复杂 selector 引擎留到后续迭代。
+ */
+function buildUiAnchorFromTarget(
+  target: AgentationShellCreateAnnotationInput["target"],
+  selectedText?: string,
+): FeedbackUiAnchor {
+  return {
+    cssSelector: toCssSelectorCandidate(target.elementPath),
+    textQuote: normalizeUiTextQuote(selectedText),
+    framePath: [0],
+    rect: toUiRect(target.rect),
+    meta: {
+      source: "agentation-shell",
+      elementName: target.elementName,
+      elementPath: target.elementPath,
+    },
+  };
+}
+
+function normalizeUiTextQuote(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.slice(0, 2_000);
+}
+
+function toUiRect(rect: DOMRectReadOnly): FeedbackUiAnchor["rect"] {
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return undefined;
+  }
+  if (width < 0 || height < 0) {
+    return undefined;
+  }
+  return { x, y, width, height };
+}
+
+function toCssSelectorCandidate(elementPath: string): string | undefined {
+  const normalizedPath = elementPath.trim();
+  if (!normalizedPath) {
+    return undefined;
+  }
+
+  // shadow 边界路径是给人看的，不保证符合 CSS 语法，直接降级更稳。
+  if (normalizedPath.includes("⟨shadow⟩")) {
+    return undefined;
+  }
+
+  const segments = normalizedPath
+    .split(">")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return undefined;
+  }
+
+  // 只接受“单标签 / 单类名 / 单 id”这三类简单片段，避免把脏路径塞进协议字段。
+  const simpleSelectorSegmentPattern = /^(?:[a-z][a-z0-9-]*|#[^\s>]+|\.[^\s>.#]+)$/i;
+  if (!segments.every((segment) => simpleSelectorSegmentPattern.test(segment))) {
+    return undefined;
+  }
+
+  return segments.join(" > ");
 }
 
 function normalizePriority(value: string): FeedbackPriority {

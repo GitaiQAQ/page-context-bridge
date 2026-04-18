@@ -106,6 +106,8 @@ async function createAnnotationFromShell(
     body: input.body,
     priority: input.priority,
     selectedText: input.selectedText,
+    // uiAnchor 在 shell 里已做最小映射，这里只负责透传，避免重复协议逻辑。
+    uiAnchor: input.uiAnchor,
   };
   const raw = await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, payload);
   return normalizeCreateResult(raw);
