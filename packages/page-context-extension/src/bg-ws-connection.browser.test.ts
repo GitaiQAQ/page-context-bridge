@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class FakeRpcPeer {
   private static nextSessionId = 0;
@@ -92,6 +92,10 @@ describe("connectWebSocket", () => {
     FakeWebSocket.instances = [];
     (globalThis as { WebSocket: typeof WebSocket }).WebSocket = FakeWebSocket as unknown as typeof WebSocket;
     installChromeMock();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("fails fast when socket closes before open and allows next connect", async () => {
