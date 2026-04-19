@@ -6,6 +6,8 @@ import type {
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
   AgentationShellDeps,
+  AgentationShellMultiSelectItem,
+  AgentationShellMultiSelectMeta,
 } from "./types";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
@@ -28,6 +30,14 @@ interface PopupState {
   selectedText?: string;
   targetElement: HTMLElement;
   targetInput: AgentationShellCreateAnnotationInput["target"];
+  multiSelectMeta?: AgentationShellMultiSelectMeta;
+}
+
+interface MultiSelectTargetSnapshot {
+  element: HTMLElement;
+  elementName: string;
+  elementPath: string;
+  rect: DOMRectReadOnly;
 }
 
 /**
@@ -101,6 +111,9 @@ class AgentationShellRuntime {
   private hoveredElementLabel = "";
   private markerIdSeq = 0;
   private readonly markers: MarkerRecord[] = [];
+  private readonly multiSelectTargets = new Map<HTMLElement, MultiSelectTargetSnapshot>();
+  private multiSelectLastAnchorX = 0;
+  private multiSelectLastAnchorY = 0;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -152,10 +165,11 @@ class AgentationShellRuntime {
     this.annotating = true;
     this.toolbarToggle.dataset.active = "true";
     this.toolbarToggle.textContent = "标注中";
-    this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Esc 可退出。";
+    this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
     this.doc.addEventListener("pointermove", this.onDocumentPointerMove, true);
     this.doc.addEventListener("click", this.onDocumentClick, true);
     this.doc.addEventListener("keydown", this.onDocumentKeyDown, true);
+    this.doc.addEventListener("keyup", this.onDocumentKeyUp, true);
     this.win.addEventListener("scroll", this.onWindowScroll, true);
   }
 
@@ -167,9 +181,11 @@ class AgentationShellRuntime {
     this.doc.removeEventListener("pointermove", this.onDocumentPointerMove, true);
     this.doc.removeEventListener("click", this.onDocumentClick, true);
     this.doc.removeEventListener("keydown", this.onDocumentKeyDown, true);
+    this.doc.removeEventListener("keyup", this.onDocumentKeyUp, true);
     this.win.removeEventListener("scroll", this.onWindowScroll, true);
     this.hoveredElement = null;
     this.hoveredElementLabel = "";
+    this.clearMultiSelectTargets();
     this.hideHoverBox();
     this.closePopup();
   }
@@ -206,6 +222,14 @@ class AgentationShellRuntime {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
+
+    if (isMultiSelectChordPressed(event)) {
+      this.toggleMultiSelectTarget(target, event.clientX, event.clientY);
+      return;
+    }
+
+    // 非组合键点击仍保持单选行为，先把残留聚合态清掉，避免后续 Esc 逻辑混乱。
+    this.clearMultiSelectTargets();
     this.openPopupForTarget(target, event.clientX, event.clientY);
   };
 
@@ -217,7 +241,16 @@ class AgentationShellRuntime {
       return;
     }
 
-    // Esc 优先关闭弹窗；若弹窗已关闭，则退出标注模式。
+    // Esc 优先清理多选聚合，避免误触发关闭流程。
+    if (this.multiSelectTargets.size > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.clearMultiSelectTargets();
+      this.setPopupStatus("已清空多选聚合", "info");
+      return;
+    }
+
+    // 无聚合时沿用原逻辑：先关弹窗，再退出标注模式。
     if (!this.popupForm.hidden) {
       event.preventDefault();
       event.stopPropagation();
@@ -227,6 +260,16 @@ class AgentationShellRuntime {
     event.preventDefault();
     event.stopPropagation();
     this.stopAnnotating();
+  };
+
+  private readonly onDocumentKeyUp = (event: KeyboardEvent): void => {
+    if (!this.annotating || this.multiSelectTargets.size === 0) {
+      return;
+    }
+    if (isMultiSelectChordPressed(event)) {
+      return;
+    }
+    this.flushMultiSelectToPopup();
   };
 
   private readonly onWindowScroll = (): void => {
@@ -264,7 +307,10 @@ class AgentationShellRuntime {
     const uiAnchor = buildUiAnchorFromTarget(
       this.popupState.targetInput,
       this.popupState.selectedText,
-      this.popupState.targetElement,
+      {
+        targetElement: this.popupState.targetElement,
+        multiSelectMeta: this.popupState.multiSelectMeta,
+      },
     );
     const payload: AgentationShellCreateAnnotationInput = {
       body,
@@ -337,12 +383,114 @@ class AgentationShellRuntime {
     });
   }
 
+  /**
+   * 组合键点击时维护聚合集合：
+   * - 第一次点击加入
+   * - 再点同元素则移除
+   */
+  private toggleMultiSelectTarget(target: HTMLElement, clientX: number, clientY: number): void {
+    this.multiSelectLastAnchorX = clientX;
+    this.multiSelectLastAnchorY = clientY;
+    if (!this.popupForm.hidden) {
+      this.closePopup();
+    }
+
+    if (this.multiSelectTargets.has(target)) {
+      this.multiSelectTargets.delete(target);
+    } else {
+      const info = identifyElement(target);
+      this.multiSelectTargets.set(target, {
+        element: target,
+        elementName: info.name,
+        elementPath: info.path,
+        rect: snapshotRect(target.getBoundingClientRect()),
+      });
+    }
+
+    const count = this.multiSelectTargets.size;
+    if (count === 0) {
+      this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+      this.setPopupStatus("多选聚合为空", "info");
+      return;
+    }
+    this.toolbarHint.textContent = `已聚合 ${count} 个元素，松开 Cmd/Ctrl+Shift 后弹出统一反馈框。`;
+    this.setPopupStatus(`多选聚合中（${count}）`, "info");
+  }
+
+  /**
+   * Esc 和模式切换都会走这里，保证多选状态被一次性清空。
+   */
+  private clearMultiSelectTargets(): void {
+    this.multiSelectTargets.clear();
+    this.multiSelectLastAnchorX = 0;
+    this.multiSelectLastAnchorY = 0;
+    if (this.annotating) {
+      this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+    }
+  }
+
+  /**
+   * 组合键松开后，将聚合元素合并成一次提交弹窗。
+   */
+  private flushMultiSelectToPopup(): void {
+    if (this.multiSelectTargets.size === 0) {
+      return;
+    }
+    const snapshots = Array.from(this.multiSelectTargets.values());
+    const unionRect = unionRects(snapshots.map((item) => item.rect));
+    const unionUiRect = unionRect ? toUiRect(unionRect) : undefined;
+    if (!unionRect || !unionUiRect) {
+      this.clearMultiSelectTargets();
+      return;
+    }
+
+    const items: AgentationShellMultiSelectItem[] = snapshots
+      .map((snapshot) => {
+        const uiRect = toUiRect(snapshot.rect);
+        if (!uiRect) {
+          return null;
+        }
+        return {
+          elementName: snapshot.elementName,
+          elementPath: snapshot.elementPath,
+          rect: uiRect,
+        };
+      })
+      .filter((item): item is AgentationShellMultiSelectItem => Boolean(item));
+    if (items.length === 0) {
+      this.clearMultiSelectTargets();
+      return;
+    }
+
+    const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
+    const first = snapshots[0];
+    const state: PopupState = {
+      anchorX:
+        this.multiSelectLastAnchorX || clamp(unionRect.left + unionRect.width / 2, 0, this.win.innerWidth),
+      anchorY:
+        this.multiSelectLastAnchorY || clamp(unionRect.top + unionRect.height / 2, 0, this.win.innerHeight),
+      selectedText: selectedText || undefined,
+      targetElement: first.element,
+      targetInput: {
+        elementName: `multi-select (${items.length})`,
+        elementPath: first.elementPath,
+        rect: snapshotRect(unionRect),
+      },
+      multiSelectMeta: {
+        count: items.length,
+        unionRect: unionUiRect,
+        items,
+      },
+    };
+
+    this.clearMultiSelectTargets();
+    this.openPopupWithState(state);
+  }
+
   private openPopupForTarget(target: HTMLElement, clientX: number, clientY: number): void {
     const elementInfo = identifyElement(target);
-    const rect = target.getBoundingClientRect();
     const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
-
-    this.popupState = {
+    this.openPopupWithState({
       anchorX: clientX,
       anchorY: clientY,
       selectedText: selectedText || undefined,
@@ -350,16 +498,25 @@ class AgentationShellRuntime {
       targetInput: {
         elementName: elementInfo.name,
         elementPath: elementInfo.path,
-        rect,
+        rect: snapshotRect(target.getBoundingClientRect()),
       },
-    };
+    });
+  }
 
-    const nextTop = computePopupTop(clientY, this.win.innerHeight);
-    const nextLeft = computePopupLeft(clientX, this.win.innerWidth);
+  private openPopupWithState(state: PopupState): void {
+    this.popupState = state;
+    const nextTop = computePopupTop(state.anchorY, this.win.innerHeight);
+    const nextLeft = computePopupLeft(state.anchorX, this.win.innerWidth);
     this.popupForm.style.top = `${nextTop}px`;
     this.popupForm.style.left = `${nextLeft}px`;
-    this.popupTargetView.textContent = `${elementInfo.name} · ${elementInfo.path || "unknown path"}`;
-    this.popupSelectionView.textContent = selectedText || "未检测到页面选中内容";
+    this.popupTargetView.textContent = `${state.targetInput.elementName} · ${state.targetInput.elementPath || "unknown path"}`;
+    if (state.selectedText) {
+      this.popupSelectionView.textContent = state.selectedText;
+    } else if (state.multiSelectMeta) {
+      this.popupSelectionView.textContent = `已聚合 ${state.multiSelectMeta.count} 个元素，提交后会写入一条合并标注。`;
+    } else {
+      this.popupSelectionView.textContent = "未检测到页面选中内容";
+    }
     this.popupPrioritySelect.value = "normal";
     this.popupForm.hidden = false;
     this.setPopupStatus("Idle", "info");
@@ -446,6 +603,43 @@ function deepElementFromPoint(doc: Document, x: number, y: number): HTMLElement 
   return element;
 }
 
+function isMultiSelectChordPressed(event: Pick<MouseEvent | KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey">): boolean {
+  return event.shiftKey && (event.metaKey || event.ctrlKey);
+}
+
+function snapshotRect(rect: DOMRectReadOnly): DOMRectReadOnly {
+  return new DOMRect(rect.x, rect.y, rect.width, rect.height);
+}
+
+/**
+ * 将多个元素框合成一个包络框，作为统一提交的定位 rect。
+ */
+function unionRects(rects: readonly DOMRectReadOnly[]): DOMRectReadOnly | null {
+  if (rects.length === 0) {
+    return null;
+  }
+
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  for (const rect of rects) {
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.right);
+    bottom = Math.max(bottom, rect.bottom);
+  }
+
+  if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(right) || !Number.isFinite(bottom)) {
+    return null;
+  }
+  if (right < left || bottom < top) {
+    return null;
+  }
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
 function capturePageSelection(win: Window, doc: Document): string {
   const fromSelection = win.getSelection?.()?.toString?.() ?? "";
   if (fromSelection.trim()) {
@@ -476,7 +670,10 @@ function normalizeSelectionText(value: string): string {
 function buildUiAnchorFromTarget(
   target: AgentationShellCreateAnnotationInput["target"],
   selectedText?: string,
-  targetElement?: HTMLElement,
+  options?: {
+    targetElement?: HTMLElement;
+    multiSelectMeta?: AgentationShellMultiSelectMeta;
+  },
 ): FeedbackUiAnchor {
   const meta: Record<string, unknown> = {
     source: "agentation-shell",
@@ -485,12 +682,17 @@ function buildUiAnchorFromTarget(
   };
 
   // React 线索可选注入，拿不到时保持静默，不影响普通页面。
-  if (targetElement) {
-    const reactMeta = extractReactAnchorMeta(targetElement);
+  if (options?.targetElement) {
+    const reactMeta = extractReactAnchorMeta(options.targetElement);
     if (reactMeta) {
       meta.reactPath = reactMeta.reactPath;
       meta.reactLeaf = reactMeta.reactLeaf;
     }
+  }
+
+  // 多选提交仍只创建单条 annotation，这里把聚合明细挂进 meta 便于回放定位。
+  if (options?.multiSelectMeta) {
+    meta.multiSelect = options.multiSelectMeta;
   }
 
   return {
