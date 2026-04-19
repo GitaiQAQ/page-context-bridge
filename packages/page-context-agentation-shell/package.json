@@ -1,0 +1,27 @@
+{
+  "name": "@page-context/agentation-shell",
+  "version": "0.0.1",
+  "description": "Page-side annotation shell for page-context bridge extension.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@page-context/shared-protocol": "workspace:*"
+  },
+  "license": "MIT",
+  "publishConfig": { "access": "public" }
+}

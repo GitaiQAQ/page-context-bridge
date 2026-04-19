@@ -9,6 +9,14 @@ import type {
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
 } from "./types";
+export type {
+  AgentationShellBridgeAdapter,
+  AgentationShellCreateAnnotationInput,
+  AgentationShellCreateAnnotationResult,
+  AgentationShellDeps,
+  AgentationShellMultiSelectItem,
+  AgentationShellMultiSelectMeta,
+} from "./types";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
 const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);

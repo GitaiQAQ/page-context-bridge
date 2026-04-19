@@ -44,6 +44,12 @@ importers:
 
   packages/opencode-protocol: {}
 
+  packages/page-context-agentation-shell:
+    dependencies:
+      '@page-context/shared-protocol':
+        specifier: workspace:*
+        version: link:../shared-protocol
+
   packages/page-context-bridge-server:
     dependencies:
       '@modelcontextprotocol/sdk':
@@ -77,6 +83,9 @@ importers:
 
   packages/page-context-extension:
     dependencies:
+      '@page-context/agentation-shell':
+        specifier: workspace:*
+        version: link:../page-context-agentation-shell
       '@page-context/builtin-tools':
         specifier: workspace:*
         version: link:../builtin-tools

@@ -1,8 +1,9 @@
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } from "@page-context/builtin-tools";
-
-import { installAgentationShell } from "./agentation-shell";
-import type { AgentationShellCreateAnnotationInput } from "./agentation-shell/types";
+import {
+  installAgentationShell,
+  type AgentationShellCreateAnnotationInput,
+} from "@page-context/agentation-shell";
 import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
 
