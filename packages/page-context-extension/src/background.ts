@@ -18,6 +18,7 @@ import {
 
 import { connectWebSocket, forceReconnect, getWsReady, getSessionId, initDefaultWsUrl, log, queueNotification, requestBridge } from "./bg-ws-connection";
 import { captureActiveTabFeedbackContext, type ActiveTabFeedbackContext } from "./bg-feedback-context";
+import { enrichUiAnchorReactMetaInMainWorld } from "./bg-react-meta";
 import { discoverPageToolsInTab, getRawPageContextManifest, getPageContextSkill, readPageContextResource, sleep } from "./bg-page-context";
 import { executeToolCall, getBuiltinToolDefinitions } from "./bg-tool-executor";
 import { buildContextManifestFilterDebug } from "./context-manifest-filter-debug";
@@ -639,6 +640,10 @@ chrome.runtime.onMessage.addListener(
         }
         // content-script 的 UI 标注必须绑定消息发送者 tab，避免串到当前活动 tab。
         const context = await captureActiveTabFeedbackContext(sender);
+        // 只在 uiAnchor 路径做 MAIN world 补采集：补到就带上，失败就保持原样。
+        if (payload.uiAnchor) {
+          payload.uiAnchor = await enrichUiAnchorReactMetaInMainWorld(context.tabId, payload.uiAnchor);
+        }
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, buildFeedbackAnnotationCreateParams(payload, context));
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationClaim: {
