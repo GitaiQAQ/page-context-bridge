@@ -1,6 +1,6 @@
 import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
 
-import { identifyElement } from "./element-identification";
+import { extractReactAnchorMeta, identifyElement } from "./element-identification";
 import type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
@@ -26,6 +26,7 @@ interface PopupState {
   anchorX: number;
   anchorY: number;
   selectedText?: string;
+  targetElement: HTMLElement;
   targetInput: AgentationShellCreateAnnotationInput["target"];
 }
 
@@ -260,7 +261,11 @@ class AgentationShellRuntime {
     }
 
     const priority = normalizePriority(this.popupPrioritySelect.value);
-    const uiAnchor = buildUiAnchorFromTarget(this.popupState.targetInput, this.popupState.selectedText);
+    const uiAnchor = buildUiAnchorFromTarget(
+      this.popupState.targetInput,
+      this.popupState.selectedText,
+      this.popupState.targetElement,
+    );
     const payload: AgentationShellCreateAnnotationInput = {
       body,
       priority,
@@ -341,6 +346,7 @@ class AgentationShellRuntime {
       anchorX: clientX,
       anchorY: clientY,
       selectedText: selectedText || undefined,
+      targetElement: target,
       targetInput: {
         elementName: elementInfo.name,
         elementPath: elementInfo.path,
@@ -470,17 +476,29 @@ function normalizeSelectionText(value: string): string {
 function buildUiAnchorFromTarget(
   target: AgentationShellCreateAnnotationInput["target"],
   selectedText?: string,
+  targetElement?: HTMLElement,
 ): FeedbackUiAnchor {
+  const meta: Record<string, unknown> = {
+    source: "agentation-shell",
+    elementName: target.elementName,
+    elementPath: target.elementPath,
+  };
+
+  // React 线索可选注入，拿不到时保持静默，不影响普通页面。
+  if (targetElement) {
+    const reactMeta = extractReactAnchorMeta(targetElement);
+    if (reactMeta) {
+      meta.reactPath = reactMeta.reactPath;
+      meta.reactLeaf = reactMeta.reactLeaf;
+    }
+  }
+
   return {
     cssSelector: toCssSelectorCandidate(target.elementPath),
     textQuote: normalizeUiTextQuote(selectedText),
     framePath: [0],
     rect: toUiRect(target.rect),
-    meta: {
-      source: "agentation-shell",
-      elementName: target.elementName,
-      elementPath: target.elementPath,
-    },
+    meta,
   };
 }
 
