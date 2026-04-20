@@ -23,6 +23,49 @@ const TOOLBAR_STATE_STORAGE_KEY = "__page_context_agentation_shell_toolbar_state
 const TOOLBAR_STATE_VERSION = 1;
 const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
 const PRIORITY_ORDER: FeedbackPriority[] = ["low", "normal", "high", "critical"];
+const DRAG_SELECTION_THRESHOLD_PX = 6;
+const AREA_SELECTION_MIN_SIZE_PX = 20;
+const DEFAULT_ANNOTATING_HINT = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+const AREA_SELECTION_ELEMENT_SELECTOR = "button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th";
+const DRAG_SELECTION_TEXT_TAGS = new Set([
+  "P",
+  "SPAN",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "LI",
+  "TD",
+  "TH",
+  "LABEL",
+  "BLOCKQUOTE",
+  "FIGCAPTION",
+  "CAPTION",
+  "LEGEND",
+  "DT",
+  "DD",
+  "PRE",
+  "CODE",
+  "EM",
+  "STRONG",
+  "B",
+  "I",
+  "U",
+  "S",
+  "A",
+  "TIME",
+  "ADDRESS",
+  "CITE",
+  "Q",
+  "ABBR",
+  "DFN",
+  "MARK",
+  "SMALL",
+  "SUB",
+  "SUP",
+]);
 
 interface MarkerRecord {
   id: string;
@@ -38,7 +81,7 @@ interface PopupState {
   anchorX: number;
   anchorY: number;
   selectedText?: string;
-  targetElement: HTMLElement;
+  targetElement?: HTMLElement;
   targetInput: AgentationShellCreateAnnotationInput["target"];
   multiSelectMeta?: AgentationShellMultiSelectMeta;
 }
@@ -48,6 +91,11 @@ interface MultiSelectTargetSnapshot {
   elementName: string;
   elementPath: string;
   rect: DOMRectReadOnly;
+}
+
+interface Point {
+  x: number;
+  y: number;
 }
 
 interface ToolbarPosition {
@@ -130,6 +178,7 @@ class AgentationShellRuntime {
   private readonly toolbarHideButton: HTMLButtonElement;
   private readonly toolbarDock: HTMLButtonElement;
   private readonly hoverBox: HTMLDivElement;
+  private readonly dragSelectionBox: HTMLDivElement;
   private readonly markerLayer: HTMLDivElement;
   private readonly popupForm: HTMLFormElement;
   private readonly popupTargetView: HTMLParagraphElement;
@@ -150,6 +199,10 @@ class AgentationShellRuntime {
   private readonly multiSelectTargets = new Map<HTMLElement, MultiSelectTargetSnapshot>();
   private multiSelectLastAnchorX = 0;
   private multiSelectLastAnchorY = 0;
+  private dragSelectionMouseDownPoint: Point | null = null;
+  private dragSelectionStartPoint: Point | null = null;
+  private dragSelecting = false;
+  private suppressClickOnceAfterDrag = false;
   private toolbarHidden = false;
   private toolbarPosition: ToolbarPosition | null = null;
   private toolbarDragState: ToolbarDragState | null = null;
@@ -178,6 +231,7 @@ class AgentationShellRuntime {
     this.toolbarHideButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-hide]");
     this.toolbarDock = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-dock]");
     this.hoverBox = queryRequired<HTMLDivElement>(this.shadow, "[data-hover-box]");
+    this.dragSelectionBox = queryRequired<HTMLDivElement>(this.shadow, "[data-drag-selection]");
     this.markerLayer = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-layer]");
     this.popupForm = queryRequired<HTMLFormElement>(this.shadow, "[data-popup]");
     this.popupTargetView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-target]");
@@ -334,12 +388,16 @@ class AgentationShellRuntime {
     this.toolbar.dataset.annotating = "true";
     this.toolbarToggle.dataset.active = "true";
     this.toolbarToggle.textContent = "标注中";
-    this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+    this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
     this.doc.addEventListener("pointermove", this.onDocumentPointerMove, true);
+    this.doc.addEventListener("mousedown", this.onDocumentMouseDown, true);
+    this.doc.addEventListener("mousemove", this.onDocumentMouseMove, true);
+    this.doc.addEventListener("mouseup", this.onDocumentMouseUp, true);
     this.doc.addEventListener("click", this.onDocumentClick, true);
     this.doc.addEventListener("keydown", this.onDocumentKeyDown, true);
     this.doc.addEventListener("keyup", this.onDocumentKeyUp, true);
     this.win.addEventListener("scroll", this.onWindowScroll, true);
+    this.win.addEventListener("blur", this.onWindowBlur, true);
   }
 
   private stopAnnotating(): void {
@@ -349,12 +407,17 @@ class AgentationShellRuntime {
     this.toolbarToggle.textContent = "UI 标注";
     this.toolbarHint.textContent = "开启后，点击页面元素创建反馈。";
     this.doc.removeEventListener("pointermove", this.onDocumentPointerMove, true);
+    this.doc.removeEventListener("mousedown", this.onDocumentMouseDown, true);
+    this.doc.removeEventListener("mousemove", this.onDocumentMouseMove, true);
+    this.doc.removeEventListener("mouseup", this.onDocumentMouseUp, true);
     this.doc.removeEventListener("click", this.onDocumentClick, true);
     this.doc.removeEventListener("keydown", this.onDocumentKeyDown, true);
     this.doc.removeEventListener("keyup", this.onDocumentKeyUp, true);
     this.win.removeEventListener("scroll", this.onWindowScroll, true);
+    this.win.removeEventListener("blur", this.onWindowBlur, true);
     this.hoveredElement = null;
     this.hoveredElementLabel = "";
+    this.resetDragSelectionState();
     this.clearMultiSelectTargets();
     this.hideHoverBox();
     this.closePopup();
@@ -465,8 +528,130 @@ class AgentationShellRuntime {
     this.win.removeEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
   }
 
-  private readonly onDocumentPointerMove = (event: PointerEvent): void => {
+  private readonly onDocumentMouseDown = (event: MouseEvent): void => {
     if (!this.annotating || this.isEventFromShell(event)) {
+      return;
+    }
+    if (event.button !== 0 || isMultiSelectChordPressed(event)) {
+      return;
+    }
+
+    const target = resolveEventTargetElement(event);
+    if (!target || this.isNodeInsideShell(target) || shouldSkipDragSelectionStart(target)) {
+      return;
+    }
+
+    // 进入拖框候选态后先阻止默认行为，避免页面文本被误选中。
+    event.preventDefault();
+    this.dragSelectionMouseDownPoint = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    this.dragSelectionStartPoint = null;
+    this.dragSelecting = false;
+    this.suppressClickOnceAfterDrag = false;
+  };
+
+  private readonly onDocumentMouseMove = (event: MouseEvent): void => {
+    if (!this.annotating || !this.dragSelectionMouseDownPoint) {
+      return;
+    }
+
+    const thresholdSq = DRAG_SELECTION_THRESHOLD_PX * DRAG_SELECTION_THRESHOLD_PX;
+    const deltaX = event.clientX - this.dragSelectionMouseDownPoint.x;
+    const deltaY = event.clientY - this.dragSelectionMouseDownPoint.y;
+    const distanceSq = deltaX * deltaX + deltaY * deltaY;
+
+    if (!this.dragSelecting && distanceSq < thresholdSq) {
+      return;
+    }
+
+    if (!this.dragSelecting) {
+      this.dragSelecting = true;
+      this.dragSelectionStartPoint = {
+        x: this.dragSelectionMouseDownPoint.x,
+        y: this.dragSelectionMouseDownPoint.y,
+      };
+
+      // 拖框是独立选择模式，开始时清理其他临时态，避免状态重叠。
+      this.hideHoverBox();
+      this.clearMultiSelectTargets();
+      if (!this.popupForm.hidden) {
+        this.closePopup();
+      }
+      this.toolbarHint.textContent = "拖框中，松开鼠标后创建统一反馈。";
+    }
+
+    if (!this.dragSelectionStartPoint) {
+      return;
+    }
+
+    event.preventDefault();
+    const rect = buildSelectionRect(
+      this.dragSelectionStartPoint,
+      { x: event.clientX, y: event.clientY },
+      this.win.innerWidth,
+      this.win.innerHeight,
+    );
+    if (!rect) {
+      this.hideDragSelectionBox();
+      return;
+    }
+    this.syncDragSelectionBox(rect);
+  };
+
+  private readonly onDocumentMouseUp = (event: MouseEvent): void => {
+    if (!this.annotating || !this.dragSelectionMouseDownPoint) {
+      return;
+    }
+
+    const dragStart = this.dragSelectionStartPoint;
+    const dragged = this.dragSelecting;
+    this.dragSelectionMouseDownPoint = null;
+    this.dragSelectionStartPoint = null;
+    this.dragSelecting = false;
+    this.hideDragSelectionBox();
+
+    if (!dragged || !dragStart) {
+      return;
+    }
+
+    // 拖框完成后吞掉本次 mouseup/click，避免被单击链路误处理。
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    this.suppressClickOnceAfterDrag = true;
+
+    const rect = buildSelectionRect(
+      dragStart,
+      { x: event.clientX, y: event.clientY },
+      this.win.innerWidth,
+      this.win.innerHeight,
+    );
+    if (!rect) {
+      this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
+      return;
+    }
+    if (rect.width < AREA_SELECTION_MIN_SIZE_PX || rect.height < AREA_SELECTION_MIN_SIZE_PX) {
+      this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
+      return;
+    }
+
+    this.openPopupForAreaSelection(rect, event.clientX, event.clientY);
+  };
+
+  private readonly onWindowBlur = (): void => {
+    if (!this.annotating) {
+      return;
+    }
+
+    // 失焦时统一回收临时态，避免“按键已松开但内部状态还挂着”。
+    this.resetDragSelectionState();
+    this.clearMultiSelectTargets();
+  };
+
+  private readonly onDocumentPointerMove = (event: PointerEvent): void => {
+    if (!this.annotating || this.dragSelectionMouseDownPoint || this.isEventFromShell(event)) {
       return;
     }
     const target = deepElementFromPoint(this.doc, event.clientX, event.clientY);
@@ -486,6 +671,14 @@ class AgentationShellRuntime {
 
   private readonly onDocumentClick = (event: MouseEvent): void => {
     if (!this.annotating || this.isEventFromShell(event)) {
+      return;
+    }
+    if (this.suppressClickOnceAfterDrag) {
+      // 对齐参考实现：拖框收尾会跟一发 click，这里只消费一次。
+      this.suppressClickOnceAfterDrag = false;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
       return;
     }
     const target = deepElementFromPoint(this.doc, event.clientX, event.clientY);
@@ -513,6 +706,15 @@ class AgentationShellRuntime {
       return;
     }
     if (event.key !== "Escape") {
+      return;
+    }
+
+    if (this.dragSelectionMouseDownPoint || this.dragSelecting) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.resetDragSelectionState();
+      this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
+      this.setPopupStatus("已取消拖框选择", "info");
       return;
     }
 
@@ -549,7 +751,7 @@ class AgentationShellRuntime {
 
   private readonly onWindowScroll = (): void => {
     // hover 框跟随目标元素滚动，避免视觉错位。
-    if (this.hoveredElement && this.annotating) {
+    if (this.hoveredElement && this.annotating && !this.dragSelectionMouseDownPoint) {
       this.syncHoverBox(this.hoveredElement, this.hoveredElementLabel);
     }
   };
@@ -684,7 +886,7 @@ class AgentationShellRuntime {
 
     const count = this.multiSelectTargets.size;
     if (count === 0) {
-      this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+      this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
       this.setPopupStatus("多选聚合为空", "info");
       return;
     }
@@ -700,7 +902,7 @@ class AgentationShellRuntime {
     this.multiSelectLastAnchorX = 0;
     this.multiSelectLastAnchorY = 0;
     if (this.annotating) {
-      this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+      this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
     }
   }
 
@@ -762,6 +964,100 @@ class AgentationShellRuntime {
     this.openPopupWithState(state);
   }
 
+  /**
+   * 拖框完成后统一走这里：
+   * 1) 命中元素 -> 多选聚合提交
+   * 2) 未命中元素 -> 区域标注提交
+   */
+  private openPopupForAreaSelection(selectionRect: DOMRectReadOnly, clientX: number, clientY: number): void {
+    const snapshots = collectAreaSelectionTargets(
+      this.doc,
+      this.host,
+      selectionRect,
+      this.win.innerWidth,
+      this.win.innerHeight,
+    );
+    const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
+
+    if (snapshots.length > 0) {
+      const unionRect = unionRects(snapshots.map((item) => item.rect));
+      const unionUiRect = unionRect ? toUiRect(unionRect) : undefined;
+      if (!unionRect || !unionUiRect) {
+        this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
+        return;
+      }
+
+      const items: AgentationShellMultiSelectItem[] = snapshots
+        .map((snapshot) => {
+          const uiRect = toUiRect(snapshot.rect);
+          if (!uiRect) {
+            return null;
+          }
+          return {
+            elementName: snapshot.elementName,
+            elementPath: snapshot.elementPath,
+            rect: uiRect,
+          };
+        })
+        .filter((item): item is AgentationShellMultiSelectItem => Boolean(item));
+      if (items.length === 0) {
+        this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
+        return;
+      }
+
+      const first = snapshots[0];
+      this.openPopupWithState({
+        anchorX: clamp(clientX, 0, this.win.innerWidth),
+        anchorY: clamp(clientY, 0, this.win.innerHeight),
+        selectedText: selectedText || undefined,
+        targetElement: first.element,
+        targetInput: {
+          elementName: `multi-select (${items.length})`,
+          elementPath: "multi-select",
+          rect: snapshotRect(unionRect),
+        },
+        multiSelectMeta: {
+          count: items.length,
+          unionRect: unionUiRect,
+          items,
+        },
+      });
+      this.toolbarHint.textContent = `框选命中 ${items.length} 个元素，已打开统一反馈框。`;
+      this.setPopupStatus(`框选命中 ${items.length} 个元素`, "info");
+      return;
+    }
+
+    const areaUiRect = toUiRect(selectionRect);
+    if (!areaUiRect) {
+      this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
+      return;
+    }
+
+    const fallbackTarget = deepElementFromPoint(
+      this.doc,
+      selectionRect.left + selectionRect.width / 2,
+      selectionRect.top + selectionRect.height / 2,
+    );
+    this.openPopupWithState({
+      anchorX: clamp(clientX, 0, this.win.innerWidth),
+      anchorY: clamp(clientY, 0, this.win.innerHeight),
+      selectedText: selectedText || undefined,
+      targetElement: fallbackTarget ?? undefined,
+      targetInput: {
+        elementName: "area-select",
+        elementPath: `region at (${Math.round(selectionRect.left)}, ${Math.round(selectionRect.top)})`,
+        rect: snapshotRect(selectionRect),
+      },
+      multiSelectMeta: {
+        count: 0,
+        unionRect: areaUiRect,
+        items: [],
+      },
+    });
+    this.toolbarHint.textContent = "已选择区域，填写反馈后可提交。";
+    this.setPopupStatus("未命中可聚合元素，已按区域创建标注。", "info");
+  }
+
   private openPopupForTarget(target: HTMLElement, clientX: number, clientY: number): void {
     const elementInfo = identifyElement(target);
     const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
@@ -788,7 +1084,11 @@ class AgentationShellRuntime {
     if (state.selectedText) {
       this.popupSelectionView.textContent = state.selectedText;
     } else if (state.multiSelectMeta) {
-      this.popupSelectionView.textContent = `已聚合 ${state.multiSelectMeta.count} 个元素，提交后会写入一条合并标注。`;
+      if (state.multiSelectMeta.count > 0) {
+        this.popupSelectionView.textContent = `已聚合 ${state.multiSelectMeta.count} 个元素，提交后会写入一条合并标注。`;
+      } else {
+        this.popupSelectionView.textContent = "已选择一个区域，提交后会写入一条区域标注。";
+      }
     } else {
       this.popupSelectionView.textContent = "未检测到页面选中内容";
     }
@@ -806,6 +1106,28 @@ class AgentationShellRuntime {
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
     this.setPopupStatus("Idle", "info");
+  }
+
+  private syncDragSelectionBox(rect: DOMRectReadOnly): void {
+    this.dragSelectionBox.hidden = false;
+    this.dragSelectionBox.style.left = `${rect.left}px`;
+    this.dragSelectionBox.style.top = `${rect.top}px`;
+    this.dragSelectionBox.style.width = `${rect.width}px`;
+    this.dragSelectionBox.style.height = `${rect.height}px`;
+  }
+
+  private hideDragSelectionBox(): void {
+    this.dragSelectionBox.hidden = true;
+    this.dragSelectionBox.style.width = "0px";
+    this.dragSelectionBox.style.height = "0px";
+  }
+
+  private resetDragSelectionState(): void {
+    this.dragSelectionMouseDownPoint = null;
+    this.dragSelectionStartPoint = null;
+    this.dragSelecting = false;
+    this.suppressClickOnceAfterDrag = false;
+    this.hideDragSelectionBox();
   }
 
   private syncHoverBox(target: HTMLElement, label: string): void {
@@ -876,6 +1198,100 @@ function deepElementFromPoint(doc: Document, x: number, y: number): HTMLElement 
     element = deeper;
   }
   return element;
+}
+
+function resolveEventTargetElement(event: Event): HTMLElement | null {
+  const path = event.composedPath();
+  for (const node of path) {
+    if (node instanceof HTMLElement) {
+      return node;
+    }
+  }
+  if (event.target instanceof HTMLElement) {
+    return event.target;
+  }
+  return null;
+}
+
+function shouldSkipDragSelectionStart(target: HTMLElement): boolean {
+  if (target.isContentEditable) {
+    return true;
+  }
+  return DRAG_SELECTION_TEXT_TAGS.has(target.tagName);
+}
+
+/**
+ * 拖框坐标统一夹在视口内，避免越界后出现负尺寸。
+ */
+function buildSelectionRect(
+  start: Point,
+  end: Point,
+  viewportWidth: number,
+  viewportHeight: number,
+): DOMRectReadOnly | null {
+  const left = clamp(Math.min(start.x, end.x), 0, Math.max(0, viewportWidth));
+  const top = clamp(Math.min(start.y, end.y), 0, Math.max(0, viewportHeight));
+  const right = clamp(Math.max(start.x, end.x), 0, Math.max(0, viewportWidth));
+  const bottom = clamp(Math.max(start.y, end.y), 0, Math.max(0, viewportHeight));
+  const width = right - left;
+  const height = bottom - top;
+  if (width < 1 || height < 1) {
+    return null;
+  }
+  return new DOMRect(left, top, width, height);
+}
+
+function collectAreaSelectionTargets(
+  doc: Document,
+  shellHost: HTMLElement,
+  selectionRect: DOMRectReadOnly,
+  viewportWidth: number,
+  viewportHeight: number,
+): MultiSelectTargetSnapshot[] {
+  const matched: Array<{ element: HTMLElement; rect: DOMRectReadOnly }> = [];
+
+  doc.querySelectorAll(AREA_SELECTION_ELEMENT_SELECTOR).forEach((candidate) => {
+    if (!(candidate instanceof HTMLElement)) {
+      return;
+    }
+    if (candidate === shellHost || shellHost.contains(candidate)) {
+      return;
+    }
+
+    const rect = snapshotRect(candidate.getBoundingClientRect());
+    if (rect.width > viewportWidth * 0.8 && rect.height > viewportHeight * 0.5) {
+      return;
+    }
+    if (rect.width < 10 || rect.height < 10) {
+      return;
+    }
+    if (!isRectIntersecting(rect, selectionRect)) {
+      return;
+    }
+    matched.push({ element: candidate, rect });
+  });
+
+  // 跟参考实现保持一致：命中集合里优先保留更具体的叶子节点。
+  const leafMatched = matched.filter(
+    ({ element }) =>
+      !matched.some(
+        ({ element: otherElement }) => otherElement !== element && element.contains(otherElement),
+      ),
+  );
+
+  return leafMatched.map(({ element, rect }) => {
+    const info = identifyElement(element);
+    return {
+      element,
+      elementName: info.name,
+      elementPath: info.path,
+      rect,
+    };
+  });
+}
+
+function isRectIntersecting(a: DOMRectReadOnly, b: DOMRectReadOnly): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
 function readToolbarPersistedState(win: Window): ToolbarPersistedState | null {
@@ -1325,6 +1741,15 @@ const SHELL_TEMPLATE = `
       text-overflow: ellipsis;
     }
 
+    .pc-agent-drag-selection {
+      position: fixed;
+      box-sizing: border-box;
+      border: 2px dashed rgba(0, 136, 255, 0.92);
+      background: rgba(0, 136, 255, 0.16);
+      border-radius: 6px;
+      pointer-events: none;
+    }
+
     .pc-agent-marker-layer {
       position: fixed;
       inset: 0;
@@ -1478,6 +1903,7 @@ const SHELL_TEMPLATE = `
   <div class="pc-agent-root">
     <div class="pc-agent-marker-layer" data-marker-layer></div>
     <div class="pc-agent-hover-box" data-hover-box hidden></div>
+    <div class="pc-agent-drag-selection" data-drag-selection hidden></div>
 
     <div class="pc-agent-toolbar" data-toolbar data-annotating="false">
       <button type="button" class="pc-agent-toolbar-toggle" data-active="false" data-toolbar-toggle>UI 标注</button>
