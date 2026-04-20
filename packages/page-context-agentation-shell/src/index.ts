@@ -19,6 +19,8 @@ export type {
 } from "./types";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
+const TOOLBAR_STATE_STORAGE_KEY = "__page_context_agentation_shell_toolbar_state_v1__";
+const TOOLBAR_STATE_VERSION = 1;
 const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
 const PRIORITY_ORDER: FeedbackPriority[] = ["low", "normal", "high", "critical"];
 
@@ -46,6 +48,28 @@ interface MultiSelectTargetSnapshot {
   elementName: string;
   elementPath: string;
   rect: DOMRectReadOnly;
+}
+
+interface ToolbarPosition {
+  left: number;
+  top: number;
+}
+
+interface ToolbarDragState {
+  source: "toolbar" | "dock";
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startLeft: number;
+  startTop: number;
+  moved: boolean;
+}
+
+interface ToolbarPersistedState {
+  version: typeof TOOLBAR_STATE_VERSION;
+  hidden: boolean;
+  left: number;
+  top: number;
 }
 
 /**
@@ -99,8 +123,12 @@ class AgentationShellRuntime {
   private readonly host: HTMLDivElement;
   private readonly shadow: ShadowRoot;
 
+  private readonly toolbar: HTMLDivElement;
   private readonly toolbarToggle: HTMLButtonElement;
   private readonly toolbarHint: HTMLSpanElement;
+  private readonly toolbarDragHandle: HTMLButtonElement;
+  private readonly toolbarHideButton: HTMLButtonElement;
+  private readonly toolbarDock: HTMLButtonElement;
   private readonly hoverBox: HTMLDivElement;
   private readonly markerLayer: HTMLDivElement;
   private readonly popupForm: HTMLFormElement;
@@ -122,6 +150,10 @@ class AgentationShellRuntime {
   private readonly multiSelectTargets = new Map<HTMLElement, MultiSelectTargetSnapshot>();
   private multiSelectLastAnchorX = 0;
   private multiSelectLastAnchorY = 0;
+  private toolbarHidden = false;
+  private toolbarPosition: ToolbarPosition | null = null;
+  private toolbarDragState: ToolbarDragState | null = null;
+  private toolbarDockClickBlocked = false;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -139,8 +171,12 @@ class AgentationShellRuntime {
     this.shadow = this.host.attachShadow({ mode: "open" });
     this.shadow.innerHTML = SHELL_TEMPLATE;
 
+    this.toolbar = queryRequired<HTMLDivElement>(this.shadow, "[data-toolbar]");
     this.toolbarToggle = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-toggle]");
     this.toolbarHint = queryRequired<HTMLSpanElement>(this.shadow, "[data-toolbar-hint]");
+    this.toolbarDragHandle = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-drag]");
+    this.toolbarHideButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-hide]");
+    this.toolbarDock = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-dock]");
     this.hoverBox = queryRequired<HTMLDivElement>(this.shadow, "[data-hover-box]");
     this.markerLayer = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-layer]");
     this.popupForm = queryRequired<HTMLFormElement>(this.shadow, "[data-popup]");
@@ -155,10 +191,21 @@ class AgentationShellRuntime {
 
   mount(): void {
     this.doc.body.appendChild(this.host);
+    this.restoreToolbarStateFromStorage();
+    if (this.toolbarPosition) {
+      this.syncToolbarVisibility();
+    } else {
+      this.captureToolbarPositionFromLayout();
+    }
     this.toolbarToggle.addEventListener("click", this.onToolbarToggleClick);
+    this.toolbarDragHandle.addEventListener("pointerdown", this.onToolbarDragPointerDown);
+    this.toolbarHideButton.addEventListener("click", this.onToolbarHideClick);
+    this.toolbarDock.addEventListener("pointerdown", this.onToolbarDockPointerDown);
+    this.toolbarDock.addEventListener("click", this.onToolbarDockClick);
     this.popupCancelButton.addEventListener("click", this.onPopupCancelClick);
     this.popupForm.addEventListener("submit", this.onPopupSubmit);
     this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
+    this.win.addEventListener("resize", this.onWindowResize, true);
   }
 
   private readonly onToolbarToggleClick = (): void => {
@@ -169,8 +216,122 @@ class AgentationShellRuntime {
     this.startAnnotating();
   };
 
+  private readonly onToolbarHideClick = (event: MouseEvent): void => {
+    event.preventDefault();
+
+    // 隐藏时先退出标注态，避免页面继续被透明层接管却没有可见入口。
+    if (this.annotating) {
+      this.stopAnnotating();
+    }
+    this.toolbarHidden = true;
+    this.syncToolbarVisibility();
+    this.persistToolbarState();
+  };
+
+  private readonly onToolbarDockClick = (event: MouseEvent): void => {
+    if (this.toolbarDockClickBlocked) {
+      this.toolbarDockClickBlocked = false;
+      event.preventDefault();
+      return;
+    }
+    event.preventDefault();
+    this.toolbarHidden = false;
+    this.syncToolbarVisibility();
+    this.persistToolbarState();
+  };
+
+  private readonly onToolbarDragPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+
+    if (!this.toolbarPosition) {
+      this.captureToolbarPositionFromLayout();
+    }
+    if (!this.toolbarPosition) {
+      return;
+    }
+
+    this.toolbarDragState = {
+      source: "toolbar",
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startLeft: this.toolbarPosition.left,
+      startTop: this.toolbarPosition.top,
+      moved: false,
+    };
+    this.toolbar.dataset.dragging = "true";
+    this.toolbarDragHandle.setPointerCapture?.(event.pointerId);
+    this.win.addEventListener("pointermove", this.onToolbarDragPointerMove, true);
+    this.win.addEventListener("pointerup", this.onToolbarDragPointerEnd, true);
+    this.win.addEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
+  };
+
+  private readonly onToolbarDockPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+
+    if (!this.toolbarHidden) {
+      return;
+    }
+    if (!this.toolbarPosition) {
+      this.captureToolbarPositionFromLayout();
+    }
+    if (!this.toolbarPosition) {
+      return;
+    }
+
+    this.toolbarDragState = {
+      source: "dock",
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startLeft: this.toolbarPosition.left,
+      startTop: this.toolbarPosition.top,
+      moved: false,
+    };
+    this.toolbarDock.dataset.dragging = "true";
+    this.toolbarDock.setPointerCapture?.(event.pointerId);
+    this.win.addEventListener("pointermove", this.onToolbarDragPointerMove, true);
+    this.win.addEventListener("pointerup", this.onToolbarDragPointerEnd, true);
+    this.win.addEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
+  };
+
+  private readonly onToolbarDragPointerMove = (event: PointerEvent): void => {
+    if (!this.toolbarDragState || event.pointerId !== this.toolbarDragState.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - this.toolbarDragState.startClientX;
+    const deltaY = event.clientY - this.toolbarDragState.startClientY;
+    if (!this.toolbarDragState.moved && (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3)) {
+      this.toolbarDragState.moved = true;
+    }
+
+    const nextLeft = this.toolbarDragState.startLeft + deltaX;
+    const nextTop = this.toolbarDragState.startTop + deltaY;
+    this.setToolbarPosition(nextLeft, nextTop);
+  };
+
+  private readonly onToolbarDragPointerEnd = (event: PointerEvent): void => {
+    if (!this.toolbarDragState || event.pointerId !== this.toolbarDragState.pointerId) {
+      return;
+    }
+    this.stopToolbarDrag();
+  };
+
+  private readonly onWindowResize = (): void => {
+    this.syncToolbarVisibility();
+    this.persistToolbarState();
+  };
+
   private startAnnotating(): void {
     this.annotating = true;
+    this.toolbar.dataset.annotating = "true";
     this.toolbarToggle.dataset.active = "true";
     this.toolbarToggle.textContent = "标注中";
     this.toolbarHint.textContent = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
@@ -183,6 +344,7 @@ class AgentationShellRuntime {
 
   private stopAnnotating(): void {
     this.annotating = false;
+    this.toolbar.dataset.annotating = "false";
     this.toolbarToggle.dataset.active = "false";
     this.toolbarToggle.textContent = "UI 标注";
     this.toolbarHint.textContent = "开启后，点击页面元素创建反馈。";
@@ -196,6 +358,111 @@ class AgentationShellRuntime {
     this.clearMultiSelectTargets();
     this.hideHoverBox();
     this.closePopup();
+  }
+
+  private captureToolbarPositionFromLayout(): void {
+    const rect = this.toolbar.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) {
+      return;
+    }
+    this.toolbarPosition = {
+      left: rect.left,
+      top: rect.top,
+    };
+    this.syncToolbarVisibility();
+  }
+
+  private restoreToolbarStateFromStorage(): void {
+    // 刷新后优先恢复上次状态；无有效数据再走布局兜底。
+    const state = readToolbarPersistedState(this.win);
+    if (!state) {
+      return;
+    }
+    this.toolbarHidden = state.hidden;
+    this.toolbarPosition = {
+      left: state.left,
+      top: state.top,
+    };
+  }
+
+  private persistToolbarState(): void {
+    // 仅在已有定位坐标时写盘，避免写入半状态数据。
+    if (!this.toolbarPosition) {
+      return;
+    }
+    writeToolbarPersistedState(this.win, {
+      version: TOOLBAR_STATE_VERSION,
+      hidden: this.toolbarHidden,
+      left: this.toolbarPosition.left,
+      top: this.toolbarPosition.top,
+    });
+  }
+
+  private setToolbarPosition(left: number, top: number): void {
+    const floatingBox = this.toolbarHidden ? this.toolbarDock : this.toolbar;
+    const rect = floatingBox.getBoundingClientRect();
+    const width = rect.width || 96;
+    const height = rect.height || 40;
+
+    // 始终给页面留出一点边距，避免拖到视口外后用户无法再点回来。
+    this.toolbarPosition = {
+      left: clamp(left, 12, Math.max(12, this.win.innerWidth - width - 12)),
+      top: clamp(top, 12, Math.max(12, this.win.innerHeight - height - 12)),
+    };
+    this.applyToolbarPosition();
+  }
+
+  private applyToolbarPosition(): void {
+    if (!this.toolbarPosition) {
+      return;
+    }
+
+    const { left, top } = this.toolbarPosition;
+    this.toolbar.style.left = `${left}px`;
+    this.toolbar.style.top = `${top}px`;
+    this.toolbar.style.right = "auto";
+    this.toolbar.style.bottom = "auto";
+
+    this.toolbarDock.style.left = `${left}px`;
+    this.toolbarDock.style.top = `${top}px`;
+    this.toolbarDock.style.right = "auto";
+    this.toolbarDock.style.bottom = "auto";
+  }
+
+  private syncToolbarVisibility(): void {
+    this.toolbar.hidden = this.toolbarHidden;
+    this.toolbarDock.hidden = !this.toolbarHidden;
+    if (this.toolbarPosition) {
+      const basePosition = this.toolbarPosition;
+      this.toolbarPosition = null;
+      this.setToolbarPosition(basePosition.left, basePosition.top);
+      return;
+    }
+    this.applyToolbarPosition();
+  }
+
+  private stopToolbarDrag(): void {
+    const dragState = this.toolbarDragState;
+    const pointerId = dragState?.pointerId;
+    this.toolbarDragState = null;
+    delete this.toolbar.dataset.dragging;
+    delete this.toolbarDock.dataset.dragging;
+    if (pointerId !== undefined) {
+      if (dragState?.source === "toolbar") {
+        this.toolbarDragHandle.releasePointerCapture?.(pointerId);
+      } else {
+        this.toolbarDock.releasePointerCapture?.(pointerId);
+      }
+    }
+
+    // dock 上拖动结束后，屏蔽紧随其后的 click，避免“刚挪完就自动打开”。
+    if (dragState?.source === "dock" && dragState.moved) {
+      this.toolbarDockClickBlocked = true;
+    }
+    this.persistToolbarState();
+    this.win.removeEventListener("pointermove", this.onToolbarDragPointerMove, true);
+    this.win.removeEventListener("pointerup", this.onToolbarDragPointerEnd, true);
+    this.win.removeEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
   }
 
   private readonly onDocumentPointerMove = (event: PointerEvent): void => {
@@ -611,6 +878,76 @@ function deepElementFromPoint(doc: Document, x: number, y: number): HTMLElement 
   return element;
 }
 
+function readToolbarPersistedState(win: Window): ToolbarPersistedState | null {
+  const storage = getSafeLocalStorage(win);
+  if (!storage) {
+    return null;
+  }
+  // 解析失败时返回 null，上层自动退回默认显示逻辑。
+  return parseToolbarPersistedState(storage.getItem(TOOLBAR_STATE_STORAGE_KEY));
+}
+
+function writeToolbarPersistedState(win: Window, state: ToolbarPersistedState): void {
+  const storage = getSafeLocalStorage(win);
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(TOOLBAR_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // 某些受限环境可能禁写 localStorage；这里静默降级，不阻塞主功能。
+  }
+}
+
+function parseToolbarPersistedState(raw: string | null): ToolbarPersistedState | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    return normalizeToolbarPersistedState(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeToolbarPersistedState(value: unknown): ToolbarPersistedState | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (value.version !== TOOLBAR_STATE_VERSION) {
+    return null;
+  }
+  if (typeof value.hidden !== "boolean") {
+    return null;
+  }
+  if (!isFiniteNumber(value.left) || !isFiniteNumber(value.top)) {
+    return null;
+  }
+  return {
+    version: TOOLBAR_STATE_VERSION,
+    hidden: value.hidden,
+    left: value.left,
+    top: value.top,
+  };
+}
+
+function getSafeLocalStorage(win: Window): Storage | null {
+  try {
+    return win.localStorage;
+  } catch {
+    // Safari 隐私模式、沙箱 iframe 等场景都可能抛异常。
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function isMultiSelectChordPressed(event: Pick<MouseEvent | KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey">): boolean {
   return event.shiftKey && (event.metaKey || event.ctrlKey);
 }
@@ -841,30 +1178,40 @@ const SHELL_TEMPLATE = `
       position: fixed;
       right: 20px;
       bottom: 20px;
-      width: 304px;
+      width: auto;
+      max-width: min(240px, calc(100vw - 24px));
       background: #1a1a1a;
       color: #fff;
-      border-radius: 16px;
+      border-radius: 18px;
       border: 1px solid rgba(255, 255, 255, 0.1);
       box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-      padding: 8px 10px;
+      padding: 6px 8px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       pointer-events: auto;
     }
 
+    .pc-agent-toolbar[hidden] {
+      display: none;
+    }
+
+    .pc-agent-toolbar[data-dragging="true"] {
+      user-select: none;
+    }
+
     .pc-agent-toolbar-toggle {
-      width: 88px;
-      height: 30px;
+      min-width: 74px;
+      height: 28px;
       border: 0;
       border-radius: 999px;
       background: #0088ff;
       color: #fff;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
       transition: transform 0.15s ease, background 0.15s ease;
+      flex-shrink: 0;
     }
 
     .pc-agent-toolbar-toggle[data-active="true"] {
@@ -876,12 +1223,80 @@ const SHELL_TEMPLATE = `
     }
 
     .pc-agent-toolbar-hint {
-      display: block;
-      line-height: 1.35;
-      font-size: 12px;
+      display: none;
+      line-height: 1.3;
+      font-size: 11px;
       color: rgba(255, 255, 255, 0.72);
-      flex: 1;
-      min-width: 0;
+      max-width: 118px;
+      flex: 1 1 auto;
+      min-width: 72px;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .pc-agent-toolbar[data-annotating="true"] .pc-agent-toolbar-hint {
+      display: block;
+    }
+
+    .pc-agent-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .pc-agent-toolbar-icon {
+      width: 24px;
+      height: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.15s ease;
+    }
+
+    .pc-agent-toolbar-icon:hover {
+      background: rgba(255, 255, 255, 0.14);
+      transform: translateY(-1px);
+    }
+
+    .pc-agent-toolbar-drag {
+      cursor: grab;
+      letter-spacing: -1px;
+      font-weight: 700;
+    }
+
+    .pc-agent-toolbar[data-dragging="true"] .pc-agent-toolbar-drag {
+      cursor: grabbing;
+    }
+
+    .pc-agent-toolbar-dock {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(26, 26, 26, 0.94);
+      color: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      padding: 8px 10px;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .pc-agent-toolbar-dock[hidden] {
+      display: none;
+    }
+
+    .pc-agent-toolbar-dock[data-dragging="true"] {
+      cursor: grabbing;
+      user-select: none;
     }
 
     .pc-agent-hover-box {
@@ -1064,10 +1479,27 @@ const SHELL_TEMPLATE = `
     <div class="pc-agent-marker-layer" data-marker-layer></div>
     <div class="pc-agent-hover-box" data-hover-box hidden></div>
 
-    <div class="pc-agent-toolbar">
+    <div class="pc-agent-toolbar" data-toolbar data-annotating="false">
       <button type="button" class="pc-agent-toolbar-toggle" data-active="false" data-toolbar-toggle>UI 标注</button>
       <span class="pc-agent-toolbar-hint" data-toolbar-hint>开启后，点击页面元素创建反馈。</span>
+      <div class="pc-agent-toolbar-actions">
+        <button
+          type="button"
+          class="pc-agent-toolbar-icon pc-agent-toolbar-drag"
+          data-toolbar-drag
+          aria-label="拖动 UI 标注浮窗"
+          title="拖动浮窗"
+        >⋮⋮</button>
+        <button
+          type="button"
+          class="pc-agent-toolbar-icon"
+          data-toolbar-hide
+          aria-label="隐藏 UI 标注浮窗"
+          title="隐藏浮窗"
+        >×</button>
+      </div>
     </div>
+    <button type="button" class="pc-agent-toolbar-dock" data-toolbar-dock hidden>标注</button>
 
     <form class="pc-agent-popup" data-popup hidden>
       <p class="pc-agent-popup-title">Create Annotation</p>
