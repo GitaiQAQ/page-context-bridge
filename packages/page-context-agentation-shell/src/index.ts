@@ -73,13 +73,18 @@ interface MarkerRecord {
   priority: FeedbackPriority;
   selectedText?: string;
   elementName: string;
+  targetInput: AgentationShellCreateAnnotationInput["target"];
   x: number;
   y: number;
 }
 
 interface PopupState {
+  mode: "create" | "edit";
+  editMarkerId?: string;
   anchorX: number;
   anchorY: number;
+  initialBody?: string;
+  initialPriority?: FeedbackPriority;
   selectedText?: string;
   targetElement?: HTMLElement;
   targetInput: AgentationShellCreateAnnotationInput["target"];
@@ -181,11 +186,13 @@ class AgentationShellRuntime {
   private readonly dragSelectionBox: HTMLDivElement;
   private readonly markerLayer: HTMLDivElement;
   private readonly popupForm: HTMLFormElement;
+  private readonly popupTitleView: HTMLParagraphElement;
   private readonly popupTargetView: HTMLParagraphElement;
   private readonly popupSelectionView: HTMLParagraphElement;
   private readonly popupBodyInput: HTMLTextAreaElement;
   private readonly popupPrioritySelect: HTMLSelectElement;
   private readonly popupStatusView: HTMLParagraphElement;
+  private readonly popupDeleteButton: HTMLButtonElement;
   private readonly popupCancelButton: HTMLButtonElement;
   private readonly popupSubmitButton: HTMLButtonElement;
 
@@ -234,11 +241,13 @@ class AgentationShellRuntime {
     this.dragSelectionBox = queryRequired<HTMLDivElement>(this.shadow, "[data-drag-selection]");
     this.markerLayer = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-layer]");
     this.popupForm = queryRequired<HTMLFormElement>(this.shadow, "[data-popup]");
+    this.popupTitleView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-title]");
     this.popupTargetView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-target]");
     this.popupSelectionView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-selection]");
     this.popupBodyInput = queryRequired<HTMLTextAreaElement>(this.shadow, "[data-popup-body]");
     this.popupPrioritySelect = queryRequired<HTMLSelectElement>(this.shadow, "[data-popup-priority]");
     this.popupStatusView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-status]");
+    this.popupDeleteButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-delete]");
     this.popupCancelButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-cancel]");
     this.popupSubmitButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-submit]");
   }
@@ -256,6 +265,7 @@ class AgentationShellRuntime {
     this.toolbarHideButton.addEventListener("click", this.onToolbarHideClick);
     this.toolbarDock.addEventListener("pointerdown", this.onToolbarDockPointerDown);
     this.toolbarDock.addEventListener("click", this.onToolbarDockClick);
+    this.popupDeleteButton.addEventListener("click", this.onPopupDeleteClick);
     this.popupCancelButton.addEventListener("click", this.onPopupCancelClick);
     this.popupForm.addEventListener("submit", this.onPopupSubmit);
     this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
@@ -673,6 +683,13 @@ class AgentationShellRuntime {
     if (!this.annotating || this.isEventFromShell(event)) {
       return;
     }
+    if (this.submitting) {
+      // 提交期间冻结页面点击，避免重复提交和页面误操作并发发生。
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (this.suppressClickOnceAfterDrag) {
       // 对齐参考实现：拖框收尾会跟一发 click，这里只消费一次。
       this.suppressClickOnceAfterDrag = false;
@@ -761,6 +778,26 @@ class AgentationShellRuntime {
     this.closePopup();
   };
 
+  private readonly onPopupDeleteClick = (event: MouseEvent): void => {
+    event.preventDefault();
+    if (this.submitting || !this.popupState || this.popupState.mode !== "edit") {
+      return;
+    }
+
+    const markerId = this.popupState.editMarkerId;
+    if (!markerId) {
+      this.setPopupStatus("删除失败：找不到标注", "error");
+      return;
+    }
+
+    if (!this.deleteMarkerById(markerId)) {
+      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      return;
+    }
+    this.setPopupStatus("反馈已删除", "success");
+    this.closePopup();
+  };
+
   private readonly onPriorityChange = (): void => {
     if (!isFeedbackPriority(this.popupPrioritySelect.value)) {
       this.popupPrioritySelect.value = "normal";
@@ -772,6 +809,7 @@ class AgentationShellRuntime {
     if (this.submitting || !this.popupState) {
       return;
     }
+    const popupState = this.popupState;
 
     const body = this.popupBodyInput.value.trim();
     if (!body) {
@@ -781,20 +819,36 @@ class AgentationShellRuntime {
     }
 
     const priority = normalizePriority(this.popupPrioritySelect.value);
+    if (popupState.mode === "edit") {
+      // 编辑链路只更新本地 marker，不依赖 bridge 新协议。
+      const markerId = popupState.editMarkerId;
+      if (!markerId) {
+        this.setPopupStatus("更新失败：找不到标注", "error");
+        return;
+      }
+      if (!this.updateMarkerById(markerId, body, priority)) {
+        this.setPopupStatus("更新失败：标注可能已被移除", "error");
+        return;
+      }
+      this.setPopupStatus("反馈已更新", "success");
+      this.closePopup();
+      return;
+    }
+
     const uiAnchor = buildUiAnchorFromTarget(
-      this.popupState.targetInput,
-      this.popupState.selectedText,
+      popupState.targetInput,
+      popupState.selectedText,
       {
-        targetElement: this.popupState.targetElement,
-        multiSelectMeta: this.popupState.multiSelectMeta,
+        targetElement: popupState.targetElement,
+        multiSelectMeta: popupState.multiSelectMeta,
       },
     );
     const payload: AgentationShellCreateAnnotationInput = {
       body,
       priority,
-      selectedText: this.popupState.selectedText,
+      selectedText: popupState.selectedText,
       uiAnchor,
-      target: this.popupState.targetInput,
+      target: popupState.targetInput,
     };
 
     this.submitting = true;
@@ -803,7 +857,7 @@ class AgentationShellRuntime {
 
     try {
       const result = await this.adapter.createAnnotation(payload);
-      this.applyAnnotationSuccess(result, payload);
+      this.applyAnnotationSuccess(result, payload, popupState);
       this.setPopupStatus("反馈已创建", "success");
       this.popupBodyInput.value = "";
       this.closePopup();
@@ -817,24 +871,50 @@ class AgentationShellRuntime {
     }
   };
 
+  private updateMarkerById(markerId: string, body: string, priority: FeedbackPriority): boolean {
+    const marker = this.markers.find((item) => item.id === markerId);
+    if (!marker) {
+      return false;
+    }
+    marker.body = body;
+    marker.priority = priority;
+    this.renderMarkers();
+    return true;
+  }
+
+  private deleteMarkerById(markerId: string): boolean {
+    const markerIndex = this.markers.findIndex((item) => item.id === markerId);
+    if (markerIndex < 0) {
+      return false;
+    }
+    this.markers.splice(markerIndex, 1);
+    this.renderMarkers();
+    return true;
+  }
+
   private applyAnnotationSuccess(
     result: AgentationShellCreateAnnotationResult,
     input: AgentationShellCreateAnnotationInput,
+    popupState: PopupState,
   ): void {
-    const idFromResult = typeof result?.id === "string" ? result.id : "";
-    const markerId = idFromResult.trim() || `local-${Date.now()}-${this.markerIdSeq++}`;
-    if (!this.popupState) {
+    if (popupState.mode !== "create") {
       return;
     }
-
+    const idFromResult = typeof result?.id === "string" ? result.id : "";
+    const markerId = idFromResult.trim() || `local-${Date.now()}-${this.markerIdSeq++}`;
     this.markers.push({
       id: markerId,
       body: input.body,
       priority: input.priority,
       selectedText: input.selectedText,
       elementName: input.target.elementName,
-      x: this.popupState.anchorX,
-      y: this.popupState.anchorY,
+      targetInput: {
+        elementName: input.target.elementName,
+        elementPath: input.target.elementPath,
+        rect: snapshotRect(input.target.rect),
+      },
+      x: popupState.anchorX,
+      y: popupState.anchorY,
     });
     this.renderMarkers();
   }
@@ -845,11 +925,18 @@ class AgentationShellRuntime {
       const button = this.doc.createElement("button");
       button.type = "button";
       button.className = "pc-agent-marker";
+      button.dataset.markerId = marker.id;
       button.style.left = `${marker.x}px`;
       button.style.top = `${marker.y}px`;
       button.style.background = markerColor(marker.priority);
       button.textContent = String(index + 1);
       button.setAttribute("aria-label", `annotation-marker-${index + 1}`);
+      button.addEventListener("click", (event) => {
+        // marker 点击只用于编辑，不应触发页面层点击逻辑。
+        event.preventDefault();
+        event.stopPropagation();
+        this.openPopupForMarker(marker.id);
+      });
 
       const tooltip = this.doc.createElement("span");
       tooltip.className = "pc-agent-marker-tooltip";
@@ -857,6 +944,31 @@ class AgentationShellRuntime {
       button.appendChild(tooltip);
 
       this.markerLayer.appendChild(button);
+    });
+  }
+
+  private openPopupForMarker(markerId: string): void {
+    if (this.submitting) {
+      return;
+    }
+    const marker = this.markers.find((item) => item.id === markerId);
+    if (!marker) {
+      return;
+    }
+
+    // 进入编辑态时统一清掉临时选择态，避免键盘事件误触发旧上下文。
+    this.resetDragSelectionState();
+    this.clearMultiSelectTargets();
+    this.hideHoverBox();
+    this.openPopupWithState({
+      mode: "edit",
+      editMarkerId: marker.id,
+      anchorX: marker.x,
+      anchorY: marker.y,
+      initialBody: marker.body,
+      initialPriority: marker.priority,
+      selectedText: marker.selectedText,
+      targetInput: marker.targetInput,
     });
   }
 
@@ -942,6 +1054,7 @@ class AgentationShellRuntime {
     const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
     const first = snapshots[0];
     const state: PopupState = {
+      mode: "create",
       anchorX:
         this.multiSelectLastAnchorX || clamp(unionRect.left + unionRect.width / 2, 0, this.win.innerWidth),
       anchorY:
@@ -1007,6 +1120,7 @@ class AgentationShellRuntime {
 
       const first = snapshots[0];
       this.openPopupWithState({
+        mode: "create",
         anchorX: clamp(clientX, 0, this.win.innerWidth),
         anchorY: clamp(clientY, 0, this.win.innerHeight),
         selectedText: selectedText || undefined,
@@ -1039,6 +1153,7 @@ class AgentationShellRuntime {
       selectionRect.top + selectionRect.height / 2,
     );
     this.openPopupWithState({
+      mode: "create",
       anchorX: clamp(clientX, 0, this.win.innerWidth),
       anchorY: clamp(clientY, 0, this.win.innerHeight),
       selectedText: selectedText || undefined,
@@ -1062,6 +1177,7 @@ class AgentationShellRuntime {
     const elementInfo = identifyElement(target);
     const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
     this.openPopupWithState({
+      mode: "create",
       anchorX: clientX,
       anchorY: clientY,
       selectedText: selectedText || undefined,
@@ -1080,6 +1196,15 @@ class AgentationShellRuntime {
     const nextLeft = computePopupLeft(state.anchorX, this.win.innerWidth);
     this.popupForm.style.top = `${nextTop}px`;
     this.popupForm.style.left = `${nextLeft}px`;
+    if (state.mode === "edit") {
+      this.popupTitleView.textContent = "Edit Annotation";
+      this.popupSubmitButton.textContent = "更新";
+      this.popupDeleteButton.hidden = false;
+    } else {
+      this.popupTitleView.textContent = "Create Annotation";
+      this.popupSubmitButton.textContent = "提交";
+      this.popupDeleteButton.hidden = true;
+    }
     this.popupTargetView.textContent = `${state.targetInput.elementName} · ${state.targetInput.elementPath || "unknown path"}`;
     if (state.selectedText) {
       this.popupSelectionView.textContent = state.selectedText;
@@ -1092,8 +1217,10 @@ class AgentationShellRuntime {
     } else {
       this.popupSelectionView.textContent = "未检测到页面选中内容";
     }
-    this.popupPrioritySelect.value = "normal";
+    this.popupBodyInput.value = state.initialBody ?? "";
+    this.popupPrioritySelect.value = normalizePriority(state.initialPriority ?? "normal");
     this.popupForm.hidden = false;
+    this.syncPopupSubmittingState();
     this.setPopupStatus("Idle", "info");
     this.win.setTimeout(() => {
       this.popupBodyInput.focus();
@@ -1103,6 +1230,9 @@ class AgentationShellRuntime {
   private closePopup(): void {
     this.popupState = null;
     this.popupForm.hidden = true;
+    this.popupDeleteButton.hidden = true;
+    this.popupTitleView.textContent = "Create Annotation";
+    this.popupSubmitButton.textContent = "提交";
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
     this.setPopupStatus("Idle", "info");
@@ -1156,6 +1286,7 @@ class AgentationShellRuntime {
 
   private syncPopupSubmittingState(): void {
     this.popupSubmitButton.disabled = this.submitting;
+    this.popupDeleteButton.disabled = this.submitting;
     this.popupCancelButton.disabled = this.submitting;
     this.popupPrioritySelect.disabled = this.submitting;
     this.popupBodyInput.readOnly = this.submitting;
@@ -1863,7 +1994,7 @@ const SHELL_TEMPLATE = `
       margin-top: 10px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       gap: 8px;
     }
 
@@ -1882,6 +2013,13 @@ const SHELL_TEMPLATE = `
       background: #0088ff;
       color: #fff;
       font-weight: 600;
+    }
+
+    .pc-agent-popup-btn.danger {
+      margin-right: auto;
+      border-color: rgba(255, 123, 123, 0.5);
+      background: rgba(255, 123, 123, 0.14);
+      color: #ffd2d2;
     }
 
     .pc-agent-popup-btn:disabled {
@@ -1928,7 +2066,7 @@ const SHELL_TEMPLATE = `
     <button type="button" class="pc-agent-toolbar-dock" data-toolbar-dock hidden>标注</button>
 
     <form class="pc-agent-popup" data-popup hidden>
-      <p class="pc-agent-popup-title">Create Annotation</p>
+      <p class="pc-agent-popup-title" data-popup-title>Create Annotation</p>
       <p class="pc-agent-popup-target" data-popup-target>unknown target</p>
 
       <label class="pc-agent-popup-label">当前选中文本</label>
@@ -1946,6 +2084,7 @@ const SHELL_TEMPLATE = `
       </select>
 
       <div class="pc-agent-popup-actions">
+        <button type="button" class="pc-agent-popup-btn danger" data-popup-delete hidden>删除</button>
         <button type="button" class="pc-agent-popup-btn" data-popup-cancel>取消</button>
         <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交</button>
       </div>
