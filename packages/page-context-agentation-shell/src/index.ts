@@ -35,7 +35,6 @@ const DRAG_SELECTION_THRESHOLD_PX = 6;
 const AREA_SELECTION_MIN_SIZE_PX = 20;
 const DEFAULT_ANNOTATING_HINT = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
 const MARKER_DISMISS_REASON = "marker deleted from agentation shell";
-const POPUP_FOCUSABLE_SELECTOR = 'textarea, select, button, input, [href], [tabindex]:not([tabindex="-1"])';
 const AREA_SELECTION_ELEMENT_SELECTOR = "button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th";
 const DRAG_SELECTION_TEXT_TAGS = new Set([
   "P",
@@ -241,7 +240,6 @@ class AgentationShellRuntime {
   private toolbarDockClickBlocked = false;
   private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
   private feedbackDeltaSyncInFlight: Promise<void> | null = null;
-  private popupFocusReturnTarget: HTMLElement | null = null;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -987,19 +985,18 @@ class AgentationShellRuntime {
       return;
     }
 
-    if (event.key === "Tab") {
-      this.trapPopupFocus(event);
+    if (event.key !== "Enter") {
       return;
     }
 
-    // 文本输入场景下使用 Cmd/Ctrl+Enter 快速提交，保留 Enter 换行语义。
+    // 只在 textarea 内接管 Enter：Shift+Enter 继续换行，普通 Enter 提交。
     if (
-      event.key === "Enter"
-      && (event.metaKey || event.ctrlKey)
-      && !event.shiftKey
-      && !event.altKey
+      event.target instanceof HTMLTextAreaElement
       && !event.isComposing
-      && event.target instanceof HTMLTextAreaElement
+      && !event.shiftKey
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.altKey
     ) {
       event.preventDefault();
       event.stopPropagation();
@@ -1269,12 +1266,20 @@ class AgentationShellRuntime {
       button.style.background = markerColor(marker.priority);
       button.textContent = String(index + 1);
       button.setAttribute("aria-label", `annotation-marker-${index + 1}`);
+      // 仅补交互提示层：告诉用户 marker 点击会进入编辑，并可在弹窗删除。
+      button.title = "点击编辑；弹窗内可删除";
       button.addEventListener("click", (event) => {
         // marker 点击只用于编辑，不应触发页面层点击逻辑。
         event.preventDefault();
         event.stopPropagation();
         this.openPopupForMarker(marker.id);
       });
+
+      const affordance = this.doc.createElement("span");
+      affordance.className = "pc-agent-marker-affordance";
+      affordance.textContent = "编辑 / 删除";
+      affordance.setAttribute("aria-hidden", "true");
+      button.appendChild(affordance);
 
       const tooltip = this.doc.createElement("span");
       tooltip.className = "pc-agent-marker-tooltip";
@@ -1529,7 +1534,6 @@ class AgentationShellRuntime {
   }
 
   private openPopupWithState(state: PopupState): void {
-    this.popupFocusReturnTarget = this.capturePopupFocusReturnTarget();
     this.popupState = state;
     const nextTop = computePopupTop(state.anchorY, this.win.innerHeight);
     const nextLeft = computePopupLeft(state.anchorX, this.win.innerWidth);
@@ -1567,8 +1571,6 @@ class AgentationShellRuntime {
   }
 
   private closePopup(): void {
-    const focusTarget = this.popupFocusReturnTarget;
-    this.popupFocusReturnTarget = null;
     this.popupState = null;
     this.popupForm.hidden = true;
     this.popupDeleteButton.hidden = true;
@@ -1577,63 +1579,6 @@ class AgentationShellRuntime {
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
     this.setPopupStatus("Idle", "info");
-    this.restorePopupFocus(focusTarget);
-  }
-
-  private trapPopupFocus(event: KeyboardEvent): void {
-    const focusables = this.collectPopupFocusableElements();
-    if (focusables.length === 0) {
-      return;
-    }
-    const activeElement = this.shadow.activeElement;
-    const currentIndex = activeElement instanceof HTMLElement ? focusables.indexOf(activeElement) : -1;
-    if (currentIndex < 0) {
-      event.preventDefault();
-      focusables[event.shiftKey ? focusables.length - 1 : 0]?.focus();
-      return;
-    }
-
-    if (!event.shiftKey && currentIndex === focusables.length - 1) {
-      event.preventDefault();
-      focusables[0]?.focus();
-      return;
-    }
-    if (event.shiftKey && currentIndex === 0) {
-      event.preventDefault();
-      focusables[focusables.length - 1]?.focus();
-    }
-  }
-
-  private collectPopupFocusableElements(): HTMLElement[] {
-    return Array.from(this.popupForm.querySelectorAll<HTMLElement>(POPUP_FOCUSABLE_SELECTOR)).filter((element) =>
-      isPopupFocusableElement(element),
-    );
-  }
-
-  private capturePopupFocusReturnTarget(): HTMLElement | null {
-    // 优先读 shadow 内焦点，避免 document.activeElement 只返回 host 的信息损失。
-    const activeInShadow = this.shadow.activeElement;
-    if (activeInShadow instanceof HTMLElement && !this.popupForm.contains(activeInShadow)) {
-      return activeInShadow;
-    }
-
-    const activeInDocument = this.doc.activeElement;
-    if (activeInDocument instanceof HTMLElement && activeInDocument !== this.host && !this.popupForm.contains(activeInDocument)) {
-      return activeInDocument;
-    }
-    return null;
-  }
-
-  private restorePopupFocus(target: HTMLElement | null): void {
-    if (!target || !target.isConnected) {
-      return;
-    }
-    // 关闭弹窗后把焦点还给来源控件，保证键盘流转闭环。
-    try {
-      target.focus({ preventScroll: true });
-    } catch {
-      target.focus();
-    }
   }
 
   private syncDragSelectionBox(rect: DOMRectReadOnly): void {
@@ -2253,25 +2198,6 @@ function queryRequired<T extends Element>(root: ParentNode, selector: string): T
   return node as T;
 }
 
-function isPopupFocusableElement(element: HTMLElement): boolean {
-  if (element.hidden || element.getAttribute("aria-hidden") === "true") {
-    return false;
-  }
-  if (element.tabIndex < 0) {
-    return false;
-  }
-  if (
-    (element instanceof HTMLButtonElement
-      || element instanceof HTMLInputElement
-      || element instanceof HTMLTextAreaElement
-      || element instanceof HTMLSelectElement)
-    && element.disabled
-  ) {
-    return false;
-  }
-  return true;
-}
-
 const SHELL_TEMPLATE = `
   <style>
     .pc-agent-root {
@@ -2461,6 +2387,31 @@ const SHELL_TEMPLATE = `
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
       cursor: pointer;
       pointer-events: auto;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .pc-agent-marker:hover,
+    .pc-agent-marker:focus-visible {
+      transform: translate(-50%, -50%) scale(1.06);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    .pc-agent-marker-affordance {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      transform: translateX(-50%);
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: rgba(0, 0, 0, 0.82);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 11px;
+      line-height: 1;
+      padding: 4px 8px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
     }
 
     .pc-agent-marker-tooltip {
@@ -2484,7 +2435,13 @@ const SHELL_TEMPLATE = `
       transition: opacity 0.15s ease;
     }
 
-    .pc-agent-marker:hover .pc-agent-marker-tooltip {
+    .pc-agent-marker:hover .pc-agent-marker-affordance,
+    .pc-agent-marker:focus-visible .pc-agent-marker-affordance {
+      opacity: 1;
+    }
+
+    .pc-agent-marker:hover .pc-agent-marker-tooltip,
+    .pc-agent-marker:focus-visible .pc-agent-marker-tooltip {
       opacity: 1;
     }
 

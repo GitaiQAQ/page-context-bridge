@@ -18,7 +18,7 @@ describe("agentation shell popup keyboard flow", () => {
     });
   });
 
-  it("submits with Ctrl+Enter inside popup body", async () => {
+  it("supports Enter submit, Shift+Enter newline, Escape cancel and IME guard", async () => {
     const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-keyboard-1" });
     const mounted = installAgentationShell({
       adapter: { createAnnotation, updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
@@ -31,23 +31,42 @@ describe("agentation shell popup keyboard flow", () => {
     queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
     dispatchMouse(document.body, "click", 120, 96);
 
+    const popup = queryRequired<HTMLFormElement>(shadow, "[data-popup]");
     const popupBody = queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]");
-    popupBody.value = "submit from ctrl+enter";
-    dispatchKeyboard(popupBody, "Enter", { ctrlKey: true });
+    popupBody.value = "draft keyboard flow";
+
+    // Shift+Enter 应保留换行语义，这里只校验不会触发提交。
+    dispatchKeyboard(popupBody, "Enter", { shiftKey: true });
+    await flushMicrotasks();
+    expect(createAnnotation).toHaveBeenCalledTimes(0);
+
+    // 中文输入法候选态下 Enter 不应触发提交。
+    dispatchKeyboard(popupBody, "Enter", { isComposing: true });
+    await flushMicrotasks();
+    expect(createAnnotation).toHaveBeenCalledTimes(0);
+
+    dispatchKeyboard(popupBody, "Escape");
+    expect(popup.hidden).toBe(true);
+    expect(createAnnotation).toHaveBeenCalledTimes(0);
+
+    dispatchMouse(document.body, "click", 120, 96);
+    expect(popup.hidden).toBe(false);
+    popupBody.value = "submit from enter";
+    dispatchKeyboard(popupBody, "Enter");
     await flushMicrotasks();
 
     expect(createAnnotation).toHaveBeenCalledTimes(1);
     expect(createAnnotation).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: "submit from ctrl+enter",
+        body: "submit from enter",
       }),
     );
     // 结束前主动退出标注态，避免把全局监听残留给下一个用例。
     queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
   });
 
-  it("traps focus in popup and closes by Esc when editing marker", async () => {
-    const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-focus-1" });
+  it("shows marker hover edit/delete affordance hints", async () => {
+    const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-affordance-1" });
     const mounted = installAgentationShell({
       adapter: { createAnnotation, updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
       doc: document,
@@ -62,36 +81,18 @@ describe("agentation shell popup keyboard flow", () => {
 
     const popup = queryRequired<HTMLFormElement>(shadow, "[data-popup]");
     const popupBody = queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]");
-    expect(popup.hidden).toBe(false);
-    popupBody.value = "seed marker";
+    popupBody.value = "seed affordance marker";
     popup.requestSubmit();
     await flushMicrotasks();
     expect(createAnnotation).toHaveBeenCalledTimes(1);
 
-    // 切回非标注态，模拟“只看 marker 并编辑”的真实路径。
+    const marker = queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-affordance-1"]');
+    expect(marker.title).toBe("点击编辑；弹窗内可删除");
+    const affordance = queryRequired<HTMLSpanElement>(marker, ".pc-agent-marker-affordance");
+    expect(affordance.textContent).toBe("编辑 / 删除");
+
+    // 主动关掉标注态，避免全局监听影响其它用例。
     toolbarToggle.click();
-    expect(toolbarToggle.dataset.active).toBe("false");
-
-    const marker = queryRequired<HTMLButtonElement>(shadow, "[data-marker-id]");
-    const popupSubmit = queryRequired<HTMLButtonElement>(shadow, "[data-popup-submit]");
-
-    marker.focus();
-    marker.click();
-    await waitForMacrotask();
-    expect(popup.hidden).toBe(false);
-    expect(shadow.activeElement).toBe(popupBody);
-
-    // 在第一个焦点元素上 Shift+Tab，应该回环到最后一个按钮。
-    dispatchKeyboard(popupBody, "Tab", { shiftKey: true });
-    expect(shadow.activeElement).toBe(popupSubmit);
-
-    // 在最后一个焦点元素上 Tab，应该回环到第一个输入框。
-    dispatchKeyboard(popupSubmit, "Tab");
-    expect(shadow.activeElement).toBe(popupBody);
-
-    dispatchKeyboard(popupBody, "Escape");
-    expect(popup.hidden).toBe(true);
-    expect(shadow.activeElement).toBe(marker);
   });
 });
 
@@ -135,26 +136,29 @@ function dispatchMouse(target: EventTarget, type: "click", clientX: number, clie
 function dispatchKeyboard(
   target: EventTarget,
   key: string,
-  options: Partial<Pick<KeyboardEventInit, "ctrlKey" | "metaKey" | "shiftKey" | "altKey">> = {},
+  options: Partial<Pick<KeyboardEventInit, "ctrlKey" | "metaKey" | "shiftKey" | "altKey">> & { isComposing?: boolean } = {},
 ): void {
-  target.dispatchEvent(
-    new KeyboardEvent("keydown", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      key,
-      ...options,
-    }),
-  );
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    key,
+    ctrlKey: options.ctrlKey,
+    metaKey: options.metaKey,
+    shiftKey: options.shiftKey,
+    altKey: options.altKey,
+  });
+  if (options.isComposing) {
+    // jsdom 里 KeyboardEventInit 不总是支持 isComposing，这里手工打桩更稳。
+    Object.defineProperty(event, "isComposing", {
+      value: true,
+      configurable: true,
+    });
+  }
+  target.dispatchEvent(event);
 }
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
-}
-
-async function waitForMacrotask(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    window.setTimeout(resolve, 0);
-  });
 }
