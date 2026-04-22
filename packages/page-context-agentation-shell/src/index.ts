@@ -92,6 +92,7 @@ interface MarkerRecord {
 interface PopupState {
   mode: "create" | "edit";
   editMarkerId?: string;
+  returnFocusElement?: HTMLElement;
   anchorX: number;
   anchorY: number;
   initialBody?: string;
@@ -240,6 +241,7 @@ class AgentationShellRuntime {
   private toolbarDockClickBlocked = false;
   private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
   private feedbackDeltaSyncInFlight: Promise<void> | null = null;
+  private popupReturnFocusTarget: HTMLElement | null = null;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -1306,6 +1308,7 @@ class AgentationShellRuntime {
     this.openPopupWithState({
       mode: "edit",
       editMarkerId: marker.id,
+      returnFocusElement: this.doc.activeElement instanceof HTMLElement ? this.doc.activeElement : undefined,
       anchorX: marker.x,
       anchorY: marker.y,
       initialBody: marker.body,
@@ -1535,6 +1538,7 @@ class AgentationShellRuntime {
 
   private openPopupWithState(state: PopupState): void {
     this.popupState = state;
+    this.popupReturnFocusTarget = this.resolvePopupReturnFocusTarget(state);
     const nextTop = computePopupTop(state.anchorY, this.win.innerHeight);
     const nextLeft = computePopupLeft(state.anchorX, this.win.innerWidth);
     this.popupForm.style.top = `${nextTop}px`;
@@ -1571,6 +1575,8 @@ class AgentationShellRuntime {
   }
 
   private closePopup(): void {
+    const returnFocusTarget = this.popupReturnFocusTarget;
+    this.popupReturnFocusTarget = null;
     this.popupState = null;
     this.popupForm.hidden = true;
     this.popupDeleteButton.hidden = true;
@@ -1579,6 +1585,36 @@ class AgentationShellRuntime {
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
     this.setPopupStatus("Idle", "info");
+    // 弹窗关闭后回收焦点，保证键盘用户可继续无鼠标操作。
+    if (returnFocusTarget && returnFocusTarget.isConnected) {
+      returnFocusTarget.focus();
+    }
+  }
+
+  private resolvePopupReturnFocusTarget(state: PopupState): HTMLElement | null {
+    const activeElement = this.doc.activeElement;
+    if (
+      activeElement instanceof HTMLElement
+      && activeElement !== this.doc.body
+      && activeElement !== this.host
+      && !this.popupForm.contains(activeElement)
+    ) {
+      return activeElement;
+    }
+    if (
+      state.returnFocusElement
+      && state.returnFocusElement !== this.doc.body
+      && state.returnFocusElement !== this.host
+      && state.returnFocusElement.isConnected
+      && !this.popupForm.contains(state.returnFocusElement)
+    ) {
+      return state.returnFocusElement;
+    }
+    // 找不到可靠来源时，退回到工具栏主按钮，确保焦点不丢失。
+    if (!this.toolbarToggle.hidden && this.toolbarToggle.isConnected) {
+      return this.toolbarToggle;
+    }
+    return null;
   }
 
   private syncDragSelectionBox(rect: DOMRectReadOnly): void {

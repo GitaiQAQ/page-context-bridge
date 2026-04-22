@@ -94,6 +94,34 @@ describe("agentation shell popup keyboard flow", () => {
     // 主动关掉标注态，避免全局监听影响其它用例。
     toolbarToggle.click();
   });
+
+  it("restores focus to toolbar toggle after closing popup with Escape", () => {
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation: vi.fn(), updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    const toolbarToggle = queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]");
+    toolbarToggle.click();
+    toolbarToggle.focus();
+
+    dispatchMouse(document.body, "click", 120, 96);
+    const popup = queryRequired<HTMLFormElement>(shadow, "[data-popup]");
+    const popupBody = queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]");
+    popupBody.focus();
+    expect(shadow.activeElement).toBe(popupBody);
+
+    // Esc 收口后焦点应回到触发来源，保证键盘路径连续。
+    dispatchKeyboard(popupBody, "Escape");
+    expect(popup.hidden).toBe(true);
+    expect(shadow.activeElement).toBe(toolbarToggle);
+
+    // 收尾退出标注态，避免监听器泄露到后续用例。
+    toolbarToggle.click();
+  });
 });
 
 function getAgentationShellShadowRoot(): ShadowRoot {
