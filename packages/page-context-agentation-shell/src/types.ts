@@ -1,4 +1,9 @@
-import type { FeedbackPriority, FeedbackUiAnchor, FeedbackUiRect } from "@page-context/shared-protocol";
+import type {
+  FeedbackPriority,
+  FeedbackStateSnapshotResult,
+  FeedbackUiAnchor,
+  FeedbackUiRect,
+} from "@page-context/shared-protocol";
 
 /**
  * 多选模式下，每个被聚合元素的最小快照。
@@ -66,6 +71,12 @@ export interface AgentationShellDismissAnnotationInput {
 }
 
 /**
+ * shell 拉取反馈快照时使用 shared-protocol 原生结构，
+ * 避免额外中间类型造成协议漂移。
+ */
+export type AgentationShellFeedbackSnapshot = FeedbackStateSnapshotResult;
+
+/**
  * 壳体与 bridge 的注入边界。
  * UI 只依赖接口，不感知 runtime/network/store 实现。
  */
@@ -73,6 +84,7 @@ export interface AgentationShellBridgeAdapter {
   createAnnotation(input: AgentationShellCreateAnnotationInput): Promise<AgentationShellCreateAnnotationResult>;
   updateAnnotation?(input: AgentationShellUpdateAnnotationInput): Promise<unknown>;
   dismissAnnotation?(input: AgentationShellDismissAnnotationInput): Promise<unknown>;
+  getFeedbackSnapshot?(): Promise<AgentationShellFeedbackSnapshot>;
 }
 
 export interface AgentationShellDeps {

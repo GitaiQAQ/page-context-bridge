@@ -1,10 +1,11 @@
-import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
+import type { FeedbackAnnotation, FeedbackAnnotationStatus, FeedbackPriority, FeedbackUiAnchor, FeedbackUiRect } from "@page-context/shared-protocol";
 
 import { extractElementContextMeta, extractReactAnchorMeta, identifyElement } from "./element-identification";
 import type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
+  AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
   AgentationShellDismissAnnotationInput,
   AgentationShellMultiSelectItem,
@@ -15,6 +16,7 @@ export type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
+  AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
   AgentationShellDismissAnnotationInput,
   AgentationShellMultiSelectItem,
@@ -71,6 +73,7 @@ const DRAG_SELECTION_TEXT_TAGS = new Set([
   "SUB",
   "SUP",
 ]);
+const NON_REPLAYABLE_ANNOTATION_STATUS = new Set<FeedbackAnnotationStatus>(["resolved", "dismissed"]);
 
 interface MarkerRecord {
   id: string;
@@ -129,6 +132,13 @@ interface ToolbarPersistedState {
   hidden: boolean;
   left: number;
   top: number;
+}
+
+interface ReplayMarkerTarget {
+  anchorX: number;
+  anchorY: number;
+  elementName: string;
+  targetInput: AgentationShellCreateAnnotationInput["target"];
 }
 
 /**
@@ -220,6 +230,7 @@ class AgentationShellRuntime {
   private toolbarPosition: ToolbarPosition | null = null;
   private toolbarDragState: ToolbarDragState | null = null;
   private toolbarDockClickBlocked = false;
+  private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -276,6 +287,125 @@ class AgentationShellRuntime {
     this.popupForm.addEventListener("submit", this.onPopupSubmit);
     this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
     this.win.addEventListener("resize", this.onWindowResize, true);
+    this.bootstrapFeedbackReplay();
+  }
+
+  /**
+   * 初始化后主动拉一次 snapshot，把历史 annotation 回放成 marker。
+   */
+  private bootstrapFeedbackReplay(): void {
+    if (!this.adapter.getFeedbackSnapshot) {
+      return;
+    }
+    void this.syncMarkersFromFeedbackSnapshot();
+  }
+
+  /**
+   * snapshot 是壳体状态的权威来源：刷新后的回放统一走这里。
+   */
+  private async syncMarkersFromFeedbackSnapshot(): Promise<void> {
+    if (!this.adapter.getFeedbackSnapshot) {
+      return;
+    }
+    if (this.feedbackSnapshotSyncInFlight) {
+      await this.feedbackSnapshotSyncInFlight;
+      return;
+    }
+
+    const task = (async () => {
+      const snapshot = await this.adapter.getFeedbackSnapshot!();
+      this.reconcileMarkersFromFeedbackSnapshot(snapshot);
+      this.log("debug", "Agentation shell feedback snapshot replay completed", {
+        annotationCount: snapshot.annotations.length,
+        snapshotVersion: snapshot.snapshotVersion,
+      });
+    })().catch((error) => {
+      this.log("error", "Agentation shell feedback snapshot replay failed", error);
+    });
+
+    this.feedbackSnapshotSyncInFlight = task.finally(() => {
+      this.feedbackSnapshotSyncInFlight = null;
+    });
+    await this.feedbackSnapshotSyncInFlight;
+  }
+
+  /**
+   * 只覆盖远端 marker；本地临时 marker（无 remote id）继续保留，避免打断当前操作。
+   */
+  private reconcileMarkersFromFeedbackSnapshot(snapshot: AgentationShellFeedbackSnapshot): void {
+    const replayedByRemoteId = new Map<string, MarkerRecord>();
+    for (const annotation of snapshot.annotations) {
+      if (!isReplayableFeedbackAnnotation(annotation)) {
+        continue;
+      }
+      const marker = this.buildMarkerFromFeedbackAnnotation(annotation);
+      if (!marker) {
+        continue;
+      }
+      replayedByRemoteId.set(annotation.id, marker);
+    }
+
+    const nextMarkers: MarkerRecord[] = [];
+    for (const marker of this.markers) {
+      if (!marker.remoteAnnotationId) {
+        nextMarkers.push(marker);
+        continue;
+      }
+      const replayed = replayedByRemoteId.get(marker.remoteAnnotationId);
+      if (!replayed) {
+        continue;
+      }
+      replayedByRemoteId.delete(marker.remoteAnnotationId);
+      nextMarkers.push({
+        ...marker,
+        body: replayed.body,
+        priority: replayed.priority,
+        selectedText: replayed.selectedText,
+        elementName: replayed.elementName,
+        targetInput: replayed.targetInput,
+        x: replayed.x,
+        y: replayed.y,
+      });
+    }
+    for (const marker of replayedByRemoteId.values()) {
+      nextMarkers.push(marker);
+    }
+
+    this.markers.splice(0, this.markers.length, ...nextMarkers);
+    if (this.popupState?.mode === "edit" && this.popupState.editMarkerId) {
+      const markerExists = this.markers.some((marker) => marker.id === this.popupState?.editMarkerId);
+      if (!markerExists) {
+        this.closePopup();
+      }
+    }
+    this.renderMarkers();
+  }
+
+  /**
+   * 回放目标优先用 uiAnchor 里可结构化字段；
+   * 缺失时回退到 selector 现场定位，保证最小可用。
+   */
+  private buildMarkerFromFeedbackAnnotation(annotation: FeedbackAnnotation): MarkerRecord | null {
+    const replayTarget = resolveReplayMarkerTarget(annotation, this.doc, this.host, this.win.innerWidth, this.win.innerHeight);
+    if (!replayTarget) {
+      this.log("debug", "Skip replay annotation because uiAnchor target is unavailable", {
+        annotationId: annotation.id,
+      });
+      return null;
+    }
+
+    const selectedText = normalizeSelectionText(annotation.target.textQuote ?? annotation.target.uiAnchor?.textQuote ?? "");
+    return {
+      id: annotation.id,
+      remoteAnnotationId: annotation.id,
+      body: annotation.body,
+      priority: normalizePriority(annotation.priority),
+      selectedText: selectedText || undefined,
+      elementName: replayTarget.elementName,
+      targetInput: replayTarget.targetInput,
+      x: replayTarget.anchorX,
+      y: replayTarget.anchorY,
+    };
   }
 
   private readonly onToolbarToggleClick = (): void => {
@@ -1732,6 +1862,112 @@ function toCssSelectorCandidate(elementPath: string): string | undefined {
   }
 
   return segments.join(" > ");
+}
+
+/**
+ * 终态 annotation 不再可编辑，回放时跳过，避免用户在壳体里改到“已结束”记录。
+ */
+function isReplayableFeedbackAnnotation(annotation: FeedbackAnnotation): boolean {
+  if (!annotation.id.trim()) {
+    return false;
+  }
+  return !NON_REPLAYABLE_ANNOTATION_STATUS.has(annotation.status);
+}
+
+function resolveReplayMarkerTarget(
+  annotation: FeedbackAnnotation,
+  doc: Document,
+  shellHost: HTMLElement,
+  viewportWidth: number,
+  viewportHeight: number,
+): ReplayMarkerTarget | null {
+  const uiAnchor = annotation.target.uiAnchor;
+  const anchorMeta = isRecord(uiAnchor?.meta) ? uiAnchor.meta : null;
+  const selector = typeof uiAnchor?.cssSelector === "string" ? uiAnchor.cssSelector.trim() : "";
+  const selectorElement = selector ? queryReplayElementBySelector(doc, shellHost, selector) : null;
+  const rect = toDomRectFromUiRect(uiAnchor?.rect)
+    ?? readMultiSelectUnionRect(anchorMeta)
+    ?? (selectorElement ? snapshotRect(selectorElement.getBoundingClientRect()) : null);
+  if (!rect || rect.width < 1 || rect.height < 1) {
+    return null;
+  }
+
+  const identified = selectorElement ? identifyElement(selectorElement) : null;
+  const elementName = readRecordString(anchorMeta, "elementName") || identified?.name || "annotation";
+  const elementPath = readRecordString(anchorMeta, "elementPath") || selector || identified?.path || "unknown path";
+  return {
+    anchorX: clamp(rect.left + rect.width / 2, 0, Math.max(0, viewportWidth)),
+    anchorY: clamp(rect.top + rect.height / 2, 0, Math.max(0, viewportHeight)),
+    elementName,
+    targetInput: {
+      elementName,
+      elementPath,
+      rect: snapshotRect(rect),
+    },
+  };
+}
+
+function queryReplayElementBySelector(doc: Document, shellHost: HTMLElement, selector: string): HTMLElement | null {
+  try {
+    const node = doc.querySelector(selector);
+    if (!(node instanceof HTMLElement)) {
+      return null;
+    }
+    if (node === shellHost || shellHost.contains(node)) {
+      return null;
+    }
+    return node;
+  } catch {
+    // selector 可能来自历史数据，语法异常时直接降级。
+    return null;
+  }
+}
+
+function readMultiSelectUnionRect(meta: Record<string, unknown> | null): DOMRectReadOnly | null {
+  if (!meta) {
+    return null;
+  }
+  const multiSelect = meta.multiSelect;
+  if (!isRecord(multiSelect)) {
+    return null;
+  }
+  const unionRect = multiSelect.unionRect;
+  if (!isRecord(unionRect)) {
+    return null;
+  }
+  const x = unionRect.x;
+  const y = unionRect.y;
+  const width = unionRect.width;
+  const height = unionRect.height;
+  return toDomRectFromUiRect(
+    isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(width) && isFiniteNumber(height)
+      ? { x, y, width, height }
+      : undefined,
+  );
+}
+
+function toDomRectFromUiRect(rect: FeedbackUiRect | undefined): DOMRectReadOnly | null {
+  if (!rect) {
+    return null;
+  }
+  if (!isFiniteNumber(rect.x) || !isFiniteNumber(rect.y) || !isFiniteNumber(rect.width) || !isFiniteNumber(rect.height)) {
+    return null;
+  }
+  if (rect.width < 1 || rect.height < 1) {
+    return null;
+  }
+  return new DOMRect(rect.x, rect.y, rect.width, rect.height);
+}
+
+function readRecordString(record: Record<string, unknown> | null, key: string): string {
+  if (!record) {
+    return "";
+  }
+  const value = record[key];
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
 }
 
 function normalizePriority(value: string): FeedbackPriority {

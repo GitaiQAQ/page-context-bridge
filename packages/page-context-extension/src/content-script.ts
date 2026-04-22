@@ -3,6 +3,7 @@ import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } fro
 import {
   installAgentationShell,
   type AgentationShellCreateAnnotationInput,
+  type AgentationShellFeedbackSnapshot,
   type AgentationShellDismissAnnotationInput,
   type AgentationShellUpdateAnnotationInput,
 } from "@page-context/agentation-shell";
@@ -77,6 +78,7 @@ function installFeedbackUiWithFallback(): void {
         createAnnotation: createAnnotationFromShell,
         updateAnnotation: updateAnnotationFromShell,
         dismissAnnotation: dismissAnnotationFromShell,
+        getFeedbackSnapshot: getFeedbackSnapshotFromShell,
       },
       // 统一复用 content-script 日志前缀，便于定位现场问题。
       logger(level, message, extra) {
@@ -133,6 +135,11 @@ async function dismissAnnotationFromShell(input: AgentationShellDismissAnnotatio
     dismissReason: input.dismissReason,
   };
   return await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, payload);
+}
+
+async function getFeedbackSnapshotFromShell(): Promise<AgentationShellFeedbackSnapshot> {
+  // shell 初始化后主动拉 snapshot，用于刷新页面后回放 marker。
+  return await sendRuntimeRequest<AgentationShellFeedbackSnapshot>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
 }
 
 function normalizeCreateResult(raw: unknown): { id?: string; raw?: unknown } {
