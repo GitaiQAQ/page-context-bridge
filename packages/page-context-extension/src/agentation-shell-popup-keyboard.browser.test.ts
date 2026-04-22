@@ -46,6 +46,7 @@ describe("agentation shell popup keyboard flow", () => {
     expect(createAnnotation).toHaveBeenCalledTimes(0);
 
     dispatchKeyboard(popupBody, "Escape");
+    await waitForPopupExitAnimation();
     expect(popup.hidden).toBe(true);
     expect(createAnnotation).toHaveBeenCalledTimes(0);
 
@@ -63,6 +64,47 @@ describe("agentation shell popup keyboard flow", () => {
     );
     // 结束前主动退出标注态，避免把全局监听残留给下一个用例。
     queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
+  });
+
+  it("shows lightweight enter/exit motion and empty-body shake feedback", async () => {
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation: vi.fn(), updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    const toolbarToggle = queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]");
+    toolbarToggle.click();
+    dispatchMouse(document.body, "click", 120, 96);
+
+    const popup = queryRequired<HTMLFormElement>(shadow, "[data-popup]");
+    const popupBody = queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]");
+    const popupStatus = queryRequired<HTMLParagraphElement>(shadow, "[data-popup-status]");
+
+    // 打开后先保证弹窗可见；enter 动画标记是短时态，不做瞬时强绑定断言。
+    expect(popup.hidden).toBe(false);
+    await waitForPopupEnterAnimation();
+    expect(popup.dataset.motion).toBeUndefined();
+
+    popupBody.value = "   ";
+    popup.requestSubmit();
+    expect(popupStatus.textContent).toBe("请输入反馈内容");
+    expect(popupBody.dataset.invalid).toBe("true");
+    expect(popup.classList.contains("pc-agent-popup-shake")).toBe(true);
+
+    await waitForPopupShakeAnimation();
+    expect(popup.classList.contains("pc-agent-popup-shake")).toBe(false);
+
+    dispatchKeyboard(popupBody, "Escape");
+    // 关闭时先走 exit 动画，再进入 hidden，确保有轻量退场反馈。
+    expect(popup.dataset.motion).toBe("exit");
+    expect(popup.hidden).toBe(false);
+    await waitForPopupExitAnimation();
+    expect(popup.hidden).toBe(true);
+
+    toolbarToggle.click();
   });
 
   it("shows marker hover edit/delete affordance hints", async () => {
@@ -145,7 +187,7 @@ describe("agentation shell popup keyboard flow", () => {
     toolbarToggle.click();
   });
 
-  it("restores focus to toolbar toggle after closing popup with Escape", () => {
+  it("restores focus to toolbar toggle after closing popup with Escape", async () => {
     const mounted = installAgentationShell({
       adapter: { createAnnotation: vi.fn(), updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
       doc: document,
@@ -166,8 +208,9 @@ describe("agentation shell popup keyboard flow", () => {
 
     // Esc 收口后焦点应回到触发来源，保证键盘路径连续。
     dispatchKeyboard(popupBody, "Escape");
-    expect(popup.hidden).toBe(true);
     expect(shadow.activeElement).toBe(toolbarToggle);
+    await waitForPopupExitAnimation();
+    expect(popup.hidden).toBe(true);
 
     // 收尾退出标注态，避免监听器泄露到后续用例。
     toolbarToggle.click();
@@ -295,4 +338,22 @@ function dispatchKeyboard(
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+async function waitForPopupEnterAnimation(): Promise<void> {
+  await wait(140);
+}
+
+async function waitForPopupExitAnimation(): Promise<void> {
+  await wait(180);
+}
+
+async function waitForPopupShakeAnimation(): Promise<void> {
+  await wait(320);
+}
+
+async function wait(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

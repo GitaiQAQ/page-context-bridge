@@ -79,6 +79,7 @@ describe("agentation shell marker edit flow", () => {
       dismissReason: "marker deleted from agentation shell",
     });
     expect(shadow.querySelector('[data-marker-id="marker-1"]')).toBeNull();
+    await waitForPopupExitAnimation();
     expect(popup.hidden).toBe(true);
     // 收尾退出标注态，避免把全局监听残留给后续用例。
     queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
@@ -166,4 +167,10 @@ function readMarkerTooltip(marker: HTMLButtonElement): string {
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+async function waitForPopupExitAnimation(): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 180);
+  });
 }

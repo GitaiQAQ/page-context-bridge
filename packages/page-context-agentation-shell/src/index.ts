@@ -35,6 +35,9 @@ const DRAG_SELECTION_THRESHOLD_PX = 6;
 const AREA_SELECTION_MIN_SIZE_PX = 20;
 const DEFAULT_ANNOTATING_HINT = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
 const MARKER_DISMISS_REASON = "marker deleted from agentation shell";
+const POPUP_ENTER_DURATION_MS = 120;
+const POPUP_EXIT_DURATION_MS = 140;
+const POPUP_SHAKE_DURATION_MS = 280;
 const AREA_SELECTION_ELEMENT_SELECTOR = "button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th";
 const DRAG_SELECTION_TEXT_TAGS = new Set([
   "P",
@@ -250,6 +253,10 @@ class AgentationShellRuntime {
   private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
   private feedbackDeltaSyncInFlight: Promise<void> | null = null;
   private popupReturnFocusTarget: HTMLElement | null = null;
+  private popupClosing = false;
+  private popupEnterTimerId: number | null = null;
+  private popupExitTimerId: number | null = null;
+  private popupShakeTimerId: number | null = null;
   private markerContextMenuMarkerId: string | null = null;
   private markerContextMenuListening = false;
 
@@ -310,6 +317,7 @@ class AgentationShellRuntime {
     this.popupCancelButton.addEventListener("click", this.onPopupCancelClick);
     this.popupForm.addEventListener("keydown", this.onPopupKeyDown);
     this.popupForm.addEventListener("submit", this.onPopupSubmit);
+    this.popupBodyInput.addEventListener("input", this.onPopupBodyInput);
     this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
     this.markerContextMenuDeleteButton.addEventListener("click", this.onMarkerContextMenuDeleteClick);
     this.win.addEventListener("resize", this.onWindowResize, true);
@@ -957,7 +965,7 @@ class AgentationShellRuntime {
     }
 
     // 无聚合时沿用原逻辑：先关弹窗，再退出标注模式。
-    if (!this.popupForm.hidden) {
+    if (!this.popupForm.hidden && !this.popupClosing) {
       event.preventDefault();
       event.stopPropagation();
       this.closePopup();
@@ -992,7 +1000,8 @@ class AgentationShellRuntime {
   };
 
   private readonly onPopupKeyDown = (event: KeyboardEvent): void => {
-    if (this.popupForm.hidden) {
+    // 逻辑关闭态（含 exit 过渡）不再消费按键，避免焦点链路被旧弹窗截断。
+    if (this.popupForm.hidden || this.popupClosing || !this.popupState) {
       return;
     }
 
@@ -1170,19 +1179,26 @@ class AgentationShellRuntime {
     }
   };
 
+  private readonly onPopupBodyInput = (): void => {
+    // 用户开始输入后立即撤销空内容强调，避免错误态残留干扰下一步编辑。
+    if (this.popupBodyInput.value.trim().length > 0) {
+      this.clearPopupValidationFeedback();
+    }
+  };
+
   private readonly onPopupSubmit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
-    if (this.submitting || !this.popupState) {
+    if (this.submitting || this.popupClosing || !this.popupState) {
       return;
     }
     const popupState = this.popupState;
 
     const body = this.popupBodyInput.value.trim();
     if (!body) {
-      this.setPopupStatus("请输入反馈内容", "error");
-      this.popupBodyInput.focus();
+      this.raisePopupBodyRequiredFeedback();
       return;
     }
+    this.clearPopupValidationFeedback();
 
     const priority = normalizePriority(this.popupPrioritySelect.value);
     if (popupState.mode === "edit") {
@@ -1673,6 +1689,9 @@ class AgentationShellRuntime {
 
   private openPopupWithState(state: PopupState): void {
     this.closeMarkerContextMenu();
+    // 若上一次在做 exit 过渡，先中止收尾定时器，避免新弹窗被旧任务误隐藏。
+    this.cancelPopupExitIfNeeded();
+    this.clearPopupValidationFeedback();
     this.popupState = state;
     this.popupReturnFocusTarget = this.resolvePopupReturnFocusTarget(state);
     const nextTop = computePopupTop(state.anchorY, this.win.innerHeight);
@@ -1708,10 +1727,15 @@ class AgentationShellRuntime {
     this.popupBodyInput.value = state.initialBody ?? "";
     this.popupPrioritySelect.value = normalizePriority(state.initialPriority ?? "normal");
     this.popupForm.hidden = false;
+    this.popupClosing = false;
+    delete this.popupForm.dataset.closing;
+    this.playPopupMotion("enter");
     this.syncPopupSubmittingState();
     this.setPopupStatus("等待操作", "info");
     this.win.setTimeout(() => {
-      this.popupBodyInput.focus();
+      if (!this.popupForm.hidden && !this.popupClosing && this.popupState) {
+        this.popupBodyInput.focus();
+      }
     }, 0);
   }
 
@@ -1720,17 +1744,99 @@ class AgentationShellRuntime {
     const returnFocusTarget = this.popupReturnFocusTarget;
     this.popupReturnFocusTarget = null;
     this.popupState = null;
+    if (!this.popupForm.hidden && !this.popupClosing) {
+      this.popupClosing = true;
+      this.popupForm.dataset.closing = "true";
+      this.playPopupMotion("exit");
+      this.syncPopupSubmittingState();
+      if (this.popupExitTimerId !== null) {
+        this.win.clearTimeout(this.popupExitTimerId);
+      }
+      this.popupExitTimerId = this.win.setTimeout(() => {
+        this.popupExitTimerId = null;
+        this.finalizePopupClose();
+      }, POPUP_EXIT_DURATION_MS);
+    }
+    // 弹窗关闭后回收焦点，保证键盘用户可继续无鼠标操作。
+    if (returnFocusTarget && returnFocusTarget.isConnected) {
+      returnFocusTarget.focus();
+    }
+  }
+
+  private cancelPopupExitIfNeeded(): void {
+    if (this.popupExitTimerId !== null) {
+      this.win.clearTimeout(this.popupExitTimerId);
+      this.popupExitTimerId = null;
+    }
+    this.popupClosing = false;
+    delete this.popupForm.dataset.closing;
+    if (this.popupForm.dataset.motion === "exit") {
+      delete this.popupForm.dataset.motion;
+    }
+  }
+
+  private finalizePopupClose(): void {
+    this.popupClosing = false;
     this.popupForm.hidden = true;
+    delete this.popupForm.dataset.closing;
+    delete this.popupForm.dataset.motion;
+    this.resetPopupToDefaultView();
+    this.syncPopupSubmittingState();
+  }
+
+  private resetPopupToDefaultView(): void {
     this.popupDeleteButton.hidden = true;
     this.popupTitleView.textContent = "新建标注";
     this.popupSubmitButton.textContent = "提交标注";
     this.popupSelectionLabel.textContent = "当前选中文本";
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
+    this.clearPopupValidationFeedback();
     this.setPopupStatus("等待操作", "info");
-    // 弹窗关闭后回收焦点，保证键盘用户可继续无鼠标操作。
-    if (returnFocusTarget && returnFocusTarget.isConnected) {
-      returnFocusTarget.focus();
+  }
+
+  private playPopupMotion(motion: "enter" | "exit"): void {
+    if (this.popupEnterTimerId !== null) {
+      this.win.clearTimeout(this.popupEnterTimerId);
+      this.popupEnterTimerId = null;
+    }
+    this.popupForm.dataset.motion = motion;
+    if (motion !== "enter") {
+      return;
+    }
+    this.popupEnterTimerId = this.win.setTimeout(() => {
+      this.popupEnterTimerId = null;
+      if (this.popupForm.dataset.motion === "enter") {
+        delete this.popupForm.dataset.motion;
+      }
+    }, POPUP_ENTER_DURATION_MS);
+  }
+
+  private raisePopupBodyRequiredFeedback(): void {
+    this.setPopupStatus("请输入反馈内容", "error");
+    this.popupBodyInput.dataset.invalid = "true";
+    this.popupBodyInput.setAttribute("aria-invalid", "true");
+    this.popupForm.classList.remove("pc-agent-popup-shake");
+    // 先强制回流再重新加类，保证连续两次校验失败也能触发抖动。
+    void this.popupForm.offsetWidth;
+    this.popupForm.classList.add("pc-agent-popup-shake");
+    if (this.popupShakeTimerId !== null) {
+      this.win.clearTimeout(this.popupShakeTimerId);
+    }
+    this.popupShakeTimerId = this.win.setTimeout(() => {
+      this.popupShakeTimerId = null;
+      this.popupForm.classList.remove("pc-agent-popup-shake");
+    }, POPUP_SHAKE_DURATION_MS);
+    this.popupBodyInput.focus();
+  }
+
+  private clearPopupValidationFeedback(): void {
+    delete this.popupBodyInput.dataset.invalid;
+    this.popupBodyInput.removeAttribute("aria-invalid");
+    this.popupForm.classList.remove("pc-agent-popup-shake");
+    if (this.popupShakeTimerId !== null) {
+      this.win.clearTimeout(this.popupShakeTimerId);
+      this.popupShakeTimerId = null;
     }
   }
 
@@ -1874,11 +1980,12 @@ class AgentationShellRuntime {
   }
 
   private syncPopupSubmittingState(): void {
-    this.popupSubmitButton.disabled = this.submitting;
-    this.popupDeleteButton.disabled = this.submitting;
-    this.popupCancelButton.disabled = this.submitting;
-    this.popupPrioritySelect.disabled = this.submitting;
-    this.popupBodyInput.readOnly = this.submitting;
+    const controlsLocked = this.submitting || this.popupClosing;
+    this.popupSubmitButton.disabled = controlsLocked;
+    this.popupDeleteButton.disabled = controlsLocked;
+    this.popupCancelButton.disabled = controlsLocked;
+    this.popupPrioritySelect.disabled = controlsLocked;
+    this.popupBodyInput.readOnly = controlsLocked;
   }
 
   private isEventFromShell(event: Event): boolean {
@@ -2869,8 +2976,24 @@ const SHELL_TEMPLATE = `
       will-change: transform, opacity;
     }
 
+    .pc-agent-popup[data-closing="true"] {
+      pointer-events: none;
+    }
+
     .pc-agent-popup[hidden] {
       display: none;
+    }
+
+    .pc-agent-popup[data-motion="enter"] {
+      animation: pc-agent-popup-enter ${POPUP_ENTER_DURATION_MS}ms ease-out;
+    }
+
+    .pc-agent-popup[data-motion="exit"] {
+      animation: pc-agent-popup-exit ${POPUP_EXIT_DURATION_MS}ms ease-in forwards;
+    }
+
+    .pc-agent-popup.pc-agent-popup-shake {
+      animation: pc-agent-popup-shake ${POPUP_SHAKE_DURATION_MS}ms ease-in-out;
     }
 
     .pc-agent-popup-title {
@@ -2917,6 +3040,12 @@ const SHELL_TEMPLATE = `
     .pc-agent-popup-body {
       min-height: 80px;
       resize: vertical;
+    }
+
+    .pc-agent-popup-body[data-invalid="true"],
+    .pc-agent-popup-body[aria-invalid="true"] {
+      border-color: rgba(255, 123, 123, 0.92);
+      box-shadow: 0 0 0 1px rgba(255, 123, 123, 0.3);
     }
 
     .pc-agent-popup-actions {
@@ -2983,6 +3112,44 @@ const SHELL_TEMPLATE = `
     .pc-agent-popup-status.info { color: rgba(255, 255, 255, 0.62); }
     .pc-agent-popup-status.success { color: #34c759; }
     .pc-agent-popup-status.error { color: #ff7b7b; }
+
+    @keyframes pc-agent-popup-enter {
+      from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes pc-agent-popup-exit {
+      from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(4px) scale(0.985);
+      }
+    }
+
+    @keyframes pc-agent-popup-shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-4px); }
+      40% { transform: translateX(4px); }
+      60% { transform: translateX(-3px); }
+      80% { transform: translateX(3px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pc-agent-popup[data-motion="enter"],
+      .pc-agent-popup[data-motion="exit"],
+      .pc-agent-popup.pc-agent-popup-shake {
+        animation-duration: 1ms;
+      }
+    }
   </style>
   <div class="pc-agent-root">
     <div class="pc-agent-marker-layer" data-marker-layer></div>
