@@ -18,7 +18,9 @@
     "@page-context/agentation-shell": "workspace:*",
     "@page-context/builtin-tools": "workspace:*",
     "@page-context/shared-protocol": "workspace:*",
-    "lit": "^3.2.0"
+    "lit": "^3.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "keywords": [
     "page-context",
@@ -28,6 +30,8 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.2",
     "daisyui": "^5.5.19",

@@ -3,10 +3,13 @@
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "types": ["chrome", "node"],
-    "experimentalDecorators": true
+    "experimentalDecorators": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "vite.config.ts"
   ],
   "exclude": [

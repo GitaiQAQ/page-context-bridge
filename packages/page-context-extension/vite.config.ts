@@ -94,6 +94,10 @@ function renameUnderscoreFiles() {
 
 export default defineConfig({
   plugins: [tailwindcss(), chromeExtension() as any, copyStaticFiles(), injectCssLinks(), renameUnderscoreFiles()],
+  esbuild: {
+    jsx: 'automatic',
+    jsxImportSource: 'react',
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
