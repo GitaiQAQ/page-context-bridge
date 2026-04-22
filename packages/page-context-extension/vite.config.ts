@@ -94,6 +94,10 @@ function renameUnderscoreFiles() {
 
 export default defineConfig({
   plugins: [tailwindcss(), chromeExtension() as any, copyStaticFiles(), injectCssLinks(), renameUnderscoreFiles()],
+  define: {
+    // agentation 源码里用于版本展示的编译期常量，这里由 extension 构建侧提供。
+    __VERSION__: JSON.stringify("3.0.2-src-poc"),
+  },
   esbuild: {
     jsx: 'automatic',
     jsxImportSource: 'react',

@@ -106,7 +106,7 @@ describe("agentation react root entry integration", () => {
     expect(window.__PAGE_CONTEXT_AGENTATION_REACT_ROOT__).toBe(entry);
   });
 
-  it("mounts real shell through installAgentationReactRoot and cleans host on unmount", () => {
+  it("mounts real agentation package through installAgentationReactRoot and cleans host on unmount", async () => {
     registerAgentationReactRootEntry({ win: window });
 
     const mounted = installAgentationReactRoot({
@@ -118,15 +118,21 @@ describe("agentation react root entry integration", () => {
 
     const reactHost = document.getElementById(AGENTATION_REACT_HOST_ID);
     expect(reactHost).not.toBeNull();
-    const shellHost = reactHost?.shadowRoot?.querySelector<HTMLDivElement>('[data-agentation-react-shell-host="true"]');
-    expect(shellHost).not.toBeNull();
-    expect(shellHost?.shadowRoot?.querySelector("[data-toolbar]")).not.toBeNull();
+    // React root 应优先命中真实 agentation 包挂载点，而不是旧 shell host。
+    const packageHost = reactHost?.shadowRoot?.querySelector('[data-agentation-react-package-host="true"]');
+    expect(packageHost).not.toBeNull();
+    expect(reactHost?.shadowRoot?.querySelector('[data-agentation-react-shell-host="true"]')).toBeNull();
+    // agentation 包主体通过 portal 渲染到 document.body，首次渲染需要等一个 effect tick。
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[data-agentation-root]")).not.toBeNull();
+    });
 
     const entry = window["agentation-react-root"];
     if (entry && typeof entry === "object" && "unmount" in entry && typeof entry.unmount === "function") {
       entry.unmount();
     }
     expect(document.getElementById(AGENTATION_REACT_HOST_ID)).toBeNull();
+    expect(document.body.querySelector("[data-agentation-root]")).toBeNull();
   });
 
   it("keeps direct installAgentationShell path available", () => {

@@ -1,10 +1,15 @@
 import {
   mountAgentationShell,
   type AgentationShellBridgeAdapter,
+  type AgentationShellCreateAnnotationInput,
   type AgentationShellDeps,
+  type AgentationShellDismissAnnotationInput,
   type AgentationShellMountHandle,
+  type AgentationShellUpdateAnnotationInput,
 } from "@page-context/agentation-shell";
-import { StrictMode, type ReactNode, useLayoutEffect, useRef } from "react";
+import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
+import { Agentation, type Annotation as AgentationAnnotation } from "./agentation-source-runtime";
+import { Component, StrictMode, type ErrorInfo, type ReactNode, useCallback, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -13,8 +18,10 @@ export const AGENTATION_REACT_ROOT_ENTRY_KEY = "agentation-react-root";
 const MOUNT_CONTAINER_ATTR = "data-page-context-react-mount-key";
 const HOST_MARK_ATTR = "data-page-context-react-host";
 const DEFAULT_MOUNT_KEY = "default";
-const AGENTATION_SHELL_MOUNT_KEY = "agentation-shell";
+const AGENTATION_PACKAGE_MOUNT_KEY = "agentation-package";
 const NESTED_SHELL_HOST_ATTR = "data-agentation-react-shell-host";
+const AGENTATION_PACKAGE_HOST_ATTR = "data-agentation-react-package-host";
+const AGENTATION_SHELL_DISMISS_REASON = "marker deleted from agentation package";
 const AGENTATION_REACT_ROOT_COMPAT_ENTRY_KEYS = [
   AGENTATION_REACT_ROOT_ENTRY_KEY,
   "__PAGE_CONTEXT_AGENTATION_REACT_ROOT__",
@@ -23,6 +30,47 @@ const AGENTATION_REACT_ROOT_COMPAT_ENTRY_KEYS = [
 
 const rootByContainer = new WeakMap<HTMLElement, Root>();
 const entryByWindow = new WeakMap<Window, AgentationReactRootEntryObject>();
+
+interface AgentationRemoteBinding {
+  remoteId?: string;
+  priority: FeedbackPriority;
+}
+
+interface AgentationPackageErrorBoundaryProps {
+  children: ReactNode;
+  fallback: ReactNode;
+  onError: (error: Error, info: ErrorInfo) => void;
+}
+
+interface AgentationPackageErrorBoundaryState {
+  hasError: boolean;
+}
+
+/**
+ * 真实 Agentation 包渲染失败时，立即降级到现有 shell。
+ * 这样 PoC 即使遇到页面兼容问题，也不会中断原有链路。
+ */
+class AgentationPackageErrorBoundary extends Component<
+  AgentationPackageErrorBoundaryProps,
+  AgentationPackageErrorBoundaryState
+> {
+  state: AgentationPackageErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): AgentationPackageErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    this.props.onError(error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 
 export interface AgentationReactRootContext {
   doc: Document;
@@ -225,8 +273,8 @@ function createAgentationReactRootEntry(): AgentationReactRootEntryObject {
     const handle = mountAgentationReactRoot({
       doc: args.doc,
       win: args.win,
-      mountKey: AGENTATION_SHELL_MOUNT_KEY,
-      render: () => <AgentationShellMountBridge {...args} />,
+      mountKey: AGENTATION_PACKAGE_MOUNT_KEY,
+      render: () => <AgentationPackageMountBridge {...args} />,
     });
     activeHandle = handle;
 
@@ -261,7 +309,142 @@ function createAgentationReactRootEntry(): AgentationReactRootEntryObject {
   };
 }
 
-function AgentationShellMountBridge(props: AgentationReactRootEntryMountArgs) {
+function AgentationPackageMountBridge(props: AgentationReactRootEntryMountArgs) {
+  const remoteBindingByLocalIdRef = useRef<Map<string, AgentationRemoteBinding>>(new Map());
+
+  const handleAnnotationAdd = useCallback(
+    (annotation: AgentationAnnotation) => {
+      const localId = normalizeAnnotationId(annotation.id);
+      if (!localId) {
+        props.logger?.("error", "skip agentation annotation create because local id is invalid", {
+          annotation,
+        });
+        return;
+      }
+      const payload = buildCreatePayloadFromAgentation(annotation, props.win);
+      if (!payload) {
+        props.logger?.("error", "skip agentation annotation create because payload is invalid", {
+          localId,
+          annotation,
+        });
+        return;
+      }
+
+      remoteBindingByLocalIdRef.current.set(localId, { priority: payload.priority });
+      void props.adapter
+        .createAnnotation(payload)
+        .then((result) => {
+          const remoteId = normalizeAnnotationId(result.id);
+          if (!remoteId) {
+            return;
+          }
+          const binding = remoteBindingByLocalIdRef.current.get(localId);
+          if (!binding) {
+            return;
+          }
+          binding.remoteId = remoteId;
+        })
+        .catch((error) => {
+          props.logger?.("error", "agentation package create annotation failed", {
+            localId,
+            error,
+          });
+        });
+    },
+    [props.adapter, props.logger, props.win],
+  );
+
+  const handleAnnotationUpdate = useCallback(
+    (annotation: AgentationAnnotation) => {
+      const updateAnnotation = props.adapter.updateAnnotation;
+      if (!updateAnnotation) {
+        return;
+      }
+
+      const localId = normalizeAnnotationId(annotation.id);
+      if (!localId) {
+        return;
+      }
+      const binding = remoteBindingByLocalIdRef.current.get(localId);
+      if (!binding?.remoteId) {
+        return;
+      }
+
+      const body = annotation.comment.trim();
+      if (!body) {
+        return;
+      }
+
+      const payload: AgentationShellUpdateAnnotationInput = {
+        annotationId: binding.remoteId,
+        body,
+        priority: binding.priority,
+      };
+      void updateAnnotation(payload).catch((error) => {
+        props.logger?.("error", "agentation package update annotation failed", {
+          localId,
+          remoteId: binding.remoteId,
+          error,
+        });
+      });
+    },
+    [props.adapter, props.logger],
+  );
+
+  const handleAnnotationDelete = useCallback(
+    (annotation: AgentationAnnotation) => {
+      const localId = normalizeAnnotationId(annotation.id);
+      if (!localId) {
+        return;
+      }
+      const binding = remoteBindingByLocalIdRef.current.get(localId);
+      remoteBindingByLocalIdRef.current.delete(localId);
+
+      const dismissAnnotation = props.adapter.dismissAnnotation;
+      if (!dismissAnnotation || !binding?.remoteId) {
+        return;
+      }
+
+      const payload: AgentationShellDismissAnnotationInput = {
+        annotationId: binding.remoteId,
+        dismissReason: AGENTATION_SHELL_DISMISS_REASON,
+      };
+      void dismissAnnotation(payload).catch((error) => {
+        props.logger?.("error", "agentation package dismiss annotation failed", {
+          localId,
+          remoteId: binding.remoteId,
+          error,
+        });
+      });
+    },
+    [props.adapter, props.logger],
+  );
+
+  return (
+    <AgentationPackageErrorBoundary
+      onError={(error, info) => {
+        props.logger?.("error", "agentation package render failed, fallback to shell", {
+          error,
+          componentStack: info.componentStack,
+        });
+      }}
+      fallback={<AgentationShellMountBridge {...props} fallbackReason="agentation-package-render-failed" />}
+    >
+      <div {...{ [AGENTATION_PACKAGE_HOST_ATTR]: "true" }}>
+        <Agentation
+          copyToClipboard={false}
+          onAnnotationAdd={handleAnnotationAdd}
+          onAnnotationUpdate={handleAnnotationUpdate}
+          onAnnotationDelete={handleAnnotationDelete}
+        />
+      </div>
+    </AgentationPackageErrorBoundary>
+  );
+}
+
+function AgentationShellMountBridge(
+  props: AgentationReactRootEntryMountArgs & { fallbackReason?: string },
+) {
   const shellHostRef = useRef<HTMLDivElement | null>(null);
   const shellHandleRef = useRef<AgentationShellMountHandle | null>(null);
 
@@ -283,9 +466,152 @@ function AgentationShellMountBridge(props: AgentationReactRootEntryMountArgs) {
       shellHandleRef.current?.unmount();
       shellHandleRef.current = null;
     };
-  }, [props.adapter, props.doc, props.win, props.logger]);
+  }, [props.adapter, props.doc, props.logger, props.win]);
 
-  return <div ref={shellHostRef} {...{ [NESTED_SHELL_HOST_ATTR]: "true" }} />;
+  return (
+    <div
+      ref={shellHostRef}
+      {...{
+        [NESTED_SHELL_HOST_ATTR]: "true",
+        "data-agentation-react-shell-fallback-reason": props.fallbackReason ?? "",
+      }}
+    />
+  );
+}
+
+/**
+ * 把 agentation 注释对象映射成 bridge adapter 需要的最小 create 输入。
+ * 这里只做稳定字段转换，避免把 UI 内部临时态泄漏到协议层。
+ */
+function buildCreatePayloadFromAgentation(
+  annotation: AgentationAnnotation,
+  win: Window,
+): AgentationShellCreateAnnotationInput | null {
+  const body = annotation.comment.trim();
+  if (!body) {
+    return null;
+  }
+
+  const targetRect = resolveTargetRect(annotation, win);
+  const selectedText = normalizeText(annotation.selectedText);
+  return {
+    body,
+    priority: toFeedbackPriority(annotation),
+    selectedText,
+    uiAnchor: buildUiAnchor(annotation, targetRect, selectedText),
+    target: {
+      elementName: normalizeText(annotation.element) ?? "element",
+      elementPath: normalizeText(annotation.elementPath) ?? "",
+      rect: targetRect,
+    },
+  };
+}
+
+function resolveTargetRect(annotation: AgentationAnnotation, win: Window): DOMRectReadOnly {
+  const boundingBox = annotation.boundingBox;
+  if (boundingBox) {
+    const viewportY = annotation.isFixed ? boundingBox.y : boundingBox.y - win.scrollY;
+    return new DOMRectReadOnly(
+      boundingBox.x,
+      viewportY,
+      Math.max(1, boundingBox.width),
+      Math.max(1, boundingBox.height),
+    );
+  }
+
+  // x 在 agentation 中是 viewport 宽度百分比；y 为文档坐标（fixed 元素除外）。
+  const viewportX = Number.isFinite(annotation.x) ? (annotation.x / 100) * win.innerWidth : win.innerWidth / 2;
+  const rawY = Number.isFinite(annotation.y) ? annotation.y : win.innerHeight / 2;
+  const viewportY = annotation.isFixed ? rawY : rawY - win.scrollY;
+  return new DOMRectReadOnly(viewportX, viewportY, 1, 1);
+}
+
+function buildUiAnchor(
+  annotation: AgentationAnnotation,
+  rect: DOMRectReadOnly,
+  selectedText?: string,
+): FeedbackUiAnchor {
+  const meta: Record<string, unknown> = {
+    source: "agentation-react-root",
+    element: normalizeText(annotation.element),
+    elementPath: normalizeText(annotation.elementPath),
+    fullPath: normalizeText(annotation.fullPath),
+    reactComponents: normalizeText(annotation.reactComponents),
+    sourceFile: normalizeText(annotation.sourceFile),
+  };
+  if (annotation.isMultiSelect) {
+    meta.isMultiSelect = true;
+  }
+  if (annotation.isFixed) {
+    meta.isFixed = true;
+  }
+
+  return {
+    cssSelector: toCssSelectorCandidate(annotation.elementPath),
+    textQuote: selectedText,
+    framePath: [0],
+    rect: {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    },
+    meta,
+  };
+}
+
+function toFeedbackPriority(annotation: AgentationAnnotation): FeedbackPriority {
+  switch (annotation.severity) {
+    case "blocking":
+      return "critical";
+    case "important":
+      return "high";
+    case "suggestion":
+      return "normal";
+    default:
+      return "normal";
+  }
+}
+
+function toCssSelectorCandidate(elementPath: string): string | undefined {
+  const normalizedPath = elementPath.trim();
+  if (!normalizedPath || normalizedPath.includes("⟨shadow⟩")) {
+    return undefined;
+  }
+  const segments = normalizedPath
+    .split(">")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return undefined;
+  }
+  const leaf = segments.at(-1);
+  if (!leaf) {
+    return undefined;
+  }
+  if (/^#[A-Za-z0-9_-]+$/.test(leaf)) {
+    return leaf;
+  }
+  if (/^\.[A-Za-z0-9_-]+$/.test(leaf)) {
+    return leaf;
+  }
+  if (/^[A-Za-z][A-Za-z0-9-]*$/.test(leaf)) {
+    return leaf.toLowerCase();
+  }
+  return undefined;
+}
+
+function normalizeText(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function normalizeAnnotationId(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const id = value.trim();
+  return id ? id : undefined;
 }
 
 function DefaultMountProbe({ mountKey }: { mountKey: string }) {
