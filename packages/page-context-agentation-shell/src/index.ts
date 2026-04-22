@@ -88,6 +88,8 @@ interface MarkerRecord {
   selectedText?: string;
   elementName: string;
   targetInput: AgentationShellCreateAnnotationInput["target"];
+  // 聚合语义只在 shell 本地渲染层使用，不回写协议结构。
+  multiSelectMeta?: AgentationShellMultiSelectMeta;
   // 兼容当前逻辑的像素坐标缓存，便于 tooltip/popup 直接复用。
   x: number;
   y: number;
@@ -160,6 +162,17 @@ interface FeedbackDeltaPlan {
 interface MarkerTooltipPlacement {
   horizontal: "left" | "center" | "right";
   vertical: "top" | "bottom";
+}
+
+interface MarkerVisualSemantic {
+  kind: "single" | "multi-select" | "area-select";
+  isAggregate: boolean;
+  aggregateCount: number;
+  mainLabel: string;
+  badgeLabel?: string;
+  title: string;
+  ariaLabel: string;
+  affordanceLabel: string;
 }
 
 interface MarkerAnchor {
@@ -454,6 +467,7 @@ class AgentationShellRuntime {
         selectedText: replayed.selectedText,
         elementName: replayed.elementName,
         targetInput: replayed.targetInput,
+        multiSelectMeta: replayed.multiSelectMeta,
         x: replayed.x,
         y: replayed.y,
         normalizedX: replayed.normalizedX,
@@ -489,6 +503,7 @@ class AgentationShellRuntime {
 
     const selectedText = normalizeSelectionText(annotation.target.textQuote ?? annotation.target.uiAnchor?.textQuote ?? "");
     const markerAnchor = buildMarkerAnchor(replayTarget.anchorX, replayTarget.anchorY, this.win.innerWidth, this.win.innerHeight);
+    const multiSelectMeta = readMultiSelectMetaFromUiAnchor(annotation.target.uiAnchor);
     return {
       id: annotation.id,
       remoteAnnotationId: annotation.id,
@@ -497,6 +512,7 @@ class AgentationShellRuntime {
       selectedText: selectedText || undefined,
       elementName: replayTarget.elementName,
       targetInput: replayTarget.targetInput,
+      multiSelectMeta,
       x: markerAnchor.x,
       y: markerAnchor.y,
       normalizedX: markerAnchor.normalizedX,
@@ -1387,6 +1403,7 @@ class AgentationShellRuntime {
     const remoteAnnotationId = idFromResult.trim() || undefined;
     const markerId = remoteAnnotationId ?? `local-${Date.now()}-${this.markerIdSeq++}`;
     const markerAnchor = buildMarkerAnchor(popupState.anchorX, popupState.anchorY, this.win.innerWidth, this.win.innerHeight);
+    const multiSelectMeta = readMultiSelectMetaFromUiAnchor(input.uiAnchor);
     this.markers.push({
       id: markerId,
       remoteAnnotationId,
@@ -1399,6 +1416,7 @@ class AgentationShellRuntime {
         elementPath: input.target.elementPath,
         rect: snapshotRect(input.target.rect),
       },
+      multiSelectMeta,
       x: markerAnchor.x,
       y: markerAnchor.y,
       normalizedX: markerAnchor.normalizedX,
@@ -1422,8 +1440,12 @@ class AgentationShellRuntime {
       button.style.left = `${markerAnchor.x}px`;
       button.style.top = `${markerAnchor.y}px`;
       button.style.background = markerColor(marker.priority);
-      button.textContent = String(index + 1);
-      button.setAttribute("aria-label", `annotation-marker-${index + 1}`);
+      const semantic = resolveMarkerVisualSemantic(marker, index);
+      // 把聚合语义显式下发到 DOM，便于样式和调试工具快速识别。
+      button.dataset.markerKind = semantic.kind;
+      button.dataset.markerAggregate = semantic.isAggregate ? "true" : "false";
+      button.dataset.markerAggregateCount = String(semantic.aggregateCount);
+      button.setAttribute("aria-label", semantic.ariaLabel);
       const tooltipPlacement = resolveMarkerTooltipPlacement(
         markerAnchor.x,
         markerAnchor.y,
@@ -1433,8 +1455,22 @@ class AgentationShellRuntime {
       // 只在 marker 维度打标签，交给 CSS 控制 tooltip 摆位，避免引入额外动画状态。
       button.dataset.tooltipX = tooltipPlacement.horizontal;
       button.dataset.tooltipY = tooltipPlacement.vertical;
-      // 仅补交互提示层：告诉用户 marker 点击会进入编辑，并可在弹窗删除。
-      button.title = "点击编辑；弹窗内可删除";
+      // title 文案也带上语义，悬停时能立即区分“普通标注”与“聚合标注”。
+      button.title = semantic.title;
+
+      const mainLabel = this.doc.createElement("span");
+      mainLabel.className = "pc-agent-marker-main-label";
+      mainLabel.textContent = semantic.mainLabel;
+      mainLabel.setAttribute("aria-hidden", "true");
+      button.appendChild(mainLabel);
+      if (semantic.badgeLabel) {
+        const badge = this.doc.createElement("span");
+        badge.className = "pc-agent-marker-badge";
+        badge.textContent = semantic.badgeLabel;
+        badge.setAttribute("aria-hidden", "true");
+        button.appendChild(badge);
+      }
+
       button.addEventListener("click", (event) => {
         // marker 点击只用于编辑，不应触发页面层点击逻辑。
         event.preventDefault();
@@ -1453,7 +1489,7 @@ class AgentationShellRuntime {
 
       const affordance = this.doc.createElement("span");
       affordance.className = "pc-agent-marker-affordance";
-      affordance.textContent = "编辑 / 删除";
+      affordance.textContent = semantic.affordanceLabel;
       affordance.setAttribute("aria-hidden", "true");
       button.appendChild(affordance);
 
@@ -1461,10 +1497,10 @@ class AgentationShellRuntime {
       tooltip.className = "pc-agent-marker-tooltip";
       const tooltipQuote = this.doc.createElement("span");
       tooltipQuote.className = "pc-agent-marker-quote";
-      tooltipQuote.textContent = buildMarkerTooltipQuote(marker);
+      tooltipQuote.textContent = buildMarkerTooltipQuote(marker, semantic);
       const tooltipNote = this.doc.createElement("span");
       tooltipNote.className = "pc-agent-marker-note";
-      tooltipNote.textContent = buildMarkerTooltipNote(marker);
+      tooltipNote.textContent = buildMarkerTooltipNote(marker, semantic);
       tooltip.append(tooltipQuote, tooltipNote);
       button.appendChild(tooltip);
 
@@ -2470,26 +2506,11 @@ function queryReplayElementBySelector(doc: Document, shellHost: HTMLElement, sel
 }
 
 function readMultiSelectUnionRect(meta: Record<string, unknown> | null): DOMRectReadOnly | null {
-  if (!meta) {
+  const multiSelectMeta = readMultiSelectMetaFromMetaRecord(meta);
+  if (!multiSelectMeta) {
     return null;
   }
-  const multiSelect = meta.multiSelect;
-  if (!isRecord(multiSelect)) {
-    return null;
-  }
-  const unionRect = multiSelect.unionRect;
-  if (!isRecord(unionRect)) {
-    return null;
-  }
-  const x = unionRect.x;
-  const y = unionRect.y;
-  const width = unionRect.width;
-  const height = unionRect.height;
-  return toDomRectFromUiRect(
-    isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(width) && isFiniteNumber(height)
-      ? { x, y, width, height }
-      : undefined,
-  );
+  return toDomRectFromUiRect(multiSelectMeta.unionRect);
 }
 
 function toDomRectFromUiRect(rect: FeedbackUiRect | undefined): DOMRectReadOnly | null {
@@ -2527,6 +2548,77 @@ function isFeedbackPriority(value: string): value is FeedbackPriority {
   return PRIORITY_ORDER.includes(value as FeedbackPriority);
 }
 
+function readMultiSelectMetaFromUiAnchor(uiAnchor: FeedbackUiAnchor | undefined): AgentationShellMultiSelectMeta | undefined {
+  if (!uiAnchor || !isRecord(uiAnchor.meta)) {
+    return undefined;
+  }
+  return readMultiSelectMetaFromMetaRecord(uiAnchor.meta);
+}
+
+function readMultiSelectMetaFromMetaRecord(meta: Record<string, unknown> | null): AgentationShellMultiSelectMeta | undefined {
+  if (!meta) {
+    return undefined;
+  }
+  const multiSelect = meta.multiSelect;
+  if (!isRecord(multiSelect)) {
+    return undefined;
+  }
+  const count = multiSelect.count;
+  const unionRect = readUiRectFromUnknown(multiSelect.unionRect);
+  const items = readMultiSelectItemsFromUnknown(multiSelect.items);
+  if (!isFiniteNumber(count) || !Number.isInteger(count) || count < 0 || !unionRect) {
+    return undefined;
+  }
+  const normalizedCount = Number(count);
+  // 只做“可用于渲染”的最小校验：count 与 items 长度不强耦合，兼容历史脏数据。
+  return {
+    count: normalizedCount,
+    unionRect,
+    items,
+  };
+}
+
+function readMultiSelectItemsFromUnknown(value: unknown): AgentationShellMultiSelectItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const items: AgentationShellMultiSelectItem[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) {
+      continue;
+    }
+    const elementName = typeof item.elementName === "string" ? item.elementName.trim() : "";
+    const elementPath = typeof item.elementPath === "string" ? item.elementPath.trim() : "";
+    const rect = readUiRectFromUnknown(item.rect);
+    if (!elementName || !elementPath || !rect) {
+      continue;
+    }
+    items.push({
+      elementName,
+      elementPath,
+      rect,
+    });
+  }
+  return items;
+}
+
+function readUiRectFromUnknown(value: unknown): FeedbackUiRect | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const x = value.x;
+  const y = value.y;
+  const width = value.width;
+  const height = value.height;
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(width) || !isFiniteNumber(height)) {
+    return null;
+  }
+  if (width < 1 || height < 1) {
+    return null;
+  }
+  return { x, y, width, height };
+}
+
 function markerColor(priority: FeedbackPriority): string {
   switch (priority) {
     case "low":
@@ -2539,6 +2631,42 @@ function markerColor(priority: FeedbackPriority): string {
     default:
       return "#0088ff";
   }
+}
+
+function resolveMarkerVisualSemantic(marker: MarkerRecord, index: number): MarkerVisualSemantic {
+  const multiSelectMeta = marker.multiSelectMeta;
+  if (multiSelectMeta?.count === 0) {
+    return {
+      kind: "area-select",
+      isAggregate: true,
+      aggregateCount: 0,
+      mainLabel: "区",
+      title: "区域聚合标注：点击编辑；弹窗内可删除",
+      ariaLabel: `annotation-area-marker-${index + 1}`,
+      affordanceLabel: "区域编辑 / 删除",
+    };
+  }
+  if (multiSelectMeta && multiSelectMeta.count > 1) {
+    return {
+      kind: "multi-select",
+      isAggregate: true,
+      aggregateCount: multiSelectMeta.count,
+      mainLabel: "Σ",
+      badgeLabel: multiSelectMeta.count > 99 ? "99+" : String(multiSelectMeta.count),
+      title: `聚合标注（${multiSelectMeta.count} 个元素）：点击编辑；弹窗内可删除`,
+      ariaLabel: `annotation-multi-marker-${index + 1}-${multiSelectMeta.count}-items`,
+      affordanceLabel: "聚合编辑 / 删除",
+    };
+  }
+  return {
+    kind: "single",
+    isAggregate: false,
+    aggregateCount: 1,
+    mainLabel: String(index + 1),
+    title: "点击编辑；弹窗内可删除",
+    ariaLabel: `annotation-marker-${index + 1}`,
+    affordanceLabel: "编辑 / 删除",
+  };
 }
 
 function isFocusableInPopup(element: HTMLElement): boolean {
@@ -2559,15 +2687,28 @@ function isFocusableInPopup(element: HTMLElement): boolean {
   return true;
 }
 
-function buildMarkerTooltipQuote(marker: MarkerRecord): string {
+function buildMarkerTooltipQuote(marker: MarkerRecord, semantic: MarkerVisualSemantic): string {
+  if (semantic.kind === "multi-select") {
+    return `聚合标注 · 命中 ${semantic.aggregateCount} 个元素`;
+  }
+  if (semantic.kind === "area-select") {
+    return "区域聚合标注 · 未命中可聚合元素";
+  }
   if (!marker.selectedText) {
     return "无选中文本";
   }
   return `“${marker.selectedText.slice(0, 40)}”`;
 }
 
-function buildMarkerTooltipNote(marker: MarkerRecord): string {
-  return `${marker.elementName} · ${marker.body.slice(0, 80)}`;
+function buildMarkerTooltipNote(marker: MarkerRecord, semantic: MarkerVisualSemantic): string {
+  const content = `${marker.elementName} · ${marker.body.slice(0, 80)}`;
+  if (semantic.kind === "single") {
+    return content;
+  }
+  if (semantic.kind === "area-select") {
+    return `区域范围 · ${content}`;
+  }
+  return `聚合范围(${semantic.aggregateCount}) · ${content}`;
 }
 
 function resolveMarkerTooltipPlacement(
@@ -2895,6 +3036,59 @@ const SHELL_TEMPLATE = `
       transition:
         background-color 0.15s ease,
         transform 0.1s ease;
+    }
+
+    .pc-agent-marker-main-label {
+      position: relative;
+      z-index: 1;
+      line-height: 1;
+      font-size: inherit;
+      font-weight: inherit;
+      pointer-events: none;
+    }
+
+    .pc-agent-marker-badge {
+      position: absolute;
+      right: -6px;
+      bottom: -6px;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      box-sizing: border-box;
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 700;
+      color: #0f172a;
+      background: #fef08a;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+      pointer-events: none;
+    }
+
+    .pc-agent-marker[data-marker-aggregate="true"] {
+      outline: 2px solid rgba(255, 255, 255, 0.74);
+      outline-offset: 1px;
+    }
+
+    .pc-agent-marker[data-marker-kind="multi-select"] {
+      width: 28px;
+      height: 24px;
+      border-radius: 8px;
+    }
+
+    .pc-agent-marker[data-marker-kind="area-select"] {
+      width: 24px;
+      height: 24px;
+      border-radius: 0;
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    }
+
+    .pc-agent-marker[data-marker-kind="area-select"] .pc-agent-marker-main-label {
+      font-size: 10px;
+      font-weight: 700;
     }
 
     .pc-agent-marker:hover,
