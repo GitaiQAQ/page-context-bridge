@@ -1,26 +1,41 @@
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } from "@page-context/builtin-tools";
-import {
-  installAgentationShell,
-  type AgentationShellCreateAnnotationInput,
-  type AgentationShellFeedbackDelta,
-  type AgentationShellFeedbackSnapshot,
-  type AgentationShellDismissAnnotationInput,
-  type AgentationShellUpdateAnnotationInput,
-} from "@page-context/agentation-shell";
+import { installAgentationShell, type AgentationShellDeps } from "@page-context/agentation-shell";
 import { installFeedbackOverlay } from "./content-script-feedback-overlay";
+import { createFeedbackUiAdapter, installAgentationReactRoot, installFeedbackUiWithFallback } from "./feedback-ui-adapter";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
 
 const consoleEntries: ConsoleEntry[] = [];
-// 只在 content-script 内维护增量游标，避免把 seq 状态耦合到 UI 壳。
-let feedbackLastSeq = 0;
 
 function log(...args: unknown[]): void {
   console.log("[PAGE-CONTEXT-CS]", ...args);
 }
 
 createConsoleCapture(window, consoleEntries);
-installFeedbackUiWithFallback();
+const feedbackUiAdapter = createFeedbackUiAdapter();
+const agentationLogger = createAgentationLogger();
+
+// 统一走“React root -> shell -> legacy overlay”链路，保证新旧实现平滑切换。
+installFeedbackUiWithFallback({
+  log,
+  installReactRoot: () =>
+    installAgentationReactRoot({
+      adapter: feedbackUiAdapter,
+      doc: document,
+      win: window,
+      logger: agentationLogger,
+    }),
+  installAgentationShell: () =>
+    installAgentationShell({
+      adapter: feedbackUiAdapter,
+      doc: document,
+      win: window,
+      logger: agentationLogger,
+    }),
+  installLegacyOverlay: () => {
+    installFeedbackOverlay();
+  },
+});
 
 chrome.runtime.onMessage.addListener(
   createRuntimeListener(async (message) => {
@@ -74,109 +89,15 @@ window.__PAGE_CONTEXT_BRIDGE_DEMO__ = () => {
   );
 };
 
-function installFeedbackUiWithFallback(): void {
-  try {
-    const installed = installAgentationShell({
-      adapter: {
-        createAnnotation: createAnnotationFromShell,
-        updateAnnotation: updateAnnotationFromShell,
-        dismissAnnotation: dismissAnnotationFromShell,
-        getFeedbackSnapshot: getFeedbackSnapshotFromShell,
-        getFeedbackStateDelta: getFeedbackStateDeltaFromShell,
-      },
-      // 统一复用 content-script 日志前缀，便于定位现场问题。
-      logger(level, message, extra) {
-        if (level === "error") {
-          log(`[agentation-shell] ${message}`, extra);
-          return;
-        }
-        log(`[agentation-shell] ${message}`, extra);
-      },
-    });
-
-    if (installed) {
-      log("Agentation shell installed");
+function createAgentationLogger(): AgentationShellDeps["logger"] {
+  // 让 React root 与 shell 复用同一日志格式，排障时只看一条前缀链。
+  return (level, message, extra) => {
+    if (level === "error") {
+      log(`[agentation-shell] ${message}`, extra);
       return;
     }
-
-    // 非 http/https 或非顶层窗口会走到这里，保底回退老 overlay。
-    log("Agentation shell skipped, fallback to legacy overlay");
-    installFeedbackOverlay();
-  } catch (error) {
-    // 壳体挂载是增强能力，不应拖垮原有反馈入口。
-    log("Agentation shell install failed, fallback to legacy overlay", error);
-    installFeedbackOverlay();
-  }
-}
-
-async function createAnnotationFromShell(
-  input: AgentationShellCreateAnnotationInput,
-): Promise<{ id?: string; raw?: unknown }> {
-  // 只发送当前协议确认过的字段，避免跨 worker 边界引入耦合。
-  const payload = {
-    body: input.body,
-    priority: input.priority,
-    selectedText: input.selectedText,
-    // uiAnchor 在 shell 里已做最小映射，这里只负责透传，避免重复协议逻辑。
-    uiAnchor: input.uiAnchor,
+    log(`[agentation-shell] ${message}`, extra);
   };
-  const raw = await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, payload);
-  return normalizeCreateResult(raw);
-}
-
-async function updateAnnotationFromShell(input: AgentationShellUpdateAnnotationInput): Promise<unknown> {
-  const payload = {
-    annotationId: input.annotationId,
-    body: input.body,
-    priority: input.priority,
-  };
-  return await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate, payload);
-}
-
-async function dismissAnnotationFromShell(input: AgentationShellDismissAnnotationInput): Promise<unknown> {
-  const payload = {
-    annotationId: input.annotationId,
-    dismissReason: input.dismissReason,
-  };
-  return await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, payload);
-}
-
-async function getFeedbackSnapshotFromShell(): Promise<AgentationShellFeedbackSnapshot> {
-  // shell 初始化后主动拉 snapshot，用于刷新页面后回放 marker。
-  const snapshot = await sendRuntimeRequest<AgentationShellFeedbackSnapshot>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
-  feedbackLastSeq = normalizeFeedbackSeq(snapshot.lastSeq, feedbackLastSeq);
-  return snapshot;
-}
-
-async function getFeedbackStateDeltaFromShell(): Promise<AgentationShellFeedbackDelta> {
-  const delta = await sendRuntimeRequest<AgentationShellFeedbackDelta>(BRIDGE_METHODS.extensionFeedbackStateDelta, {
-    afterSeq: feedbackLastSeq,
-  });
-  feedbackLastSeq = normalizeFeedbackSeq(delta.lastSeq, feedbackLastSeq);
-  return delta;
-}
-
-function normalizeFeedbackSeq(next: unknown, fallback: number): number {
-  const value = Number(next);
-  if (!Number.isFinite(value) || value < 0) {
-    return fallback;
-  }
-  return value;
-}
-
-function normalizeCreateResult(raw: unknown): { id?: string; raw?: unknown } {
-  if (!raw || typeof raw !== "object") {
-    return { raw };
-  }
-  const record = raw as Record<string, unknown>;
-  if (typeof record.id === "string") {
-    return { id: record.id, raw };
-  }
-  const annotation = record.annotation;
-  if (annotation && typeof annotation === "object" && typeof (annotation as { id?: unknown }).id === "string") {
-    return { id: (annotation as { id: string }).id, raw };
-  }
-  return { raw };
 }
 
 declare global {
