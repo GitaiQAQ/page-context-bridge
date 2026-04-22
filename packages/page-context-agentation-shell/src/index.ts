@@ -150,6 +150,11 @@ interface FeedbackDeltaPlan {
   eventCount: number;
 }
 
+interface MarkerTooltipPlacement {
+  horizontal: "left" | "center" | "right";
+  vertical: "top" | "bottom";
+}
+
 /**
  * content-script 调用入口。
  * 成功挂载返回 true；若页面不适合注入则返回 false。
@@ -1376,6 +1381,10 @@ class AgentationShellRuntime {
       button.style.background = markerColor(marker.priority);
       button.textContent = String(index + 1);
       button.setAttribute("aria-label", `annotation-marker-${index + 1}`);
+      const tooltipPlacement = resolveMarkerTooltipPlacement(marker.x, marker.y, this.win.innerWidth, this.win.innerHeight);
+      // 只在 marker 维度打标签，交给 CSS 控制 tooltip 摆位，避免引入额外动画状态。
+      button.dataset.tooltipX = tooltipPlacement.horizontal;
+      button.dataset.tooltipY = tooltipPlacement.vertical;
       // 仅补交互提示层：告诉用户 marker 点击会进入编辑，并可在弹窗删除。
       button.title = "点击编辑；弹窗内可删除";
       button.addEventListener("click", (event) => {
@@ -2404,6 +2413,34 @@ function buildMarkerTooltip(marker: MarkerRecord): string {
   return `${marker.elementName} | ${selected} | ${marker.body.slice(0, 80)}`;
 }
 
+function resolveMarkerTooltipPlacement(
+  markerX: number,
+  markerY: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): MarkerTooltipPlacement {
+  const horizontalSpacing = 8;
+  const verticalSpacing = 8;
+  const markerRadius = 11;
+  const tooltipMaxWidth = 260;
+  const tooltipEstimatedHeight = 84;
+  const horizontalHalf = tooltipMaxWidth / 2;
+
+  let horizontal: MarkerTooltipPlacement["horizontal"] = "center";
+  if (markerX - horizontalHalf < horizontalSpacing) {
+    horizontal = "left";
+  } else if (markerX + horizontalHalf > viewportWidth - horizontalSpacing) {
+    horizontal = "right";
+  }
+
+  let vertical: MarkerTooltipPlacement["vertical"] = "bottom";
+  if (markerY + markerRadius + verticalSpacing + tooltipEstimatedHeight > viewportHeight - verticalSpacing) {
+    vertical = "top";
+  }
+
+  return { horizontal, vertical };
+}
+
 function computeMarkerContextMenuLeft(clientX: number, viewportWidth: number): number {
   const width = 132;
   const spacing = 8;
@@ -2686,6 +2723,22 @@ const SHELL_TEMPLATE = `
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.15s ease;
+    }
+
+    .pc-agent-marker[data-tooltip-x="left"] .pc-agent-marker-tooltip {
+      left: 0;
+      transform: none;
+    }
+
+    .pc-agent-marker[data-tooltip-x="right"] .pc-agent-marker-tooltip {
+      left: auto;
+      right: 0;
+      transform: none;
+    }
+
+    .pc-agent-marker[data-tooltip-y="top"] .pc-agent-marker-tooltip {
+      top: auto;
+      bottom: calc(100% + 8px);
     }
 
     .pc-agent-marker:hover .pc-agent-marker-affordance,

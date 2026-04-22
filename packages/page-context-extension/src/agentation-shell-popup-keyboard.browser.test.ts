@@ -151,6 +151,33 @@ describe("agentation shell popup keyboard flow", () => {
 
     toolbarToggle.click();
   });
+
+  it("adjusts marker tooltip placement near viewport edges", async () => {
+    const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-tooltip-edge-1" });
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation, updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    const toolbarToggle = queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]");
+    toolbarToggle.click();
+
+    // 在右下角附近创建 marker，tooltip 应自动切到左上方向，减少出屏裁切。
+    dispatchMouse(document.body, "click", window.innerWidth - 2, window.innerHeight - 2);
+    const popup = queryRequired<HTMLFormElement>(shadow, "[data-popup]");
+    queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]").value = "tooltip edge case";
+    popup.requestSubmit();
+    await flushMicrotasks();
+
+    const marker = queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-tooltip-edge-1"]');
+    expect(marker.dataset.tooltipX).toBe("right");
+    expect(marker.dataset.tooltipY).toBe("top");
+
+    toolbarToggle.click();
+  });
 });
 
 function getAgentationShellShadowRoot(): ShadowRoot {
