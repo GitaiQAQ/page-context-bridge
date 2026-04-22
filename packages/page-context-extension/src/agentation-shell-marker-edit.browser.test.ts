@@ -80,6 +80,44 @@ describe("agentation shell marker edit flow", () => {
     });
     expect(shadow.querySelector('[data-marker-id="marker-1"]')).toBeNull();
     expect(popup.hidden).toBe(true);
+    // 收尾退出标注态，避免把全局监听残留给后续用例。
+    queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
+  });
+
+  it("supports marker contextmenu delete entry with dismiss sync", async () => {
+    const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-contextmenu-1" });
+    const dismissAnnotation = vi.fn().mockResolvedValue({ ok: true });
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation, updateAnnotation: vi.fn(), dismissAnnotation },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
+
+    dispatchMouse(document.body, "click", 120, 96);
+    queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]").value = "contextmenu delete";
+    queryRequired<HTMLFormElement>(shadow, "[data-popup]").requestSubmit();
+    await flushMicrotasks();
+
+    const marker = queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-contextmenu-1"]');
+    dispatchMouse(marker, "contextmenu", 120, 96);
+
+    const menu = queryRequired<HTMLDivElement>(shadow, "[data-marker-context-menu]");
+    expect(menu.hidden).toBe(false);
+    queryRequired<HTMLButtonElement>(shadow, "[data-marker-context-menu-delete]").click();
+    await flushMicrotasks();
+
+    expect(dismissAnnotation).toHaveBeenCalledTimes(1);
+    expect(dismissAnnotation).toHaveBeenCalledWith({
+      annotationId: "marker-contextmenu-1",
+      dismissReason: "marker deleted from agentation shell",
+    });
+    expect(shadow.querySelector('[data-marker-id="marker-contextmenu-1"]')).toBeNull();
+    expect(menu.hidden).toBe(true);
+    queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]").click();
   });
 });
 
@@ -107,13 +145,13 @@ function mockRect(element: HTMLElement, left: number, top: number, width: number
   });
 }
 
-function dispatchMouse(target: EventTarget, type: "click", clientX: number, clientY: number): void {
+function dispatchMouse(target: EventTarget, type: "click" | "contextmenu", clientX: number, clientY: number): void {
   target.dispatchEvent(
     new MouseEvent(type, {
       bubbles: true,
       cancelable: true,
       composed: true,
-      button: 0,
+      button: type === "contextmenu" ? 2 : 0,
       clientX,
       clientY,
     }),

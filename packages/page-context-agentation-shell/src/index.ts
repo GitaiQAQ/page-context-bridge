@@ -220,6 +220,8 @@ class AgentationShellRuntime {
   private readonly popupDeleteButton: HTMLButtonElement;
   private readonly popupCancelButton: HTMLButtonElement;
   private readonly popupSubmitButton: HTMLButtonElement;
+  private readonly markerContextMenu: HTMLDivElement;
+  private readonly markerContextMenuDeleteButton: HTMLButtonElement;
 
   private annotating = false;
   private submitting = false;
@@ -242,6 +244,8 @@ class AgentationShellRuntime {
   private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
   private feedbackDeltaSyncInFlight: Promise<void> | null = null;
   private popupReturnFocusTarget: HTMLElement | null = null;
+  private markerContextMenuMarkerId: string | null = null;
+  private markerContextMenuListening = false;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -278,6 +282,8 @@ class AgentationShellRuntime {
     this.popupDeleteButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-delete]");
     this.popupCancelButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-cancel]");
     this.popupSubmitButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-submit]");
+    this.markerContextMenu = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-context-menu]");
+    this.markerContextMenuDeleteButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-marker-context-menu-delete]");
   }
 
   mount(): void {
@@ -298,6 +304,7 @@ class AgentationShellRuntime {
     this.popupForm.addEventListener("keydown", this.onPopupKeyDown);
     this.popupForm.addEventListener("submit", this.onPopupSubmit);
     this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
+    this.markerContextMenuDeleteButton.addEventListener("click", this.onMarkerContextMenuDeleteClick);
     this.win.addEventListener("resize", this.onWindowResize, true);
     this.bootstrapFeedbackReplay();
   }
@@ -476,6 +483,7 @@ class AgentationShellRuntime {
 
   private readonly onToolbarHideClick = (event: MouseEvent): void => {
     event.preventDefault();
+    this.closeMarkerContextMenu();
 
     // 隐藏时先退出标注态，避免页面继续被透明层接管却没有可见入口。
     if (this.annotating) {
@@ -493,6 +501,7 @@ class AgentationShellRuntime {
       return;
     }
     event.preventDefault();
+    this.closeMarkerContextMenu();
     this.toolbarHidden = false;
     this.syncToolbarVisibility();
     this.persistToolbarState();
@@ -583,6 +592,7 @@ class AgentationShellRuntime {
   };
 
   private readonly onWindowResize = (): void => {
+    this.closeMarkerContextMenu();
     this.syncToolbarVisibility();
     this.persistToolbarState();
   };
@@ -624,6 +634,7 @@ class AgentationShellRuntime {
     this.resetDragSelectionState();
     this.clearMultiSelectTargets();
     this.hideHoverBox();
+    this.closeMarkerContextMenu();
     this.closePopup();
   }
 
@@ -969,6 +980,7 @@ class AgentationShellRuntime {
 
   private readonly onPopupCancelClick = (event: MouseEvent): void => {
     event.preventDefault();
+    this.closeMarkerContextMenu();
     this.closePopup();
   };
 
@@ -1027,6 +1039,7 @@ class AgentationShellRuntime {
 
   private readonly onPopupDeleteClick = async (event: MouseEvent): Promise<void> => {
     event.preventDefault();
+    this.closeMarkerContextMenu();
     if (this.submitting || !this.popupState || this.popupState.mode !== "edit") {
       return;
     }
@@ -1065,6 +1078,83 @@ class AgentationShellRuntime {
     this.setPopupStatus("反馈已删除", "success");
     this.closePopup();
     this.triggerFeedbackDeltaSync();
+  };
+
+  private readonly onMarkerContextMenuDeleteClick = async (event: MouseEvent): Promise<void> => {
+    event.preventDefault();
+    event.stopPropagation();
+    const markerId = this.markerContextMenuMarkerId;
+    this.closeMarkerContextMenu();
+    if (this.submitting || !markerId) {
+      return;
+    }
+
+    const marker = this.findMarkerById(markerId);
+    if (!marker) {
+      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      return;
+    }
+
+    this.submitting = true;
+    this.syncPopupSubmittingState();
+    this.setPopupStatus("Deleting...", "info");
+    try {
+      await this.dismissRemoteAnnotationIfNeeded(marker);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setPopupStatus(`删除失败: ${message}`, "error");
+      this.log("error", "Agentation shell dismiss annotation failed from marker context menu", error);
+      return;
+    } finally {
+      this.submitting = false;
+      this.syncPopupSubmittingState();
+    }
+
+    if (!this.deleteMarkerById(markerId)) {
+      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      return;
+    }
+    if (this.popupState?.mode === "edit" && this.popupState.editMarkerId === markerId) {
+      this.closePopup();
+    }
+    this.setPopupStatus("反馈已删除", "success");
+    this.triggerFeedbackDeltaSync();
+  };
+
+  private readonly onMarkerContextMenuPointerDown = (event: PointerEvent): void => {
+    if (this.markerContextMenu.hidden) {
+      return;
+    }
+    if (event.composedPath().includes(this.markerContextMenu)) {
+      return;
+    }
+    this.closeMarkerContextMenu();
+  };
+
+  private readonly onMarkerContextMenuKeyDown = (event: KeyboardEvent): void => {
+    if (this.markerContextMenu.hidden) {
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeMarkerContextMenu();
+      return;
+    }
+    if (event.key === "Tab") {
+      // 菜单只有一个动作，Tab 不应把焦点送回页面。
+      event.preventDefault();
+      event.stopPropagation();
+      this.markerContextMenuDeleteButton.focus();
+    }
+  };
+
+  private readonly onMarkerContextMenuViewportChange = (): void => {
+    if (this.markerContextMenu.hidden) {
+      return;
+    }
+    // 视口变化时直接收起，避免菜单位置悬空。
+    this.closeMarkerContextMenu();
   };
 
   private readonly onPriorityChange = (): void => {
@@ -1274,6 +1364,7 @@ class AgentationShellRuntime {
   }
 
   private renderMarkers(): void {
+    this.closeMarkerContextMenu();
     this.markerLayer.innerHTML = "";
     this.markers.forEach((marker, index) => {
       const button = this.doc.createElement("button");
@@ -1291,7 +1382,16 @@ class AgentationShellRuntime {
         // marker 点击只用于编辑，不应触发页面层点击逻辑。
         event.preventDefault();
         event.stopPropagation();
+        this.closeMarkerContextMenu();
         this.openPopupForMarker(marker.id);
+      });
+      button.addEventListener("contextmenu", (event) => {
+        // 右键提供快速删除入口；这里只弹上下文菜单，不直接删除。
+        event.preventDefault();
+        event.stopPropagation();
+        const anchorX = event.clientX || marker.x;
+        const anchorY = event.clientY || marker.y;
+        this.openMarkerContextMenu(marker.id, anchorX, anchorY);
       });
 
       const affordance = this.doc.createElement("span");
@@ -1313,6 +1413,7 @@ class AgentationShellRuntime {
     if (this.submitting) {
       return;
     }
+    this.closeMarkerContextMenu();
     const marker = this.markers.find((item) => item.id === markerId);
     if (!marker) {
       return;
@@ -1554,6 +1655,7 @@ class AgentationShellRuntime {
   }
 
   private openPopupWithState(state: PopupState): void {
+    this.closeMarkerContextMenu();
     this.popupState = state;
     this.popupReturnFocusTarget = this.resolvePopupReturnFocusTarget(state);
     const nextTop = computePopupTop(state.anchorY, this.win.innerHeight);
@@ -1592,6 +1694,7 @@ class AgentationShellRuntime {
   }
 
   private closePopup(): void {
+    this.closeMarkerContextMenu();
     const returnFocusTarget = this.popupReturnFocusTarget;
     this.popupReturnFocusTarget = null;
     this.popupState = null;
@@ -1606,6 +1709,53 @@ class AgentationShellRuntime {
     if (returnFocusTarget && returnFocusTarget.isConnected) {
       returnFocusTarget.focus();
     }
+  }
+
+  private openMarkerContextMenu(markerId: string, clientX: number, clientY: number): void {
+    if (this.submitting) {
+      return;
+    }
+    this.closeMarkerContextMenu();
+    this.markerContextMenuMarkerId = markerId;
+    this.markerContextMenu.hidden = false;
+
+    const nextLeft = computeMarkerContextMenuLeft(clientX, this.win.innerWidth);
+    const nextTop = computeMarkerContextMenuTop(clientY, this.win.innerHeight);
+    this.markerContextMenu.style.left = `${nextLeft}px`;
+    this.markerContextMenu.style.top = `${nextTop}px`;
+
+    this.attachMarkerContextMenuListeners();
+    this.markerContextMenuDeleteButton.focus();
+  }
+
+  private closeMarkerContextMenu(): void {
+    this.markerContextMenuMarkerId = null;
+    this.markerContextMenu.hidden = true;
+    this.markerContextMenu.style.left = "0px";
+    this.markerContextMenu.style.top = "0px";
+    this.detachMarkerContextMenuListeners();
+  }
+
+  private attachMarkerContextMenuListeners(): void {
+    if (this.markerContextMenuListening) {
+      return;
+    }
+    this.markerContextMenuListening = true;
+    this.doc.addEventListener("pointerdown", this.onMarkerContextMenuPointerDown, true);
+    this.doc.addEventListener("keydown", this.onMarkerContextMenuKeyDown, true);
+    this.win.addEventListener("scroll", this.onMarkerContextMenuViewportChange, true);
+    this.win.addEventListener("blur", this.onMarkerContextMenuViewportChange, true);
+  }
+
+  private detachMarkerContextMenuListeners(): void {
+    if (!this.markerContextMenuListening) {
+      return;
+    }
+    this.markerContextMenuListening = false;
+    this.doc.removeEventListener("pointerdown", this.onMarkerContextMenuPointerDown, true);
+    this.doc.removeEventListener("keydown", this.onMarkerContextMenuKeyDown, true);
+    this.win.removeEventListener("scroll", this.onMarkerContextMenuViewportChange, true);
+    this.win.removeEventListener("blur", this.onMarkerContextMenuViewportChange, true);
   }
 
   private collectPopupFocusableElements(): HTMLElement[] {
@@ -2254,6 +2404,18 @@ function buildMarkerTooltip(marker: MarkerRecord): string {
   return `${marker.elementName} | ${selected} | ${marker.body.slice(0, 80)}`;
 }
 
+function computeMarkerContextMenuLeft(clientX: number, viewportWidth: number): number {
+  const width = 132;
+  const spacing = 8;
+  return clamp(clientX + 4, spacing, Math.max(spacing, viewportWidth - width - spacing));
+}
+
+function computeMarkerContextMenuTop(clientY: number, viewportHeight: number): number {
+  const height = 38;
+  const spacing = 8;
+  return clamp(clientY + 4, spacing, Math.max(spacing, viewportHeight - height - spacing));
+}
+
 function computePopupLeft(clientX: number, viewportWidth: number): number {
   const width = 320;
   const min = 12;
@@ -2536,6 +2698,45 @@ const SHELL_TEMPLATE = `
       opacity: 1;
     }
 
+    .pc-agent-marker-context-menu {
+      position: fixed;
+      width: 132px;
+      box-sizing: border-box;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: #1a1a1a;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+      padding: 4px;
+      pointer-events: auto;
+    }
+
+    .pc-agent-marker-context-menu[hidden] {
+      display: none;
+    }
+
+    .pc-agent-marker-context-menu-item {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.88);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    .pc-agent-marker-context-menu-item:hover,
+    .pc-agent-marker-context-menu-item:focus-visible {
+      background: rgba(255, 255, 255, 0.08);
+      outline: none;
+    }
+
+    .pc-agent-marker-context-menu-item.danger {
+      color: #ffd2d2;
+    }
+
     .pc-agent-popup {
       position: fixed;
       width: 320px;
@@ -2651,6 +2852,9 @@ const SHELL_TEMPLATE = `
     <div class="pc-agent-marker-layer" data-marker-layer></div>
     <div class="pc-agent-hover-box" data-hover-box hidden></div>
     <div class="pc-agent-drag-selection" data-drag-selection hidden></div>
+    <div class="pc-agent-marker-context-menu" data-marker-context-menu hidden>
+      <button type="button" class="pc-agent-marker-context-menu-item danger" data-marker-context-menu-delete>删除标注</button>
+    </div>
 
     <div class="pc-agent-toolbar" data-toolbar data-annotating="false">
       <button type="button" class="pc-agent-toolbar-toggle" data-active="false" data-toolbar-toggle>UI 标注</button>
