@@ -1,5 +1,6 @@
 import type {
   FeedbackPriority,
+  FeedbackStateDeltaResult,
   FeedbackStateSnapshotResult,
   FeedbackUiAnchor,
   FeedbackUiRect,
@@ -77,6 +78,12 @@ export interface AgentationShellDismissAnnotationInput {
 export type AgentationShellFeedbackSnapshot = FeedbackStateSnapshotResult;
 
 /**
+ * 壳体增量同步直接复用 shared-protocol 结构。
+ * 由 content-script 负责维护 afterSeq，壳体只关心事件语义。
+ */
+export type AgentationShellFeedbackDelta = FeedbackStateDeltaResult;
+
+/**
  * 壳体与 bridge 的注入边界。
  * UI 只依赖接口，不感知 runtime/network/store 实现。
  */
@@ -85,6 +92,7 @@ export interface AgentationShellBridgeAdapter {
   updateAnnotation?(input: AgentationShellUpdateAnnotationInput): Promise<unknown>;
   dismissAnnotation?(input: AgentationShellDismissAnnotationInput): Promise<unknown>;
   getFeedbackSnapshot?(): Promise<AgentationShellFeedbackSnapshot>;
+  getFeedbackStateDelta?(): Promise<AgentationShellFeedbackDelta>;
 }
 
 export interface AgentationShellDeps {

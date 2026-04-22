@@ -51,6 +51,7 @@ describe("RpcPeer", () => {
 
   it("exports feedback method constants through the shared barrel", () => {
     expect(BRIDGE_METHODS.feedbackStateSnapshot).toBe("feedback.state.snapshot");
+    expect(BRIDGE_METHODS.extensionFeedbackStateDelta).toBe("extension.feedback.state.delta");
     expect(BRIDGE_METHODS.extensionFeedbackAnnotationCreate).toBe("extension.feedback.annotation.create");
     expect(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate).toBe("extension.feedback.annotation.update");
     expect(FEEDBACK_METHODS.feedbackAnnotationResolve).toBe("feedback.annotation.resolve");

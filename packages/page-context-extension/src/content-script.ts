@@ -3,6 +3,7 @@ import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } fro
 import {
   installAgentationShell,
   type AgentationShellCreateAnnotationInput,
+  type AgentationShellFeedbackDelta,
   type AgentationShellFeedbackSnapshot,
   type AgentationShellDismissAnnotationInput,
   type AgentationShellUpdateAnnotationInput,
@@ -11,6 +12,8 @@ import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
 
 const consoleEntries: ConsoleEntry[] = [];
+// 只在 content-script 内维护增量游标，避免把 seq 状态耦合到 UI 壳。
+let feedbackLastSeq = 0;
 
 function log(...args: unknown[]): void {
   console.log("[PAGE-CONTEXT-CS]", ...args);
@@ -79,6 +82,7 @@ function installFeedbackUiWithFallback(): void {
         updateAnnotation: updateAnnotationFromShell,
         dismissAnnotation: dismissAnnotationFromShell,
         getFeedbackSnapshot: getFeedbackSnapshotFromShell,
+        getFeedbackStateDelta: getFeedbackStateDeltaFromShell,
       },
       // 统一复用 content-script 日志前缀，便于定位现场问题。
       logger(level, message, extra) {
@@ -139,7 +143,25 @@ async function dismissAnnotationFromShell(input: AgentationShellDismissAnnotatio
 
 async function getFeedbackSnapshotFromShell(): Promise<AgentationShellFeedbackSnapshot> {
   // shell 初始化后主动拉 snapshot，用于刷新页面后回放 marker。
-  return await sendRuntimeRequest<AgentationShellFeedbackSnapshot>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
+  const snapshot = await sendRuntimeRequest<AgentationShellFeedbackSnapshot>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
+  feedbackLastSeq = normalizeFeedbackSeq(snapshot.lastSeq, feedbackLastSeq);
+  return snapshot;
+}
+
+async function getFeedbackStateDeltaFromShell(): Promise<AgentationShellFeedbackDelta> {
+  const delta = await sendRuntimeRequest<AgentationShellFeedbackDelta>(BRIDGE_METHODS.extensionFeedbackStateDelta, {
+    afterSeq: feedbackLastSeq,
+  });
+  feedbackLastSeq = normalizeFeedbackSeq(delta.lastSeq, feedbackLastSeq);
+  return delta;
+}
+
+function normalizeFeedbackSeq(next: unknown, fallback: number): number {
+  const value = Number(next);
+  if (!Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+  return value;
 }
 
 function normalizeCreateResult(raw: unknown): { id?: string; raw?: unknown } {

@@ -13,6 +13,7 @@ export const FEEDBACK_METHODS = {
   feedbackAnnotationResolve: "feedback.annotation.resolve",
   feedbackAnnotationDismiss: "feedback.annotation.dismiss",
   extensionFeedbackStateSnapshot: "extension.feedback.state.snapshot",
+  extensionFeedbackStateDelta: "extension.feedback.state.delta",
   extensionFeedbackAnnotationCreate: "extension.feedback.annotation.create",
   extensionFeedbackAnnotationUpdate: "extension.feedback.annotation.update",
   extensionFeedbackAnnotationClaim: "extension.feedback.annotation.claim",

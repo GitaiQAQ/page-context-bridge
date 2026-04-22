@@ -11,6 +11,7 @@ import {
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,
   type FeedbackAnnotationUpdateParams,
+  type FeedbackStateDeltaParams,
   type FeedbackStateSnapshotParams,
   type PageContextManifest,
   RpcProtocolError,
@@ -642,6 +643,18 @@ chrome.runtime.onMessage.addListener(
           params.tabId = context?.tabId;
         }
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackStateSnapshot, params);
+      }
+      case BRIDGE_METHODS.extensionFeedbackStateDelta: {
+        const payload = (message.params ?? {}) as FeedbackStateDeltaParams;
+        const afterSeq = Number(payload.afterSeq ?? 0);
+        if (!Number.isFinite(afterSeq) || afterSeq < 0) {
+          throw new Error("Feedback delta afterSeq must be a non-negative number");
+        }
+        const params: FeedbackStateDeltaParams = {
+          ...payload,
+          afterSeq,
+        };
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackStateDelta, params);
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationCreate: {
         const payload = (message.params ?? {}) as FeedbackCreatePayloadFromUi;

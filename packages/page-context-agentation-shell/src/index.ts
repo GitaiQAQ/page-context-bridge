@@ -5,6 +5,7 @@ import type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
+  AgentationShellFeedbackDelta,
   AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
   AgentationShellDismissAnnotationInput,
@@ -16,6 +17,7 @@ export type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
+  AgentationShellFeedbackDelta,
   AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
   AgentationShellDismissAnnotationInput,
@@ -141,6 +143,12 @@ interface ReplayMarkerTarget {
   targetInput: AgentationShellCreateAnnotationInput["target"];
 }
 
+interface FeedbackDeltaPlan {
+  dismissedAnnotationIds: Set<string>;
+  shouldReloadSnapshot: boolean;
+  eventCount: number;
+}
+
 /**
  * content-script 调用入口。
  * 成功挂载返回 true；若页面不适合注入则返回 false。
@@ -231,6 +239,7 @@ class AgentationShellRuntime {
   private toolbarDragState: ToolbarDragState | null = null;
   private toolbarDockClickBlocked = false;
   private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
+  private feedbackDeltaSyncInFlight: Promise<void> | null = null;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -297,7 +306,8 @@ class AgentationShellRuntime {
     if (!this.adapter.getFeedbackSnapshot) {
       return;
     }
-    void this.syncMarkersFromFeedbackSnapshot();
+    // 先回放全量，再补一轮增量，兜住 snapshot 拉取窗口内的事件竞态。
+    void this.syncMarkersFromFeedbackSnapshot().then(() => this.syncMarkersFromFeedbackDelta());
   }
 
   /**
@@ -327,6 +337,51 @@ class AgentationShellRuntime {
       this.feedbackSnapshotSyncInFlight = null;
     });
     await this.feedbackSnapshotSyncInFlight;
+  }
+
+  /**
+   * 最小 delta fallback：
+   * - dismissed 且有 annotationId：直接删 marker
+   * - 其他 annotation 事件：回退触发一次 snapshot reload
+   */
+  private async syncMarkersFromFeedbackDelta(): Promise<void> {
+    if (!this.adapter.getFeedbackStateDelta) {
+      return;
+    }
+    if (this.feedbackDeltaSyncInFlight) {
+      await this.feedbackDeltaSyncInFlight;
+      return;
+    }
+
+    const task = (async () => {
+      const delta = await this.adapter.getFeedbackStateDelta!();
+      const plan = buildFeedbackDeltaPlan(delta);
+      const removedCount = this.deleteMarkersByRemoteAnnotationIds(plan.dismissedAnnotationIds);
+
+      let snapshotReloaded = false;
+      if (plan.shouldReloadSnapshot && this.adapter.getFeedbackSnapshot) {
+        snapshotReloaded = true;
+        await this.syncMarkersFromFeedbackSnapshot();
+      }
+
+      this.log("debug", "Agentation shell feedback delta sync completed", {
+        eventCount: plan.eventCount,
+        removedCount,
+        snapshotReloaded,
+        lastSeq: delta.lastSeq,
+      });
+    })().catch((error) => {
+      this.log("error", "Agentation shell feedback delta sync failed", error);
+    });
+
+    this.feedbackDeltaSyncInFlight = task.finally(() => {
+      this.feedbackDeltaSyncInFlight = null;
+    });
+    await this.feedbackDeltaSyncInFlight;
+  }
+
+  private triggerFeedbackDeltaSync(): void {
+    void this.syncMarkersFromFeedbackDelta();
   }
 
   /**
@@ -953,6 +1008,7 @@ class AgentationShellRuntime {
     }
     this.setPopupStatus("反馈已删除", "success");
     this.closePopup();
+    this.triggerFeedbackDeltaSync();
   };
 
   private readonly onPriorityChange = (): void => {
@@ -1010,6 +1066,7 @@ class AgentationShellRuntime {
       }
       this.setPopupStatus("反馈已更新", "success");
       this.closePopup();
+      this.triggerFeedbackDeltaSync();
       return;
     }
 
@@ -1039,6 +1096,7 @@ class AgentationShellRuntime {
       this.setPopupStatus("反馈已创建", "success");
       this.popupBodyInput.value = "";
       this.closePopup();
+      this.triggerFeedbackDeltaSync();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.setPopupStatus(`提交失败: ${message}`, "error");
@@ -1101,6 +1159,33 @@ class AgentationShellRuntime {
     this.markers.splice(markerIndex, 1);
     this.renderMarkers();
     return true;
+  }
+
+  private deleteMarkersByRemoteAnnotationIds(annotationIds: ReadonlySet<string>): number {
+    if (annotationIds.size === 0) {
+      return 0;
+    }
+
+    const popupEditingMarkerId = this.popupState?.mode === "edit" ? this.popupState.editMarkerId : undefined;
+    const beforeCount = this.markers.length;
+    const remained = this.markers.filter((marker) => {
+      if (!marker.remoteAnnotationId) {
+        return true;
+      }
+      return !annotationIds.has(marker.remoteAnnotationId);
+    });
+
+    const removedCount = beforeCount - remained.length;
+    if (removedCount < 1) {
+      return 0;
+    }
+
+    this.markers.splice(0, this.markers.length, ...remained);
+    if (popupEditingMarkerId && !this.markers.some((marker) => marker.id === popupEditingMarkerId)) {
+      this.closePopup();
+    }
+    this.renderMarkers();
+    return removedCount;
   }
 
   private applyAnnotationSuccess(
@@ -1872,6 +1957,39 @@ function isReplayableFeedbackAnnotation(annotation: FeedbackAnnotation): boolean
     return false;
   }
   return !NON_REPLAYABLE_ANNOTATION_STATUS.has(annotation.status);
+}
+
+function buildFeedbackDeltaPlan(delta: AgentationShellFeedbackDelta): FeedbackDeltaPlan {
+  const plan: FeedbackDeltaPlan = {
+    dismissedAnnotationIds: new Set<string>(),
+    shouldReloadSnapshot: false,
+    eventCount: 0,
+  };
+
+  for (const event of delta.events) {
+    const eventType = event.eventType;
+    if (!eventType.startsWith("annotation.")) {
+      continue;
+    }
+    plan.eventCount += 1;
+
+    if (eventType === "annotation.dismissed") {
+      const annotationId = event.annotationId?.trim() ?? "";
+      if (annotationId) {
+        // dismiss 事件直接删 marker，避免每次都回放全量 snapshot。
+        plan.dismissedAnnotationIds.add(annotationId);
+        continue;
+      }
+      // delta payload 不完整时保守回退到 snapshot，确保状态最终一致。
+      plan.shouldReloadSnapshot = true;
+      continue;
+    }
+
+    // created/updated/claimed/replied/resolved 等统一走一次 snapshot reload。
+    plan.shouldReloadSnapshot = true;
+  }
+
+  return plan;
 }
 
 function resolveReplayMarkerTarget(
