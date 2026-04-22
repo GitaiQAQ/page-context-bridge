@@ -162,6 +162,7 @@ describe("agentation shell popup keyboard flow", () => {
     const popupDelete = queryRequired<HTMLButtonElement>(shadow, "[data-popup-delete]");
     const popupSelectionLabel = queryRequired<HTMLLabelElement>(shadow, "[data-popup-selection-label]");
     const actionSecondary = queryRequired<HTMLDivElement>(shadow, ".pc-agent-popup-actions-secondary");
+    const actionPrimary = queryRequired<HTMLDivElement>(shadow, ".pc-agent-popup-actions-primary");
 
     // create 态先校验文案与按钮分组，保证壳层结构不再回退到旧版布局。
     expect(popupTitle.textContent).toBe("新建标注");
@@ -172,6 +173,8 @@ describe("agentation shell popup keyboard flow", () => {
     expect(popupSelectionLabel.textContent).toBe("当前选中文本");
     expect(actionSecondary.contains(popupCancel)).toBe(true);
     expect(actionSecondary.contains(popupDelete)).toBe(true);
+    // 主按钮独立分组，避免后续承接成品样式时再改 DOM。
+    expect(actionPrimary.contains(popupSubmit)).toBe(true);
 
     queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]").value = "seed popup copy marker";
     popup.requestSubmit();

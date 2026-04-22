@@ -3062,6 +3062,12 @@ const SHELL_TEMPLATE = `
       gap: 0.375rem;
     }
 
+    /* 主操作单独分层，后续可直接承接成品的主按钮布局规则。 */
+    .pc-agent-popup-actions-primary {
+      display: flex;
+      align-items: center;
+    }
+
     .pc-agent-popup-btn {
       border: 0;
       border-radius: 1rem;
@@ -3199,12 +3205,14 @@ const SHELL_TEMPLATE = `
         <option value="critical">critical</option>
       </select>
 
-      <div class="pc-agent-popup-actions">
-        <div class="pc-agent-popup-actions-secondary">
+      <div class="pc-agent-popup-actions" data-popup-actions>
+        <div class="pc-agent-popup-actions-secondary" data-popup-actions-secondary>
           <button type="button" class="pc-agent-popup-btn" data-popup-cancel>取消</button>
           <button type="button" class="pc-agent-popup-btn danger" data-popup-delete hidden>删除标注</button>
         </div>
-        <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交标注</button>
+        <div class="pc-agent-popup-actions-primary" data-popup-actions-primary>
+          <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交标注</button>
+        </div>
       </div>
       <p class="pc-agent-popup-status info" data-popup-status>等待操作</p>
     </form>
