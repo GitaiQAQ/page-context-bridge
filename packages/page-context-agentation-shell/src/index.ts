@@ -5,6 +5,8 @@ import type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
+  AgentationShellMountDeps,
+  AgentationShellMountHandle,
   AgentationShellFeedbackDelta,
   AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
@@ -17,6 +19,8 @@ export type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
+  AgentationShellMountDeps,
+  AgentationShellMountHandle,
   AgentationShellFeedbackDelta,
   AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
@@ -79,6 +83,7 @@ const DRAG_SELECTION_TEXT_TAGS = new Set([
   "SUP",
 ]);
 const NON_REPLAYABLE_ANNOTATION_STATUS = new Set<FeedbackAnnotationStatus>(["resolved", "dismissed"]);
+const runtimeByHost = new WeakMap<HTMLDivElement, AgentationShellRuntime>();
 
 interface MarkerRecord {
   id: string;
@@ -192,18 +197,91 @@ export function installAgentationShell(deps: AgentationShellDeps): boolean {
   if (!shouldInstallShell(doc, win)) {
     return false;
   }
+  // 保持历史兼容：只要默认 host id 已存在，就视为已安装。
   if (doc.getElementById(AGENTATION_SHELL_HOST_ID)) {
     return true;
   }
+  return mountAgentationShell({
+    adapter: deps.adapter,
+    doc,
+    win,
+    logger: deps.logger,
+  }) !== null;
+}
+
+/**
+ * 可复用挂载 API：
+ * - 支持外部 host（如 React 组件内嵌 div）；
+ * - 返回幂等 unmount 句柄，便于严格模式重复挂载时正确清理。
+ */
+export function mountAgentationShell(deps: AgentationShellMountDeps): AgentationShellMountHandle | null {
+  const doc = deps.doc ?? document;
+  const win = deps.win ?? window;
+  if (!shouldInstallShell(doc, win)) {
+    return null;
+  }
+
+  const { host, removeHostOnUnmount } = resolveMountHost(doc, deps.host);
+  // 同一个 host 重复挂载时先回收旧 runtime，避免监听器叠加。
+  const previousRuntime = runtimeByHost.get(host);
+  if (previousRuntime) {
+    previousRuntime.unmount();
+    runtimeByHost.delete(host);
+  }
 
   const runtime = new AgentationShellRuntime({
+    host,
+    removeHostOnUnmount,
     adapter: deps.adapter,
     doc,
     win,
     logger: deps.logger,
   });
   runtime.mount();
-  return true;
+  runtimeByHost.set(host, runtime);
+
+  let disposed = false;
+  return {
+    host,
+    unmount() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      // 旧句柄不能误删新实例：只清理当前仍活跃的 runtime。
+      if (runtimeByHost.get(host) !== runtime) {
+        return;
+      }
+      runtime.unmount();
+      runtimeByHost.delete(host);
+    },
+  };
+}
+
+function resolveMountHost(
+  doc: Document,
+  providedHost?: HTMLDivElement,
+): { host: HTMLDivElement; removeHostOnUnmount: boolean } {
+  if (providedHost) {
+    return { host: providedHost, removeHostOnUnmount: false };
+  }
+  const existing = doc.getElementById(AGENTATION_SHELL_HOST_ID);
+  if (existing) {
+    if (!(existing instanceof HTMLDivElement)) {
+      throw new Error(`agentation shell host id conflicts with non-div element: ${AGENTATION_SHELL_HOST_ID}`);
+    }
+    return { host: existing, removeHostOnUnmount: false };
+  }
+  const host = doc.createElement("div");
+  host.id = AGENTATION_SHELL_HOST_ID;
+  return { host, removeHostOnUnmount: true };
+}
+
+function resolveShellShadowRoot(host: HTMLDivElement): ShadowRoot {
+  if (host.shadowRoot) {
+    return host.shadowRoot;
+  }
+  return host.attachShadow({ mode: "open" });
 }
 
 function shouldInstallShell(doc: Document, win: Window): boolean {
@@ -229,6 +307,7 @@ class AgentationShellRuntime {
   private readonly doc: Document;
   private readonly win: Window;
   private readonly logger?: AgentationShellDeps["logger"];
+  private readonly removeHostOnUnmount: boolean;
 
   private readonly host: HTMLDivElement;
   private readonly shadow: ShadowRoot;
@@ -283,21 +362,24 @@ class AgentationShellRuntime {
   private popupShakeTimerId: number | null = null;
   private markerContextMenuMarkerId: string | null = null;
   private markerContextMenuListening = false;
+  private mounted = false;
 
   constructor(args: {
+    host: HTMLDivElement;
+    removeHostOnUnmount: boolean;
     adapter: AgentationShellBridgeAdapter;
     doc: Document;
     win: Window;
     logger?: AgentationShellDeps["logger"];
   }) {
+    this.host = args.host;
+    this.removeHostOnUnmount = args.removeHostOnUnmount;
     this.adapter = args.adapter;
     this.doc = args.doc;
     this.win = args.win;
     this.logger = args.logger;
 
-    this.host = this.doc.createElement("div");
-    this.host.id = AGENTATION_SHELL_HOST_ID;
-    this.shadow = this.host.attachShadow({ mode: "open" });
+    this.shadow = resolveShellShadowRoot(this.host);
     this.shadow.innerHTML = SHELL_TEMPLATE;
 
     this.toolbar = queryRequired<HTMLDivElement>(this.shadow, "[data-toolbar]");
@@ -325,7 +407,20 @@ class AgentationShellRuntime {
   }
 
   mount(): void {
-    this.doc.body.appendChild(this.host);
+    if (this.mounted) {
+      return;
+    }
+    this.mounted = true;
+
+    // 外部 host 可能尚未插入 DOM，统一兜底到 document 根节点。
+    if (!this.host.isConnected) {
+      const parent = this.doc.body ?? this.doc.documentElement;
+      if (!parent) {
+        throw new Error("agentation shell host cannot be mounted: missing document root");
+      }
+      parent.appendChild(this.host);
+    }
+
     this.restoreToolbarStateFromStorage();
     if (this.toolbarPosition) {
       this.syncToolbarVisibility();
@@ -348,10 +443,48 @@ class AgentationShellRuntime {
     this.bootstrapFeedbackReplay();
   }
 
+  unmount(): void {
+    if (!this.mounted) {
+      return;
+    }
+    this.mounted = false;
+
+    // 先撤掉运行时监听，再做 DOM 清理，避免清理过程中触发回调。
+    this.stopAnnotating();
+    this.stopToolbarDrag();
+    this.closeMarkerContextMenu();
+    this.closePopup();
+    this.clearPopupTimers();
+    this.detachMarkerContextMenuListeners();
+    this.win.removeEventListener("resize", this.onWindowResize, true);
+
+    this.toolbarToggle.removeEventListener("click", this.onToolbarToggleClick);
+    this.toolbarDragHandle.removeEventListener("pointerdown", this.onToolbarDragPointerDown);
+    this.toolbarHideButton.removeEventListener("click", this.onToolbarHideClick);
+    this.toolbarDock.removeEventListener("pointerdown", this.onToolbarDockPointerDown);
+    this.toolbarDock.removeEventListener("click", this.onToolbarDockClick);
+    this.popupDeleteButton.removeEventListener("click", this.onPopupDeleteClick);
+    this.popupCancelButton.removeEventListener("click", this.onPopupCancelClick);
+    this.popupForm.removeEventListener("keydown", this.onPopupKeyDown);
+    this.popupForm.removeEventListener("submit", this.onPopupSubmit);
+    this.popupBodyInput.removeEventListener("input", this.onPopupBodyInput);
+    this.popupPrioritySelect.removeEventListener("change", this.onPriorityChange);
+    this.markerContextMenuDeleteButton.removeEventListener("click", this.onMarkerContextMenuDeleteClick);
+
+    // 复用外部 host 时不能直接 remove 节点，只清空 shadow 内容。
+    this.shadow.replaceChildren();
+    if (this.removeHostOnUnmount) {
+      this.host.remove();
+    }
+  }
+
   /**
    * 初始化后主动拉一次 snapshot，把历史 annotation 回放成 marker。
    */
   private bootstrapFeedbackReplay(): void {
+    if (!this.mounted) {
+      return;
+    }
     if (!this.adapter.getFeedbackSnapshot) {
       return;
     }
@@ -373,6 +506,9 @@ class AgentationShellRuntime {
 
     const task = (async () => {
       const snapshot = await this.adapter.getFeedbackSnapshot!();
+      if (!this.mounted) {
+        return;
+      }
       this.reconcileMarkersFromFeedbackSnapshot(snapshot);
       this.log("debug", "Agentation shell feedback snapshot replay completed", {
         annotationCount: snapshot.annotations.length,
@@ -404,6 +540,9 @@ class AgentationShellRuntime {
 
     const task = (async () => {
       const delta = await this.adapter.getFeedbackStateDelta!();
+      if (!this.mounted) {
+        return;
+      }
       const plan = buildFeedbackDeltaPlan(delta);
       const removedCount = this.deleteMarkersByRemoteAnnotationIds(plan.dismissedAnnotationIds);
 
@@ -1900,6 +2039,21 @@ class AgentationShellRuntime {
     delete this.popupBodyInput.dataset.invalid;
     this.popupBodyInput.removeAttribute("aria-invalid");
     this.popupForm.classList.remove("pc-agent-popup-shake");
+    if (this.popupShakeTimerId !== null) {
+      this.win.clearTimeout(this.popupShakeTimerId);
+      this.popupShakeTimerId = null;
+    }
+  }
+
+  private clearPopupTimers(): void {
+    if (this.popupEnterTimerId !== null) {
+      this.win.clearTimeout(this.popupEnterTimerId);
+      this.popupEnterTimerId = null;
+    }
+    if (this.popupExitTimerId !== null) {
+      this.win.clearTimeout(this.popupExitTimerId);
+      this.popupExitTimerId = null;
+    }
     if (this.popupShakeTimerId !== null) {
       this.win.clearTimeout(this.popupShakeTimerId);
       this.popupShakeTimerId = null;

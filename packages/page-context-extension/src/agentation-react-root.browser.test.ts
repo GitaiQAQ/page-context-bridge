@@ -1,14 +1,30 @@
 import { createElement } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AGENTATION_REACT_HOST_ID, mountAgentationReactRoot } from "./agentation-react-root";
+import { installAgentationShell } from "@page-context/agentation-shell";
+import {
+  AGENTATION_REACT_HOST_ID,
+  AGENTATION_REACT_ROOT_ENTRY_KEY,
+  mountAgentationReactRoot,
+  registerAgentationReactRootEntry,
+} from "./agentation-react-root";
+import { installAgentationReactRoot } from "./feedback-ui-adapter";
+
+const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
+const REACT_ROOT_ENTRY_KEYS = [
+  AGENTATION_REACT_ROOT_ENTRY_KEY,
+  "__PAGE_CONTEXT_AGENTATION_REACT_ROOT__",
+  "__page_context_agentation_react_root__",
+] as const;
 
 describe("mountAgentationReactRoot", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    cleanupReactRootEntry();
   });
 
   afterEach(() => {
+    cleanupReactRootEntry();
     document.body.innerHTML = "";
   });
 
@@ -72,3 +88,73 @@ describe("mountAgentationReactRoot", () => {
     expect(document.getElementById(AGENTATION_REACT_HOST_ID)).toBeNull();
   });
 });
+
+describe("agentation react root entry integration", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "<main><h1>demo page</h1></main>";
+    cleanupReactRootEntry();
+  });
+
+  afterEach(() => {
+    cleanupReactRootEntry();
+    document.body.innerHTML = "";
+  });
+
+  it("registers stable window entry key for react root mount", () => {
+    const entry = registerAgentationReactRootEntry({ win: window });
+    expect(window["agentation-react-root"]).toBe(entry);
+    expect(window.__PAGE_CONTEXT_AGENTATION_REACT_ROOT__).toBe(entry);
+  });
+
+  it("mounts real shell through installAgentationReactRoot and cleans host on unmount", () => {
+    registerAgentationReactRootEntry({ win: window });
+
+    const mounted = installAgentationReactRoot({
+      adapter: createAdapterMock(),
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const reactHost = document.getElementById(AGENTATION_REACT_HOST_ID);
+    expect(reactHost).not.toBeNull();
+    const shellHost = reactHost?.shadowRoot?.querySelector<HTMLDivElement>('[data-agentation-react-shell-host="true"]');
+    expect(shellHost).not.toBeNull();
+    expect(shellHost?.shadowRoot?.querySelector("[data-toolbar]")).not.toBeNull();
+
+    const entry = window["agentation-react-root"];
+    if (entry && typeof entry === "object" && "unmount" in entry && typeof entry.unmount === "function") {
+      entry.unmount();
+    }
+    expect(document.getElementById(AGENTATION_REACT_HOST_ID)).toBeNull();
+  });
+
+  it("keeps direct installAgentationShell path available", () => {
+    const mounted = installAgentationShell({
+      adapter: createAdapterMock(),
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shellHost = document.getElementById(AGENTATION_SHELL_HOST_ID);
+    expect(shellHost).not.toBeNull();
+    expect(shellHost?.shadowRoot?.querySelector("[data-toolbar]")).not.toBeNull();
+  });
+});
+
+function cleanupReactRootEntry(): void {
+  const entry = window["agentation-react-root"];
+  if (entry && typeof entry === "object" && "unmount" in entry && typeof entry.unmount === "function") {
+    entry.unmount();
+  }
+  for (const key of REACT_ROOT_ENTRY_KEYS) {
+    delete (window as Window & Record<string, unknown>)[key];
+  }
+}
+
+function createAdapterMock() {
+  return {
+    createAnnotation: vi.fn().mockResolvedValue({ id: "mock-id" }),
+  };
+}

@@ -101,3 +101,20 @@ export interface AgentationShellDeps {
   win?: Window;
   logger?: (level: "debug" | "error", message: string, extra?: unknown) => void;
 }
+
+/**
+ * 可复用挂载 API 的输入。
+ * host 可选：不传时沿用默认 body host；传入时复用外部容器。
+ */
+export interface AgentationShellMountDeps extends AgentationShellDeps {
+  host?: HTMLDivElement;
+}
+
+/**
+ * 挂载句柄只暴露最小清理能力。
+ * 调用方通过 unmount 回收事件和 UI，避免内存/监听器泄漏。
+ */
+export interface AgentationShellMountHandle {
+  host: HTMLDivElement;
+  unmount: () => void;
+}

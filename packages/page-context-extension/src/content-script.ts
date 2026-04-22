@@ -1,6 +1,7 @@
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } from "@page-context/builtin-tools";
 import { installAgentationShell, type AgentationShellDeps } from "@page-context/agentation-shell";
+import { registerAgentationReactRootEntry } from "./agentation-react-root";
 import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 import { createFeedbackUiAdapter, installAgentationReactRoot, installFeedbackUiWithFallback } from "./feedback-ui-adapter";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
@@ -14,6 +15,9 @@ function log(...args: unknown[]): void {
 createConsoleCapture(window, consoleEntries);
 const feedbackUiAdapter = createFeedbackUiAdapter();
 const agentationLogger = createAgentationLogger();
+
+// 先注册 React root 入口，再启动 fallback 链路，确保第一分支能命中真实实现。
+registerAgentationReactRootEntry({ win: window });
 
 // 统一走“React root -> shell -> legacy overlay”链路，保证新旧实现平滑切换。
 installFeedbackUiWithFallback({
