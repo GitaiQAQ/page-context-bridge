@@ -9,9 +9,13 @@ import {
 } from "@page-context/agentation-shell";
 import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
 import { Agentation, type Annotation as AgentationAnnotation } from "./agentation-source-runtime";
-import { Component, StrictMode, type ErrorInfo, type ReactNode, useCallback, useLayoutEffect, useRef } from "react";
+import { Component, StrictMode, type ErrorInfo, type ReactNode, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import {
+  warmupAgentationSnapshotBeforeMount,
+  type AgentationSnapshotWarmupResult,
+} from "./agentation-bridge-snapshot-warmup";
 
 export const AGENTATION_REACT_HOST_ID = "__page_context_agentation_react_host__";
 export const AGENTATION_REACT_ROOT_ENTRY_KEY = "agentation-react-root";
@@ -34,6 +38,10 @@ const entryByWindow = new WeakMap<Window, AgentationReactRootEntryObject>();
 interface AgentationRemoteBinding {
   remoteId?: string;
   priority: FeedbackPriority;
+}
+
+interface AgentationPackageMountBridgeProps extends AgentationReactRootEntryMountArgs {
+  snapshotWarmupPromise: Promise<AgentationSnapshotWarmupResult>;
 }
 
 interface AgentationPackageErrorBoundaryProps {
@@ -274,7 +282,17 @@ function createAgentationReactRootEntry(): AgentationReactRootEntryObject {
       doc: args.doc,
       win: args.win,
       mountKey: AGENTATION_PACKAGE_MOUNT_KEY,
-      render: () => <AgentationPackageMountBridge {...args} />,
+      // snapshot 预热在 React root 挂载前就启动，减少空窗期。
+      render: () => (
+        <AgentationPackageMountBridge
+          {...args}
+          snapshotWarmupPromise={warmupAgentationSnapshotBeforeMount({
+            adapter: args.adapter,
+            win: args.win,
+            logger: args.logger,
+          })}
+        />
+      ),
     });
     activeHandle = handle;
 
@@ -309,8 +327,33 @@ function createAgentationReactRootEntry(): AgentationReactRootEntryObject {
   };
 }
 
-function AgentationPackageMountBridge(props: AgentationReactRootEntryMountArgs) {
+function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) {
   const remoteBindingByLocalIdRef = useRef<Map<string, AgentationRemoteBinding>>(new Map());
+  const [warmupReady, setWarmupReady] = useState(false);
+
+  useLayoutEffect(() => {
+    let cancelled = false;
+    void props.snapshotWarmupPromise.then((result) => {
+      if (cancelled) {
+        return;
+      }
+      // 预热阶段把 localId/remoteId 关系写入内存，后续增量同步可以直接沿用这份索引。
+      for (const binding of result.replayBindings) {
+        remoteBindingByLocalIdRef.current.set(binding.localId, {
+          remoteId: binding.remoteId,
+          priority: binding.priority,
+        });
+      }
+      props.logger?.("debug", "agentation package snapshot warmup completed", {
+        status: result.status,
+        annotationCount: result.annotationCount,
+      });
+      setWarmupReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.logger, props.snapshotWarmupPromise]);
 
   const handleAnnotationAdd = useCallback(
     (annotation: AgentationAnnotation) => {
@@ -431,12 +474,15 @@ function AgentationPackageMountBridge(props: AgentationReactRootEntryMountArgs) 
       fallback={<AgentationShellMountBridge {...props} fallbackReason="agentation-package-render-failed" />}
     >
       <div {...{ [AGENTATION_PACKAGE_HOST_ATTR]: "true" }}>
-        <Agentation
-          copyToClipboard={false}
-          onAnnotationAdd={handleAnnotationAdd}
-          onAnnotationUpdate={handleAnnotationUpdate}
-          onAnnotationDelete={handleAnnotationDelete}
-        />
+        {/* snapshot 未完成前不渲染 vendored UI，确保首屏读取到的是远端回放结果。 */}
+        {warmupReady ? (
+          <Agentation
+            copyToClipboard={false}
+            onAnnotationAdd={handleAnnotationAdd}
+            onAnnotationUpdate={handleAnnotationUpdate}
+            onAnnotationDelete={handleAnnotationDelete}
+          />
+        ) : null}
       </div>
     </AgentationPackageErrorBoundary>
   );

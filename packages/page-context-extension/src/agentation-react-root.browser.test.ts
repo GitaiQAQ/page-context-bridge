@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { installAgentationShell } from "@page-context/agentation-shell";
+import { installAgentationShell, type AgentationShellFeedbackSnapshot } from "@page-context/agentation-shell";
 import {
   AGENTATION_REACT_HOST_ID,
   AGENTATION_REACT_ROOT_ENTRY_KEY,
@@ -9,6 +9,7 @@ import {
   registerAgentationReactRootEntry,
 } from "./agentation-react-root";
 import { installAgentationReactRoot } from "./feedback-ui-adapter";
+import { getStorageKey } from "./vendor/agentation/utils/storage";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
 const REACT_ROOT_ENTRY_KEYS = [
@@ -20,11 +21,13 @@ const REACT_ROOT_ENTRY_KEYS = [
 describe("mountAgentationReactRoot", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    localStorage.clear();
     cleanupReactRootEntry();
   });
 
   afterEach(() => {
     cleanupReactRootEntry();
+    localStorage.clear();
     document.body.innerHTML = "";
   });
 
@@ -92,11 +95,13 @@ describe("mountAgentationReactRoot", () => {
 describe("agentation react root entry integration", () => {
   beforeEach(() => {
     document.body.innerHTML = "<main><h1>demo page</h1></main>";
+    localStorage.clear();
     cleanupReactRootEntry();
   });
 
   afterEach(() => {
     cleanupReactRootEntry();
+    localStorage.clear();
     document.body.innerHTML = "";
   });
 
@@ -135,6 +140,53 @@ describe("agentation react root entry integration", () => {
     expect(document.body.querySelector("[data-agentation-root]")).toBeNull();
   });
 
+  it("warms vendored annotation storage from snapshot before first package render", async () => {
+    registerAgentationReactRootEntry({ win: window });
+    const getFeedbackSnapshot = vi.fn().mockResolvedValue(buildFeedbackSnapshotForWarmup());
+
+    const mounted = installAgentationReactRoot({
+      adapter: {
+        createAnnotation: vi.fn().mockResolvedValue({ id: "created-1" }),
+        getFeedbackSnapshot,
+      },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    // 预热完成前先写 localStorage，vendored UI 首屏读取的就是这份快照映射。
+    const storageKey = getStorageKey(window.location.pathname);
+    await vi.waitFor(() => {
+      expect(getFeedbackSnapshot).toHaveBeenCalledTimes(1);
+      const stored = localStorage.getItem(storageKey);
+      expect(stored).not.toBeNull();
+      const annotations = JSON.parse(stored ?? "[]") as Array<{ id: string; comment: string; elementPath: string }>;
+      expect(annotations).toEqual([
+        expect.objectContaining({
+          id: "snapshot-1",
+          comment: "remote snapshot annotation",
+          elementPath: "#target",
+        }),
+      ]);
+    });
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[data-agentation-root]")).not.toBeNull();
+    });
+  });
+
+  it("mounts package normally when adapter does not expose snapshot API", async () => {
+    registerAgentationReactRootEntry({ win: window });
+    const mounted = installAgentationReactRoot({
+      adapter: createAdapterMock(),
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[data-agentation-root]")).not.toBeNull();
+    });
+  });
+
   it("keeps direct installAgentationShell path available", () => {
     const mounted = installAgentationShell({
       adapter: createAdapterMock(),
@@ -162,5 +214,68 @@ function cleanupReactRootEntry(): void {
 function createAdapterMock() {
   return {
     createAnnotation: vi.fn().mockResolvedValue({ id: "mock-id" }),
+  };
+}
+
+function buildFeedbackSnapshotForWarmup(): AgentationShellFeedbackSnapshot {
+  return {
+    sessions: [
+      {
+        id: "session-1",
+        tenantId: "default",
+        tabId: 1,
+        url: "https://example.com",
+        title: "example",
+        status: "active",
+        createdAt: "2026-04-22T00:00:00.000Z",
+        updatedAt: "2026-04-22T00:00:00.000Z",
+        lastEventSeq: 1,
+      },
+    ],
+    annotations: [
+      {
+        id: "snapshot-1",
+        sessionId: "session-1",
+        author: { source: "extension", id: "u-1", displayName: "Ext User" },
+        body: "remote snapshot annotation",
+        status: "open",
+        priority: "high",
+        target: {
+          tabId: 1,
+          url: "https://example.com",
+          title: "example",
+          textQuote: "target text",
+          uiAnchor: {
+            cssSelector: "#target",
+            rect: { x: 80, y: 120, width: 140, height: 36 },
+            meta: {
+              source: "agentation-shell",
+              elementName: "button",
+              elementPath: "#target",
+            },
+          },
+        },
+        context: {
+          pageInfo: {
+            tabId: 1,
+            url: "https://example.com",
+            title: "example",
+          },
+          selectedText: "target text",
+        },
+        linkedCapabilities: {
+          namespaceHints: [],
+          relatedToolNames: [],
+          relatedResourceIds: [],
+          relatedSkillIds: [],
+          linkReasons: [],
+        },
+        thread: [],
+        createdAt: "2026-04-22T00:00:00.000Z",
+        updatedAt: "2026-04-22T00:00:00.000Z",
+      },
+    ],
+    snapshotVersion: 2,
+    lastSeq: 1,
   };
 }
