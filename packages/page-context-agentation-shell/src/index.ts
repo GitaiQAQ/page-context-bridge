@@ -88,8 +88,12 @@ interface MarkerRecord {
   selectedText?: string;
   elementName: string;
   targetInput: AgentationShellCreateAnnotationInput["target"];
+  // 兼容当前逻辑的像素坐标缓存，便于 tooltip/popup 直接复用。
   x: number;
   y: number;
+  // 以 viewport 为基准的归一化坐标；resize 后据此重算位置。
+  normalizedX: number;
+  normalizedY: number;
 }
 
 interface PopupState {
@@ -156,6 +160,13 @@ interface FeedbackDeltaPlan {
 interface MarkerTooltipPlacement {
   horizontal: "left" | "center" | "right";
   vertical: "top" | "bottom";
+}
+
+interface MarkerAnchor {
+  x: number;
+  y: number;
+  normalizedX: number;
+  normalizedY: number;
 }
 
 /**
@@ -445,6 +456,8 @@ class AgentationShellRuntime {
         targetInput: replayed.targetInput,
         x: replayed.x,
         y: replayed.y,
+        normalizedX: replayed.normalizedX,
+        normalizedY: replayed.normalizedY,
       });
     }
     for (const marker of replayedByRemoteId.values()) {
@@ -475,6 +488,7 @@ class AgentationShellRuntime {
     }
 
     const selectedText = normalizeSelectionText(annotation.target.textQuote ?? annotation.target.uiAnchor?.textQuote ?? "");
+    const markerAnchor = buildMarkerAnchor(replayTarget.anchorX, replayTarget.anchorY, this.win.innerWidth, this.win.innerHeight);
     return {
       id: annotation.id,
       remoteAnnotationId: annotation.id,
@@ -483,8 +497,10 @@ class AgentationShellRuntime {
       selectedText: selectedText || undefined,
       elementName: replayTarget.elementName,
       targetInput: replayTarget.targetInput,
-      x: replayTarget.anchorX,
-      y: replayTarget.anchorY,
+      x: markerAnchor.x,
+      y: markerAnchor.y,
+      normalizedX: markerAnchor.normalizedX,
+      normalizedY: markerAnchor.normalizedY,
     };
   }
 
@@ -608,6 +624,8 @@ class AgentationShellRuntime {
 
   private readonly onWindowResize = (): void => {
     this.closeMarkerContextMenu();
+    // marker 按归一化坐标重算像素位置，减少窗口尺寸变化后的漂移。
+    this.renderMarkers();
     this.syncToolbarVisibility();
     this.persistToolbarState();
   };
@@ -1368,6 +1386,7 @@ class AgentationShellRuntime {
     const idFromResult = typeof result?.id === "string" ? result.id : "";
     const remoteAnnotationId = idFromResult.trim() || undefined;
     const markerId = remoteAnnotationId ?? `local-${Date.now()}-${this.markerIdSeq++}`;
+    const markerAnchor = buildMarkerAnchor(popupState.anchorX, popupState.anchorY, this.win.innerWidth, this.win.innerHeight);
     this.markers.push({
       id: markerId,
       remoteAnnotationId,
@@ -1380,8 +1399,10 @@ class AgentationShellRuntime {
         elementPath: input.target.elementPath,
         rect: snapshotRect(input.target.rect),
       },
-      x: popupState.anchorX,
-      y: popupState.anchorY,
+      x: markerAnchor.x,
+      y: markerAnchor.y,
+      normalizedX: markerAnchor.normalizedX,
+      normalizedY: markerAnchor.normalizedY,
     });
     this.renderMarkers();
   }
@@ -1390,16 +1411,25 @@ class AgentationShellRuntime {
     this.closeMarkerContextMenu();
     this.markerLayer.innerHTML = "";
     this.markers.forEach((marker, index) => {
+      // 每次渲染都按当前 viewport 投影，避免 resize 后 marker 停留在旧坐标。
+      const markerAnchor = denormalizeMarkerAnchor(marker.normalizedX, marker.normalizedY, this.win.innerWidth, this.win.innerHeight);
+      marker.x = markerAnchor.x;
+      marker.y = markerAnchor.y;
       const button = this.doc.createElement("button");
       button.type = "button";
       button.className = "pc-agent-marker";
       button.dataset.markerId = marker.id;
-      button.style.left = `${marker.x}px`;
-      button.style.top = `${marker.y}px`;
+      button.style.left = `${markerAnchor.x}px`;
+      button.style.top = `${markerAnchor.y}px`;
       button.style.background = markerColor(marker.priority);
       button.textContent = String(index + 1);
       button.setAttribute("aria-label", `annotation-marker-${index + 1}`);
-      const tooltipPlacement = resolveMarkerTooltipPlacement(marker.x, marker.y, this.win.innerWidth, this.win.innerHeight);
+      const tooltipPlacement = resolveMarkerTooltipPlacement(
+        markerAnchor.x,
+        markerAnchor.y,
+        this.win.innerWidth,
+        this.win.innerHeight,
+      );
       // 只在 marker 维度打标签，交给 CSS 控制 tooltip 摆位，避免引入额外动画状态。
       button.dataset.tooltipX = tooltipPlacement.horizontal;
       button.dataset.tooltipY = tooltipPlacement.vertical;
@@ -2596,6 +2626,51 @@ function computePopupTop(clientY: number, viewportHeight: number): number {
     return preferTop;
   }
   return clamp(clientY - height - spacing, spacing, Math.max(spacing, viewportHeight - height - spacing));
+}
+
+function buildMarkerAnchor(
+  anchorX: number,
+  anchorY: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): MarkerAnchor {
+  const normalizedX = normalizeViewportCoordinate(anchorX, viewportWidth);
+  const normalizedY = normalizeViewportCoordinate(anchorY, viewportHeight);
+  const anchor = denormalizeMarkerAnchor(normalizedX, normalizedY, viewportWidth, viewportHeight);
+  return {
+    x: anchor.x,
+    y: anchor.y,
+    normalizedX,
+    normalizedY,
+  };
+}
+
+function denormalizeMarkerAnchor(
+  normalizedX: number,
+  normalizedY: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): Point {
+  return {
+    x: denormalizeViewportCoordinate(normalizedX, viewportWidth),
+    y: denormalizeViewportCoordinate(normalizedY, viewportHeight),
+  };
+}
+
+function normalizeViewportCoordinate(value: number, viewportSize: number): number {
+  const safeViewportSize = Math.max(0, viewportSize);
+  if (safeViewportSize < 1) {
+    return 0;
+  }
+  return clamp(value / safeViewportSize, 0, 1);
+}
+
+function denormalizeViewportCoordinate(value: number, viewportSize: number): number {
+  const safeViewportSize = Math.max(0, viewportSize);
+  if (safeViewportSize < 1) {
+    return 0;
+  }
+  return clamp(value * safeViewportSize, 0, safeViewportSize);
 }
 
 function clamp(value: number, min: number, max: number): number {

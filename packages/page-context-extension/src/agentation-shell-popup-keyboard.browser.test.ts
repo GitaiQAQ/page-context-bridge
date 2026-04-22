@@ -274,6 +274,46 @@ describe("agentation shell popup keyboard flow", () => {
 
     toolbarToggle.click();
   });
+
+  it("repositions markers from normalized anchors after window resize", async () => {
+    const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-resize-1" });
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation, updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    const toolbarToggle = queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]");
+    toolbarToggle.click();
+
+    const initialWidth = window.innerWidth;
+    const initialHeight = window.innerHeight;
+    try {
+      dispatchMouse(document.body, "click", 256, 192);
+      queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]").value = "resize normalize marker";
+      queryRequired<HTMLFormElement>(shadow, "[data-popup]").requestSubmit();
+      await flushMicrotasks();
+
+      const markerBeforeResize = queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-resize-1"]');
+      expect(parseFloat(markerBeforeResize.style.left)).toBeCloseTo(256, 4);
+      expect(parseFloat(markerBeforeResize.style.top)).toBeCloseTo(192, 4);
+
+      // 把 viewport 缩小到一半，marker 应按归一化坐标等比回投影。
+      setViewportSize(Math.round(initialWidth / 2), Math.round(initialHeight / 2));
+      window.dispatchEvent(new Event("resize"));
+
+      const markerAfterResize = queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-resize-1"]');
+      expect(parseFloat(markerAfterResize.style.left)).toBeCloseTo(128, 4);
+      expect(parseFloat(markerAfterResize.style.top)).toBeCloseTo(96, 4);
+    } finally {
+      setViewportSize(initialWidth, initialHeight);
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    toolbarToggle.click();
+  });
 });
 
 function getAgentationShellShadowRoot(): ShadowRoot {
@@ -336,6 +376,19 @@ function dispatchKeyboard(
     });
   }
   target.dispatchEvent(event);
+}
+
+function setViewportSize(width: number, height: number): void {
+  Object.defineProperty(window, "innerWidth", {
+    value: width,
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(window, "innerHeight", {
+    value: height,
+    configurable: true,
+    writable: true,
+  });
 }
 
 async function flushMicrotasks(): Promise<void> {
