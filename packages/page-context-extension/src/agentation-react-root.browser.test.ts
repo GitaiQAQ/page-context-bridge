@@ -258,7 +258,10 @@ describe("agentation react root entry integration", () => {
 
     installFeedbackUiWithFallback({
       installReactRoot: () => false,
-      installAgentationShell: () => true,
+      installAgentationShell: () => {
+        ensureTopLevelShellHost();
+        return true;
+      },
       installLegacyOverlay,
       log: vi.fn(),
     });
@@ -280,7 +283,10 @@ describe("agentation react root entry integration", () => {
       installReactRoot: () => {
         throw new Error("react root install failed");
       },
-      installAgentationShell: () => true,
+      installAgentationShell: () => {
+        ensureTopLevelShellHost();
+        return true;
+      },
       installLegacyOverlay,
       log: vi.fn(),
     });
@@ -583,4 +589,13 @@ function clearFeedbackUiDiagnostics(): void {
   document.documentElement.removeAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR);
   document.documentElement.removeAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR);
   document.documentElement.removeAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR);
+}
+
+function ensureTopLevelShellHost(): void {
+  if (document.getElementById(AGENTATION_SHELL_HOST_ID)) {
+    return;
+  }
+  const host = document.createElement("div");
+  host.id = AGENTATION_SHELL_HOST_ID;
+  document.body.appendChild(host);
 }

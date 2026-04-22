@@ -14,6 +14,10 @@ import { sendRuntimeRequest } from "./runtime-rpc";
 import { markFeedbackUiMode } from "./feedback-ui-diagnostics";
 
 const AGENTATION_REACT_ROOT_ENTRY_KEY = "agentation-react-root";
+// 三条链路都用“选择器探针”做同构自检，排障时直接看 documentElement 即可。
+const AGENTATION_REACT_HOST_SELECTOR = "#__page_context_agentation_react_host__";
+const AGENTATION_SHELL_HOST_SELECTOR = "#__page_context_agentation_shell_host__";
+const FEEDBACK_OVERLAY_HOST_SELECTOR = "#__page_context_feedback_overlay_host__";
 const AGENTATION_REACT_ROOT_COMPAT_ENTRY_KEYS = [
   AGENTATION_REACT_ROOT_ENTRY_KEY,
   "__PAGE_CONTEXT_AGENTATION_REACT_ROOT__",
@@ -156,7 +160,12 @@ export function installFeedbackUiWithFallback(deps: FeedbackUiMountFallbackDeps)
   try {
     const mountedByReact = deps.installReactRoot();
     if (mountedByReact) {
-      markFeedbackUiMode("react-root");
+      // 顶层分支只知道“返回值=已挂载”，这里追加 host 自检，避免假阳性。
+      markFeedbackUiMode("react-root", {
+        selfCheck: {
+          selector: AGENTATION_REACT_HOST_SELECTOR,
+        },
+      });
       deps.log("Agentation React root installed");
       return;
     }
@@ -170,7 +179,12 @@ export function installFeedbackUiWithFallback(deps: FeedbackUiMountFallbackDeps)
   try {
     const mountedByShell = deps.installAgentationShell();
     if (mountedByShell) {
-      markFeedbackUiMode("shell-fallback", { reason: shellFallbackReason });
+      markFeedbackUiMode("shell-fallback", {
+        reason: shellFallbackReason,
+        selfCheck: {
+          selector: AGENTATION_SHELL_HOST_SELECTOR,
+        },
+      });
       deps.log("Agentation shell installed");
       return;
     }
@@ -180,8 +194,26 @@ export function installFeedbackUiWithFallback(deps: FeedbackUiMountFallbackDeps)
     deps.log("Agentation shell install failed, fallback to legacy overlay", error);
   }
 
-  markFeedbackUiMode("legacy-overlay", { reason: legacyOverlayReason });
-  deps.installLegacyOverlay();
+  try {
+    deps.installLegacyOverlay();
+  } catch (error) {
+    legacyOverlayReason = "legacy-overlay-install-failed";
+    // 兜底安装失败也要落盘诊断，保证现场有最后一次失败信息。
+    markFeedbackUiMode("legacy-overlay", {
+      reason: legacyOverlayReason,
+      selfCheck: {
+        selector: FEEDBACK_OVERLAY_HOST_SELECTOR,
+      },
+    });
+    deps.log("Legacy overlay install failed", error);
+    throw error;
+  }
+  markFeedbackUiMode("legacy-overlay", {
+    reason: legacyOverlayReason,
+    selfCheck: {
+      selector: FEEDBACK_OVERLAY_HOST_SELECTOR,
+    },
+  });
 }
 
 function resolveAgentationReactRootEntry(win: Window): AgentationReactRootEntry | null {

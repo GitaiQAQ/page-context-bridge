@@ -1,11 +1,23 @@
 export const FEEDBACK_UI_MODE_ATTR = "data-page-context-feedback-ui-mode";
 export const FEEDBACK_UI_REASON_ATTR = "data-page-context-feedback-ui-reason";
+export const FEEDBACK_UI_SELF_CHECK_STATUS_ATTR = "data-page-context-feedback-ui-self-check-status";
+export const FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR = "data-page-context-feedback-ui-self-check-selector";
+export const FEEDBACK_UI_SELF_CHECK_RESULT_ATTR = "data-page-context-feedback-ui-self-check-result";
 
 export type FeedbackUiMode = "react-root" | "shell-fallback" | "legacy-overlay";
+export type FeedbackUiSelfCheckExpected = "present" | "absent";
+export type FeedbackUiSelfCheckResult = "present" | "absent" | "invalid-selector";
+export type FeedbackUiSelfCheckStatus = "ok" | "mismatch";
+
+interface FeedbackUiSelfCheckOptions {
+  selector: string;
+  expected?: FeedbackUiSelfCheckExpected;
+}
 
 interface MarkFeedbackUiModeOptions {
   doc?: Document;
   reason?: string;
+  selfCheck?: FeedbackUiSelfCheckOptions;
 }
 
 /**
@@ -22,9 +34,11 @@ export function markFeedbackUiMode(mode: FeedbackUiMode, options: MarkFeedbackUi
   const normalizedReason = options.reason?.trim();
   if (normalizedReason) {
     root.setAttribute(FEEDBACK_UI_REASON_ATTR, normalizedReason);
-    return;
+  } else {
+    root.removeAttribute(FEEDBACK_UI_REASON_ATTR);
   }
-  root.removeAttribute(FEEDBACK_UI_REASON_ATTR);
+
+  applyFeedbackUiSelfCheck(root, options.selfCheck);
 }
 
 function resolveFeedbackUiDiagnosticRoot(doc?: Document): HTMLElement | null {
@@ -36,4 +50,39 @@ function resolveFeedbackUiDiagnosticRoot(doc?: Document): HTMLElement | null {
     return null;
   }
   return globalThis.document.documentElement;
+}
+
+function applyFeedbackUiSelfCheck(root: HTMLElement, options?: FeedbackUiSelfCheckOptions): void {
+  const selector = options?.selector?.trim();
+  if (!selector) {
+    // 当前打点不需要自检时，主动清空旧字段，避免旧状态误导排障。
+    clearFeedbackUiSelfCheck(root);
+    return;
+  }
+
+  const expected = options?.expected ?? "present";
+  const result = resolveSelfCheckResult(root, selector);
+  const status: FeedbackUiSelfCheckStatus = result === expected ? "ok" : "mismatch";
+  root.setAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR, status);
+  root.setAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR, selector);
+  root.setAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR, result);
+}
+
+function resolveSelfCheckResult(root: HTMLElement, selector: string): FeedbackUiSelfCheckResult {
+  const doc = root.ownerDocument;
+  if (!doc) {
+    return "absent";
+  }
+  try {
+    return doc.querySelector(selector) ? "present" : "absent";
+  } catch {
+    // selector 非法时明确标记，避免把“探针语法错误”误判成“节点不存在”。
+    return "invalid-selector";
+  }
+}
+
+function clearFeedbackUiSelfCheck(root: HTMLElement): void {
+  root.removeAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR);
+  root.removeAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR);
+  root.removeAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR);
 }
