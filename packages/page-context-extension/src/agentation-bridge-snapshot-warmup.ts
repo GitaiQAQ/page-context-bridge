@@ -1,11 +1,12 @@
 import type {
   AgentationShellBridgeAdapter,
   AgentationShellDeps,
+  AgentationShellFeedbackDelta,
   AgentationShellFeedbackSnapshot,
 } from "@page-context/agentation-shell";
 import type { FeedbackAnnotation, FeedbackPriority, FeedbackUiAnchor, FeedbackUiRect } from "@page-context/shared-protocol";
 
-import { saveAnnotations } from "./vendor/agentation/utils/storage";
+import { loadAnnotations, saveAnnotations } from "./vendor/agentation/utils/storage";
 import type { Annotation as VendorAnnotation } from "./vendor/agentation/types";
 
 const NON_REPLAYABLE_ANNOTATION_STATUS = new Set(["resolved", "dismissed"]);
@@ -19,6 +20,17 @@ export interface AgentationSnapshotReplayBinding {
 export interface AgentationSnapshotWarmupResult {
   status: "skipped" | "completed" | "failed";
   replayBindings: AgentationSnapshotReplayBinding[];
+  annotationCount: number;
+}
+
+export interface AgentationFeedbackDeltaPlan {
+  dismissedAnnotationIds: Set<string>;
+  shouldReloadSnapshot: boolean;
+  eventCount: number;
+}
+
+export interface DismissVendorAnnotationsResult {
+  removedCount: number;
   annotationCount: number;
 }
 
@@ -57,6 +69,83 @@ export async function warmupAgentationSnapshotBeforeMount(
     });
     return { status: "failed", replayBindings: [], annotationCount: 0 };
   }
+}
+
+/**
+ * React root 和 shell 共享同一套最小 delta 策略，避免策略分叉：
+ * - dismissed + annotationId：直删本地
+ * - 其他 annotation 事件：回退 snapshot reload
+ */
+export function buildAgentationFeedbackDeltaPlan(delta: AgentationShellFeedbackDelta): AgentationFeedbackDeltaPlan {
+  const plan: AgentationFeedbackDeltaPlan = {
+    dismissedAnnotationIds: new Set<string>(),
+    shouldReloadSnapshot: false,
+    eventCount: 0,
+  };
+
+  for (const event of delta.events) {
+    const eventType = event.eventType;
+    if (!eventType.startsWith("annotation.")) {
+      continue;
+    }
+    plan.eventCount += 1;
+
+    if (eventType === "annotation.dismissed") {
+      const annotationId = normalizeText(event.annotationId);
+      if (annotationId) {
+        plan.dismissedAnnotationIds.add(annotationId);
+        continue;
+      }
+      // payload 缺关键字段时保守回退，优先保证最终一致性。
+      plan.shouldReloadSnapshot = true;
+      continue;
+    }
+
+    // created/updated/claimed/replied/resolved 等都统一触发一次全量回放。
+    plan.shouldReloadSnapshot = true;
+  }
+
+  return plan;
+}
+
+/**
+ * 只在 extension bridge 层动 localStorage，不侵入 vendored 组件状态机。
+ * 返回删除数量，供上层决定是否需要 remount。
+ */
+export function dismissVendorAnnotationsFromStorage(args: {
+  win: Window;
+  annotationIds: Iterable<string>;
+}): DismissVendorAnnotationsResult {
+  const pathname = normalizePathname(args.win.location.pathname);
+  const ids = new Set<string>();
+  for (const rawId of args.annotationIds) {
+    const id = normalizeText(rawId);
+    if (id) {
+      ids.add(id);
+    }
+  }
+
+  const stored = loadAnnotations<VendorAnnotation>(pathname);
+  if (stored.length === 0 || ids.size === 0) {
+    return { removedCount: 0, annotationCount: stored.length };
+  }
+
+  const next = stored.filter((annotation) => {
+    const annotationId = normalizeText(annotation.id);
+    if (!annotationId) {
+      return true;
+    }
+    return !ids.has(annotationId);
+  });
+  const removedCount = stored.length - next.length;
+  if (removedCount > 0) {
+    saveAnnotations<VendorAnnotation>(pathname, next);
+  }
+
+  return {
+    removedCount,
+    annotationCount: next.length,
+  };
 }
 
 interface SnapshotMappingResult {

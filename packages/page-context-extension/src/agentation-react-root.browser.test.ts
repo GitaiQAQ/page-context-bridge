@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { installAgentationShell, type AgentationShellFeedbackSnapshot } from "@page-context/agentation-shell";
+import { installAgentationShell, type AgentationShellFeedbackDelta, type AgentationShellFeedbackSnapshot } from "@page-context/agentation-shell";
 import {
   AGENTATION_REACT_HOST_ID,
   AGENTATION_REACT_ROOT_ENTRY_KEY,
@@ -187,6 +187,105 @@ describe("agentation react root entry integration", () => {
     });
   });
 
+  it("reflects remote dismissed delta in mounted package with storage patch and remount", async () => {
+    registerAgentationReactRootEntry({ win: window });
+    const getFeedbackSnapshot = vi.fn().mockResolvedValue(buildFeedbackSnapshotForWarmup());
+    const getFeedbackStateDelta = vi
+      .fn()
+      .mockResolvedValueOnce(
+        buildFeedbackDeltaResult([
+          buildFeedbackDeltaEvent({
+            eventType: "annotation.dismissed",
+            annotationId: "snapshot-1",
+            seq: 2,
+          }),
+        ], 2),
+      )
+      .mockResolvedValue(buildFeedbackDeltaResult([], 2));
+
+    const mounted = installAgentationReactRoot({
+      adapter: {
+        createAnnotation: vi.fn().mockResolvedValue({ id: "created-1" }),
+        getFeedbackSnapshot,
+        getFeedbackStateDelta,
+      },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[data-agentation-root]")).not.toBeNull();
+    });
+    const firstRoot = document.body.querySelector("[data-agentation-root]");
+    const storageKey = getStorageKey(window.location.pathname);
+
+    await vi.waitFor(() => {
+      expect(getFeedbackStateDelta).toHaveBeenCalledTimes(1);
+      const ids = readStoredAnnotationIds(storageKey);
+      expect(ids).not.toContain("snapshot-1");
+    });
+
+    await vi.waitFor(() => {
+      const currentRoot = document.body.querySelector("[data-agentation-root]");
+      expect(currentRoot).not.toBeNull();
+      // delta 生效后会重挂载 vendored 包，确保当前挂载实例看到 storage 更新。
+      expect(currentRoot).not.toBe(firstRoot);
+    });
+    // dismiss + annotationId 只做本地最小删除，不触发 snapshot reload。
+    expect(getFeedbackSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads snapshot warmup and remounts package for non-dismissed annotation delta", async () => {
+    registerAgentationReactRootEntry({ win: window });
+    const getFeedbackSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(buildFeedbackSnapshotForWarmup({ body: "before delta reload" }))
+      .mockResolvedValueOnce(buildFeedbackSnapshotForWarmup({ body: "after delta reload" }));
+    const getFeedbackStateDelta = vi
+      .fn()
+      .mockResolvedValueOnce(
+        buildFeedbackDeltaResult([
+          buildFeedbackDeltaEvent({
+            eventType: "annotation.updated",
+            annotationId: "snapshot-1",
+            seq: 2,
+          }),
+        ], 2),
+      )
+      .mockResolvedValue(buildFeedbackDeltaResult([], 2));
+
+    const mounted = installAgentationReactRoot({
+      adapter: {
+        createAnnotation: vi.fn().mockResolvedValue({ id: "created-1" }),
+        getFeedbackSnapshot,
+        getFeedbackStateDelta,
+      },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(document.body.querySelector("[data-agentation-root]")).not.toBeNull();
+    });
+    const firstRoot = document.body.querySelector("[data-agentation-root]");
+    const storageKey = getStorageKey(window.location.pathname);
+    await vi.waitFor(() => {
+      expect(readStoredAnnotationBodies(storageKey)).toContain("before delta reload");
+    });
+
+    await vi.waitFor(() => {
+      expect(getFeedbackSnapshot).toHaveBeenCalledTimes(2);
+      expect(readStoredAnnotationBodies(storageKey)).toContain("after delta reload");
+    });
+    await vi.waitFor(() => {
+      const currentRoot = document.body.querySelector("[data-agentation-root]");
+      expect(currentRoot).not.toBeNull();
+      expect(currentRoot).not.toBe(firstRoot);
+    });
+  });
+
   it("keeps direct installAgentationShell path available", () => {
     const mounted = installAgentationShell({
       adapter: createAdapterMock(),
@@ -217,7 +316,7 @@ function createAdapterMock() {
   };
 }
 
-function buildFeedbackSnapshotForWarmup(): AgentationShellFeedbackSnapshot {
+function buildFeedbackSnapshotForWarmup(options?: { body?: string }): AgentationShellFeedbackSnapshot {
   return {
     sessions: [
       {
@@ -237,7 +336,7 @@ function buildFeedbackSnapshotForWarmup(): AgentationShellFeedbackSnapshot {
         id: "snapshot-1",
         sessionId: "session-1",
         author: { source: "extension", id: "u-1", displayName: "Ext User" },
-        body: "remote snapshot annotation",
+        body: options?.body ?? "remote snapshot annotation",
         status: "open",
         priority: "high",
         target: {
@@ -278,4 +377,47 @@ function buildFeedbackSnapshotForWarmup(): AgentationShellFeedbackSnapshot {
     snapshotVersion: 2,
     lastSeq: 1,
   };
+}
+
+function buildFeedbackDeltaResult(events: AgentationShellFeedbackDelta["events"], lastSeq: number): AgentationShellFeedbackDelta {
+  return {
+    events,
+    lastSeq,
+  };
+}
+
+function buildFeedbackDeltaEvent(options: {
+  eventType: AgentationShellFeedbackDelta["events"][number]["eventType"];
+  annotationId?: string;
+  seq: number;
+}): AgentationShellFeedbackDelta["events"][number] {
+  return {
+    eventId: `event-${options.seq}`,
+    tenantId: "default",
+    sessionId: "session-1",
+    annotationId: options.annotationId,
+    seq: options.seq,
+    eventType: options.eventType,
+    occurredAt: "2026-04-22T00:00:00.000Z",
+    source: "bridge",
+    payload: {},
+  };
+}
+
+function readStoredAnnotationIds(storageKey: string): string[] {
+  const stored = localStorage.getItem(storageKey);
+  if (!stored) {
+    return [];
+  }
+  const parsed = JSON.parse(stored) as Array<{ id?: unknown }>;
+  return parsed.map((item) => (typeof item.id === "string" ? item.id : "")).filter(Boolean);
+}
+
+function readStoredAnnotationBodies(storageKey: string): string[] {
+  const stored = localStorage.getItem(storageKey);
+  if (!stored) {
+    return [];
+  }
+  const parsed = JSON.parse(stored) as Array<{ comment?: unknown }>;
+  return parsed.map((item) => (typeof item.comment === "string" ? item.comment : "")).filter(Boolean);
 }

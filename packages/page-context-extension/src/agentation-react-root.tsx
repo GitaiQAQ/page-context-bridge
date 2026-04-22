@@ -9,10 +9,13 @@ import {
 } from "@page-context/agentation-shell";
 import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
 import { Agentation, type Annotation as AgentationAnnotation } from "./agentation-source-runtime";
-import { Component, StrictMode, type ErrorInfo, type ReactNode, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { Component, StrictMode, type ErrorInfo, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import {
+  buildAgentationFeedbackDeltaPlan,
+  dismissVendorAnnotationsFromStorage,
+  type AgentationSnapshotReplayBinding,
   warmupAgentationSnapshotBeforeMount,
   type AgentationSnapshotWarmupResult,
 } from "./agentation-bridge-snapshot-warmup";
@@ -26,6 +29,7 @@ const AGENTATION_PACKAGE_MOUNT_KEY = "agentation-package";
 const NESTED_SHELL_HOST_ATTR = "data-agentation-react-shell-host";
 const AGENTATION_PACKAGE_HOST_ATTR = "data-agentation-react-package-host";
 const AGENTATION_SHELL_DISMISS_REASON = "marker deleted from agentation package";
+const AGENTATION_PACKAGE_DELTA_SYNC_INTERVAL_MS = 350;
 const AGENTATION_REACT_ROOT_COMPAT_ENTRY_KEYS = [
   AGENTATION_REACT_ROOT_ENTRY_KEY,
   "__PAGE_CONTEXT_AGENTATION_REACT_ROOT__",
@@ -329,7 +333,9 @@ function createAgentationReactRootEntry(): AgentationReactRootEntryObject {
 
 function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) {
   const remoteBindingByLocalIdRef = useRef<Map<string, AgentationRemoteBinding>>(new Map());
+  const feedbackDeltaSyncInFlightRef = useRef<Promise<void> | null>(null);
   const [warmupReady, setWarmupReady] = useState(false);
+  const [packageRemountVersion, setPackageRemountVersion] = useState(0);
 
   useLayoutEffect(() => {
     let cancelled = false;
@@ -338,12 +344,7 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         return;
       }
       // 预热阶段把 localId/remoteId 关系写入内存，后续增量同步可以直接沿用这份索引。
-      for (const binding of result.replayBindings) {
-        remoteBindingByLocalIdRef.current.set(binding.localId, {
-          remoteId: binding.remoteId,
-          priority: binding.priority,
-        });
-      }
+      replaceRemoteBindingsFromWarmup(remoteBindingByLocalIdRef.current, result.replayBindings);
       props.logger?.("debug", "agentation package snapshot warmup completed", {
         status: result.status,
         annotationCount: result.annotationCount,
@@ -354,6 +355,120 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
       cancelled = true;
     };
   }, [props.logger, props.snapshotWarmupPromise]);
+
+  useEffect(() => {
+    const getFeedbackStateDelta = props.adapter.getFeedbackStateDelta;
+    if (!warmupReady || !getFeedbackStateDelta) {
+      return;
+    }
+
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const runDeltaSyncOnce = async (): Promise<void> => {
+      if (feedbackDeltaSyncInFlightRef.current) {
+        await feedbackDeltaSyncInFlightRef.current;
+        return;
+      }
+
+      const task = (async () => {
+        const delta = await getFeedbackStateDelta();
+        if (cancelled) {
+          return;
+        }
+
+        const plan = buildAgentationFeedbackDeltaPlan(delta);
+        if (plan.eventCount === 0) {
+          return;
+        }
+
+        let removedCount = 0;
+        let snapshotReloaded = false;
+        let shouldRemountPackage = false;
+
+        if (plan.dismissedAnnotationIds.size > 0) {
+          // 优先用 bridge 已知映射把 remoteId 折算到本地 id，降低“删不干净”概率。
+          const dismissLocalIds = resolveLocalAnnotationIdsForDismissedRemoteIds(
+            remoteBindingByLocalIdRef.current,
+            plan.dismissedAnnotationIds,
+          );
+          const dismissResult = dismissVendorAnnotationsFromStorage({
+            win: props.win,
+            annotationIds: dismissLocalIds,
+          });
+          removedCount = dismissResult.removedCount;
+          if (dismissResult.removedCount > 0) {
+            shouldRemountPackage = true;
+          }
+          removeRemoteBindingsByDismissedRemoteIds(remoteBindingByLocalIdRef.current, plan.dismissedAnnotationIds);
+        }
+
+        if (plan.shouldReloadSnapshot) {
+          if (props.adapter.getFeedbackSnapshot) {
+            const warmupResult = await warmupAgentationSnapshotBeforeMount({
+              adapter: props.adapter,
+              win: props.win,
+              logger: props.logger,
+            });
+            if (cancelled) {
+              return;
+            }
+            replaceRemoteBindingsFromWarmup(remoteBindingByLocalIdRef.current, warmupResult.replayBindings);
+            snapshotReloaded = true;
+            shouldRemountPackage = true;
+          } else {
+            props.logger?.("error", "agentation package delta requires snapshot reload but snapshot api is missing", {
+              eventCount: plan.eventCount,
+            });
+          }
+        }
+
+        if (shouldRemountPackage) {
+          // vendored 组件不监听 bridge 侧存储写入，安全做法是整体重挂载后再读 localStorage。
+          setPackageRemountVersion((previous) => previous + 1);
+        }
+        props.logger?.("debug", "agentation package feedback delta sync completed", {
+          eventCount: plan.eventCount,
+          removedCount,
+          snapshotReloaded,
+          remounted: shouldRemountPackage,
+          lastSeq: delta.lastSeq,
+        });
+      })().catch((error) => {
+        props.logger?.("error", "agentation package feedback delta sync failed", {
+          error,
+        });
+      });
+
+      feedbackDeltaSyncInFlightRef.current = task.finally(() => {
+        feedbackDeltaSyncInFlightRef.current = null;
+      });
+      await feedbackDeltaSyncInFlightRef.current;
+    };
+
+    const scheduleNextDeltaSync = (delayMs: number): void => {
+      if (cancelled) {
+        return;
+      }
+      timerId = props.win.setTimeout(() => {
+        void syncLoop();
+      }, delayMs);
+    };
+
+    const syncLoop = async (): Promise<void> => {
+      await runDeltaSyncOnce();
+      scheduleNextDeltaSync(AGENTATION_PACKAGE_DELTA_SYNC_INTERVAL_MS);
+    };
+
+    // 让 vendored 首轮 mount/持久化先稳定，再开始轮询，避免首屏 effect 竞争覆盖 delta 落盘。
+    scheduleNextDeltaSync(AGENTATION_PACKAGE_DELTA_SYNC_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (timerId !== null) {
+        props.win.clearTimeout(timerId);
+      }
+    };
+  }, [props.adapter, props.logger, props.win, warmupReady]);
 
   const handleAnnotationAdd = useCallback(
     (annotation: AgentationAnnotation) => {
@@ -477,6 +592,7 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         {/* snapshot 未完成前不渲染 vendored UI，确保首屏读取到的是远端回放结果。 */}
         {warmupReady ? (
           <Agentation
+            key={packageRemountVersion}
             copyToClipboard={false}
             onAnnotationAdd={handleAnnotationAdd}
             onAnnotationUpdate={handleAnnotationUpdate}
@@ -523,6 +639,43 @@ function AgentationShellMountBridge(
       }}
     />
   );
+}
+
+function resolveLocalAnnotationIdsForDismissedRemoteIds(
+  remoteBindingByLocalId: Map<string, AgentationRemoteBinding>,
+  dismissedRemoteIds: Set<string>,
+): Set<string> {
+  const localIds = new Set<string>(dismissedRemoteIds);
+  for (const [localId, binding] of remoteBindingByLocalId) {
+    if (dismissedRemoteIds.has(localId) || (binding.remoteId && dismissedRemoteIds.has(binding.remoteId))) {
+      localIds.add(localId);
+    }
+  }
+  return localIds;
+}
+
+function removeRemoteBindingsByDismissedRemoteIds(
+  remoteBindingByLocalId: Map<string, AgentationRemoteBinding>,
+  dismissedRemoteIds: Set<string>,
+): void {
+  for (const [localId, binding] of remoteBindingByLocalId) {
+    if (dismissedRemoteIds.has(localId) || (binding.remoteId && dismissedRemoteIds.has(binding.remoteId))) {
+      remoteBindingByLocalId.delete(localId);
+    }
+  }
+}
+
+function replaceRemoteBindingsFromWarmup(
+  remoteBindingByLocalId: Map<string, AgentationRemoteBinding>,
+  replayBindings: AgentationSnapshotReplayBinding[],
+): void {
+  remoteBindingByLocalId.clear();
+  for (const binding of replayBindings) {
+    remoteBindingByLocalId.set(binding.localId, {
+      remoteId: binding.remoteId,
+      priority: binding.priority,
+    });
+  }
 }
 
 /**
