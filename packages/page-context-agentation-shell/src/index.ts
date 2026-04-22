@@ -35,6 +35,7 @@ const DRAG_SELECTION_THRESHOLD_PX = 6;
 const AREA_SELECTION_MIN_SIZE_PX = 20;
 const DEFAULT_ANNOTATING_HINT = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
 const MARKER_DISMISS_REASON = "marker deleted from agentation shell";
+const POPUP_FOCUSABLE_SELECTOR = 'textarea, select, button, input, [href], [tabindex]:not([tabindex="-1"])';
 const AREA_SELECTION_ELEMENT_SELECTOR = "button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th";
 const DRAG_SELECTION_TEXT_TAGS = new Set([
   "P",
@@ -240,6 +241,7 @@ class AgentationShellRuntime {
   private toolbarDockClickBlocked = false;
   private feedbackSnapshotSyncInFlight: Promise<void> | null = null;
   private feedbackDeltaSyncInFlight: Promise<void> | null = null;
+  private popupFocusReturnTarget: HTMLElement | null = null;
 
   constructor(args: {
     adapter: AgentationShellBridgeAdapter;
@@ -293,6 +295,7 @@ class AgentationShellRuntime {
     this.toolbarDock.addEventListener("click", this.onToolbarDockClick);
     this.popupDeleteButton.addEventListener("click", this.onPopupDeleteClick);
     this.popupCancelButton.addEventListener("click", this.onPopupCancelClick);
+    this.popupForm.addEventListener("keydown", this.onPopupKeyDown);
     this.popupForm.addEventListener("submit", this.onPopupSubmit);
     this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
     this.win.addEventListener("resize", this.onWindowResize, true);
@@ -969,6 +972,43 @@ class AgentationShellRuntime {
     this.closePopup();
   };
 
+  private readonly onPopupKeyDown = (event: KeyboardEvent): void => {
+    if (this.popupForm.hidden) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      // 编辑弹窗内的 Esc 永远先收口弹窗，不让事件冒泡到页面。
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.submitting) {
+        this.closePopup();
+      }
+      return;
+    }
+
+    if (event.key === "Tab") {
+      this.trapPopupFocus(event);
+      return;
+    }
+
+    // 文本输入场景下使用 Cmd/Ctrl+Enter 快速提交，保留 Enter 换行语义。
+    if (
+      event.key === "Enter"
+      && (event.metaKey || event.ctrlKey)
+      && !event.shiftKey
+      && !event.altKey
+      && !event.isComposing
+      && event.target instanceof HTMLTextAreaElement
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.submitting) {
+        this.popupForm.requestSubmit();
+      }
+    }
+  };
+
   private readonly onPopupDeleteClick = async (event: MouseEvent): Promise<void> => {
     event.preventDefault();
     if (this.submitting || !this.popupState || this.popupState.mode !== "edit") {
@@ -1489,6 +1529,7 @@ class AgentationShellRuntime {
   }
 
   private openPopupWithState(state: PopupState): void {
+    this.popupFocusReturnTarget = this.capturePopupFocusReturnTarget();
     this.popupState = state;
     const nextTop = computePopupTop(state.anchorY, this.win.innerHeight);
     const nextLeft = computePopupLeft(state.anchorX, this.win.innerWidth);
@@ -1526,6 +1567,8 @@ class AgentationShellRuntime {
   }
 
   private closePopup(): void {
+    const focusTarget = this.popupFocusReturnTarget;
+    this.popupFocusReturnTarget = null;
     this.popupState = null;
     this.popupForm.hidden = true;
     this.popupDeleteButton.hidden = true;
@@ -1534,6 +1577,63 @@ class AgentationShellRuntime {
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
     this.setPopupStatus("Idle", "info");
+    this.restorePopupFocus(focusTarget);
+  }
+
+  private trapPopupFocus(event: KeyboardEvent): void {
+    const focusables = this.collectPopupFocusableElements();
+    if (focusables.length === 0) {
+      return;
+    }
+    const activeElement = this.shadow.activeElement;
+    const currentIndex = activeElement instanceof HTMLElement ? focusables.indexOf(activeElement) : -1;
+    if (currentIndex < 0) {
+      event.preventDefault();
+      focusables[event.shiftKey ? focusables.length - 1 : 0]?.focus();
+      return;
+    }
+
+    if (!event.shiftKey && currentIndex === focusables.length - 1) {
+      event.preventDefault();
+      focusables[0]?.focus();
+      return;
+    }
+    if (event.shiftKey && currentIndex === 0) {
+      event.preventDefault();
+      focusables[focusables.length - 1]?.focus();
+    }
+  }
+
+  private collectPopupFocusableElements(): HTMLElement[] {
+    return Array.from(this.popupForm.querySelectorAll<HTMLElement>(POPUP_FOCUSABLE_SELECTOR)).filter((element) =>
+      isPopupFocusableElement(element),
+    );
+  }
+
+  private capturePopupFocusReturnTarget(): HTMLElement | null {
+    // 优先读 shadow 内焦点，避免 document.activeElement 只返回 host 的信息损失。
+    const activeInShadow = this.shadow.activeElement;
+    if (activeInShadow instanceof HTMLElement && !this.popupForm.contains(activeInShadow)) {
+      return activeInShadow;
+    }
+
+    const activeInDocument = this.doc.activeElement;
+    if (activeInDocument instanceof HTMLElement && activeInDocument !== this.host && !this.popupForm.contains(activeInDocument)) {
+      return activeInDocument;
+    }
+    return null;
+  }
+
+  private restorePopupFocus(target: HTMLElement | null): void {
+    if (!target || !target.isConnected) {
+      return;
+    }
+    // 关闭弹窗后把焦点还给来源控件，保证键盘流转闭环。
+    try {
+      target.focus({ preventScroll: true });
+    } catch {
+      target.focus();
+    }
   }
 
   private syncDragSelectionBox(rect: DOMRectReadOnly): void {
@@ -2151,6 +2251,25 @@ function queryRequired<T extends Element>(root: ParentNode, selector: string): T
     throw new Error(`Agentation shell missing node: ${selector}`);
   }
   return node as T;
+}
+
+function isPopupFocusableElement(element: HTMLElement): boolean {
+  if (element.hidden || element.getAttribute("aria-hidden") === "true") {
+    return false;
+  }
+  if (element.tabIndex < 0) {
+    return false;
+  }
+  if (
+    (element instanceof HTMLButtonElement
+      || element instanceof HTMLInputElement
+      || element instanceof HTMLTextAreaElement
+      || element instanceof HTMLSelectElement)
+    && element.disabled
+  ) {
+    return false;
+  }
+  return true;
 }
 
 const SHELL_TEMPLATE = `
