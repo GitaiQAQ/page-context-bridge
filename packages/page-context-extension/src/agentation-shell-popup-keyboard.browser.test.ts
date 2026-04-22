@@ -122,6 +122,35 @@ describe("agentation shell popup keyboard flow", () => {
     // 收尾退出标注态，避免监听器泄露到后续用例。
     toolbarToggle.click();
   });
+
+  it("keeps Tab and Shift+Tab focus loop inside popup", () => {
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation: vi.fn(), updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    const toolbarToggle = queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]");
+    toolbarToggle.click();
+    dispatchMouse(document.body, "click", 120, 96);
+
+    const popupBody = queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]");
+    const popupSubmit = queryRequired<HTMLButtonElement>(shadow, "[data-popup-submit]");
+
+    popupSubmit.focus();
+    // create 态下 submit 是最后一个可聚焦控件，Tab 应回卷到 body。
+    dispatchKeyboard(popupSubmit, "Tab");
+    expect(shadow.activeElement).toBe(popupBody);
+
+    // 反向循环同理：body + Shift+Tab 应回到 submit。
+    popupBody.focus();
+    dispatchKeyboard(popupBody, "Tab", { shiftKey: true });
+    expect(shadow.activeElement).toBe(popupSubmit);
+
+    toolbarToggle.click();
+  });
 });
 
 function getAgentationShellShadowRoot(): ShadowRoot {

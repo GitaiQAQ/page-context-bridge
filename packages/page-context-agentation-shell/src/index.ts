@@ -977,6 +977,23 @@ class AgentationShellRuntime {
       return;
     }
 
+    if (event.key === "Tab") {
+      const focusableElements = this.collectPopupFocusableElements();
+      if (focusableElements.length === 0) {
+        return;
+      }
+      const activeElement = this.resolvePopupActiveElement(event.target);
+      const activeIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
+      const nextIndex = event.shiftKey
+        ? (activeIndex <= 0 ? focusableElements.length - 1 : activeIndex - 1)
+        : (activeIndex < 0 || activeIndex >= focusableElements.length - 1 ? 0 : activeIndex + 1);
+      // popup 内部循环焦点，避免 Tab 跳回页面导致键盘链路中断。
+      event.preventDefault();
+      event.stopPropagation();
+      focusableElements[nextIndex].focus();
+      return;
+    }
+
     if (event.key === "Escape") {
       // 编辑弹窗内的 Esc 永远先收口弹窗，不让事件冒泡到页面。
       event.preventDefault();
@@ -1591,6 +1608,26 @@ class AgentationShellRuntime {
     }
   }
 
+  private collectPopupFocusableElements(): HTMLElement[] {
+    const candidates = Array.from(
+      this.popupForm.querySelectorAll<HTMLElement>(
+        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+      ),
+    );
+    return candidates.filter((item) => isFocusableInPopup(item));
+  }
+
+  private resolvePopupActiveElement(eventTarget: EventTarget | null): HTMLElement | null {
+    if (eventTarget instanceof HTMLElement && this.popupForm.contains(eventTarget)) {
+      return eventTarget;
+    }
+    const activeElement = this.shadow.activeElement;
+    if (activeElement instanceof HTMLElement && this.popupForm.contains(activeElement)) {
+      return activeElement;
+    }
+    return null;
+  }
+
   private resolvePopupReturnFocusTarget(state: PopupState): HTMLElement | null {
     const activeElement = this.doc.activeElement;
     if (
@@ -2192,6 +2229,24 @@ function markerColor(priority: FeedbackPriority): string {
     default:
       return "#0088ff";
   }
+}
+
+function isFocusableInPopup(element: HTMLElement): boolean {
+  if (element.hasAttribute("hidden") || element.closest("[hidden]")) {
+    return false;
+  }
+  if (!element.isConnected || element.tabIndex < 0) {
+    return false;
+  }
+  if (
+    element instanceof HTMLButtonElement
+    || element instanceof HTMLInputElement
+    || element instanceof HTMLSelectElement
+    || element instanceof HTMLTextAreaElement
+  ) {
+    return !element.disabled;
+  }
+  return true;
 }
 
 function buildMarkerTooltip(marker: MarkerRecord): string {
