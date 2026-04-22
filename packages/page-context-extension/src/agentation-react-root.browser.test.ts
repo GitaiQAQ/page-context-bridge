@@ -9,7 +9,13 @@ import {
   registerAgentationReactRootEntry,
 } from "./agentation-react-root";
 import { installAgentationReactRoot, installFeedbackUiWithFallback } from "./feedback-ui-adapter";
-import { FEEDBACK_UI_MODE_ATTR, FEEDBACK_UI_REASON_ATTR } from "./feedback-ui-diagnostics";
+import {
+  FEEDBACK_UI_MODE_ATTR,
+  FEEDBACK_UI_REASON_ATTR,
+  FEEDBACK_UI_SELF_CHECK_RESULT_ATTR,
+  FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR,
+  FEEDBACK_UI_SELF_CHECK_STATUS_ATTR,
+} from "./feedback-ui-diagnostics";
 import { getStorageKey } from "./vendor/agentation/utils/storage";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
@@ -159,10 +165,44 @@ describe("agentation react root entry integration", () => {
       expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("react-root");
     });
     expect(document.documentElement.hasAttribute(FEEDBACK_UI_REASON_ATTR)).toBe(false);
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR)).toBe("ok");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR)).toBe("present");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR)).toBe(
+      `#${AGENTATION_REACT_HOST_ID}`,
+    );
 
     const reactHost = document.getElementById(AGENTATION_REACT_HOST_ID);
     expect(reactHost?.shadowRoot?.querySelector('[data-agentation-feedback-ui-mode="shell-fallback"]')).toBeNull();
     expect(reactHost?.shadowRoot?.querySelector('[data-agentation-react-shell-host="true"]')).toBeNull();
+  });
+
+  it("keeps vendored path when document.body is temporarily missing at mount time", async () => {
+    registerAgentationReactRootEntry({ win: window });
+
+    // 模拟真实页面短暂 DOM 重建：挂载瞬间 body 不可用。
+    document.body.remove();
+    expect(document.body).toBeNull();
+
+    const mounted = installAgentationReactRoot({
+      adapter: createAdapterMock(),
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    // body 恢复前不应误降级出 shell host。
+    const reactHostBeforeRestore = document.getElementById(AGENTATION_REACT_HOST_ID);
+    expect(reactHostBeforeRestore?.shadowRoot?.querySelector('[data-agentation-react-shell-host="true"]')).toBeNull();
+
+    // 恢复 body，验证 vendored UI 能继续正常挂载。
+    const restoredBody = document.createElement("body");
+    document.documentElement.appendChild(restoredBody);
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("react-root");
+      expect(document.body?.querySelector("[data-agentation-root]")).not.toBeNull();
+    });
+    expect(document.documentElement.hasAttribute(FEEDBACK_UI_REASON_ATTR)).toBe(false);
   });
 
   it("falls back to shell with visible reason when vendored render throws", async () => {
@@ -195,6 +235,11 @@ describe("agentation react root entry integration", () => {
         expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("shell-fallback");
       });
       expect(document.documentElement.getAttribute(FEEDBACK_UI_REASON_ATTR)).toBe("agentation-package-render-failed");
+      expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR)).toBe("ok");
+      expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR)).toBe("present");
+      expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR)).toBe(
+        `#${AGENTATION_REACT_HOST_ID}`,
+      );
 
       const reactHost = document.getElementById(AGENTATION_REACT_HOST_ID);
       const shellHost = reactHost?.shadowRoot?.querySelector('[data-agentation-react-shell-host="true"]');
@@ -220,6 +265,11 @@ describe("agentation react root entry integration", () => {
 
     expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("shell-fallback");
     expect(document.documentElement.getAttribute(FEEDBACK_UI_REASON_ATTR)).toBe("react-root-skipped");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR)).toBe("ok");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR)).toBe("present");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR)).toBe(
+      `#${AGENTATION_SHELL_HOST_ID}`,
+    );
     expect(installLegacyOverlay).not.toHaveBeenCalled();
   });
 
@@ -237,6 +287,11 @@ describe("agentation react root entry integration", () => {
 
     expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("shell-fallback");
     expect(document.documentElement.getAttribute(FEEDBACK_UI_REASON_ATTR)).toBe("react-root-install-failed");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR)).toBe("ok");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR)).toBe("present");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR)).toBe(
+      `#${AGENTATION_SHELL_HOST_ID}`,
+    );
     expect(installLegacyOverlay).not.toHaveBeenCalled();
   });
 
@@ -525,4 +580,7 @@ function readStoredAnnotationBodies(storageKey: string): string[] {
 function clearFeedbackUiDiagnostics(): void {
   document.documentElement.removeAttribute(FEEDBACK_UI_MODE_ATTR);
   document.documentElement.removeAttribute(FEEDBACK_UI_REASON_ATTR);
+  document.documentElement.removeAttribute(FEEDBACK_UI_SELF_CHECK_STATUS_ATTR);
+  document.documentElement.removeAttribute(FEEDBACK_UI_SELF_CHECK_SELECTOR_ATTR);
+  document.documentElement.removeAttribute(FEEDBACK_UI_SELF_CHECK_RESULT_ATTR);
 }

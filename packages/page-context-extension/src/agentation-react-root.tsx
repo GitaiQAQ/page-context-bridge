@@ -23,6 +23,7 @@ import { markFeedbackUiMode } from "./feedback-ui-diagnostics";
 
 export const AGENTATION_REACT_HOST_ID = "__page_context_agentation_react_host__";
 export const AGENTATION_REACT_ROOT_ENTRY_KEY = "agentation-react-root";
+const AGENTATION_REACT_HOST_SELECTOR = `#${AGENTATION_REACT_HOST_ID}`;
 const MOUNT_CONTAINER_ATTR = "data-page-context-react-mount-key";
 const HOST_MARK_ATTR = "data-page-context-react-host";
 const DEFAULT_MOUNT_KEY = "default";
@@ -337,11 +338,17 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
   const remoteBindingByLocalIdRef = useRef<Map<string, AgentationRemoteBinding>>(new Map());
   const feedbackDeltaSyncInFlightRef = useRef<Promise<void> | null>(null);
   const [warmupReady, setWarmupReady] = useState(false);
+  const [portalTargetReady, setPortalTargetReady] = useState(() => hasAgentationPortalTarget(props.doc));
   const [packageRemountVersion, setPackageRemountVersion] = useState(0);
 
   useLayoutEffect(() => {
     // React root 正常工作时，显式写入“当前模式=react-root”。
-    markFeedbackUiMode("react-root", { doc: props.doc });
+    markFeedbackUiMode("react-root", {
+      doc: props.doc,
+      selfCheck: {
+        selector: AGENTATION_REACT_HOST_SELECTOR,
+      },
+    });
   }, [props.doc]);
 
   useLayoutEffect(() => {
@@ -362,6 +369,37 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
       cancelled = true;
     };
   }, [props.logger, props.snapshotWarmupPromise]);
+
+  useEffect(() => {
+    // vendored Agentation 首屏会直接 createPortal 到 document.body。
+    // 某些真实页面在 content-script 刚执行时 body 可能短暂缺失，若此时硬渲染会触发 ErrorBoundary 并误降级到 shell。
+    // 这里用最小轮询等待 body 就绪，再放行真实 UI 渲染。
+    if (portalTargetReady) {
+      return;
+    }
+
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const waitForPortalTarget = (): void => {
+      if (cancelled) {
+        return;
+      }
+      if (hasAgentationPortalTarget(props.doc)) {
+        setPortalTargetReady(true);
+        return;
+      }
+      timerId = props.win.setTimeout(waitForPortalTarget, 50);
+    };
+
+    waitForPortalTarget();
+    return () => {
+      cancelled = true;
+      if (timerId !== null) {
+        props.win.clearTimeout(timerId);
+      }
+    };
+  }, [portalTargetReady, props.doc, props.win]);
 
   useEffect(() => {
     const getFeedbackStateDelta = props.adapter.getFeedbackStateDelta;
@@ -602,7 +640,8 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         }}
       >
         {/* snapshot 未完成前不渲染 vendored UI，确保首屏读取到的是远端回放结果。 */}
-        {warmupReady ? (
+        {/* body 未就绪时先不触发 vendored render，避免短暂 DOM 时序导致误判为“包渲染失败”。 */}
+        {warmupReady && portalTargetReady ? (
           <Agentation
             key={packageRemountVersion}
             copyToClipboard={false}
@@ -627,6 +666,9 @@ function AgentationShellMountBridge(
     markFeedbackUiMode("shell-fallback", {
       doc: props.doc,
       reason: props.fallbackReason ?? "agentation-react-shell-fallback",
+      selfCheck: {
+        selector: AGENTATION_REACT_HOST_SELECTOR,
+      },
     });
   }, [props.doc, props.fallbackReason]);
 
@@ -832,6 +874,10 @@ function normalizeAnnotationId(value: unknown): string | undefined {
   }
   const id = value.trim();
   return id ? id : undefined;
+}
+
+function hasAgentationPortalTarget(doc: Document): boolean {
+  return !!doc.body && doc.body.isConnected;
 }
 
 function DefaultMountProbe({ mountKey }: { mountKey: string }) {
