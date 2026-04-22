@@ -19,6 +19,7 @@ import {
   warmupAgentationSnapshotBeforeMount,
   type AgentationSnapshotWarmupResult,
 } from "./agentation-bridge-snapshot-warmup";
+import { markFeedbackUiMode } from "./feedback-ui-diagnostics";
 
 export const AGENTATION_REACT_HOST_ID = "__page_context_agentation_react_host__";
 export const AGENTATION_REACT_ROOT_ENTRY_KEY = "agentation-react-root";
@@ -28,6 +29,7 @@ const DEFAULT_MOUNT_KEY = "default";
 const AGENTATION_PACKAGE_MOUNT_KEY = "agentation-package";
 const NESTED_SHELL_HOST_ATTR = "data-agentation-react-shell-host";
 const AGENTATION_PACKAGE_HOST_ATTR = "data-agentation-react-package-host";
+const AGENTATION_UI_MODE_ATTR = "data-agentation-feedback-ui-mode";
 const AGENTATION_SHELL_DISMISS_REASON = "marker deleted from agentation package";
 const AGENTATION_PACKAGE_DELTA_SYNC_INTERVAL_MS = 350;
 const AGENTATION_REACT_ROOT_COMPAT_ENTRY_KEYS = [
@@ -338,6 +340,11 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
   const [packageRemountVersion, setPackageRemountVersion] = useState(0);
 
   useLayoutEffect(() => {
+    // React root 正常工作时，显式写入“当前模式=react-root”。
+    markFeedbackUiMode("react-root", { doc: props.doc });
+  }, [props.doc]);
+
+  useLayoutEffect(() => {
     let cancelled = false;
     void props.snapshotWarmupPromise.then((result) => {
       if (cancelled) {
@@ -588,7 +595,12 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
       }}
       fallback={<AgentationShellMountBridge {...props} fallbackReason="agentation-package-render-failed" />}
     >
-      <div {...{ [AGENTATION_PACKAGE_HOST_ATTR]: "true" }}>
+      <div
+        {...{
+          [AGENTATION_PACKAGE_HOST_ATTR]: "true",
+          [AGENTATION_UI_MODE_ATTR]: "react-root",
+        }}
+      >
         {/* snapshot 未完成前不渲染 vendored UI，确保首屏读取到的是远端回放结果。 */}
         {warmupReady ? (
           <Agentation
@@ -609,6 +621,14 @@ function AgentationShellMountBridge(
 ) {
   const shellHostRef = useRef<HTMLDivElement | null>(null);
   const shellHandleRef = useRef<AgentationShellMountHandle | null>(null);
+
+  useLayoutEffect(() => {
+    // 在 React 内部降级到 shell 时，覆盖全局诊断模式，便于现场直接判定真实运行分支。
+    markFeedbackUiMode("shell-fallback", {
+      doc: props.doc,
+      reason: props.fallbackReason ?? "agentation-react-shell-fallback",
+    });
+  }, [props.doc, props.fallbackReason]);
 
   useLayoutEffect(() => {
     const host = shellHostRef.current;
@@ -635,6 +655,7 @@ function AgentationShellMountBridge(
       ref={shellHostRef}
       {...{
         [NESTED_SHELL_HOST_ATTR]: "true",
+        [AGENTATION_UI_MODE_ATTR]: "shell-fallback",
         "data-agentation-react-shell-fallback-reason": props.fallbackReason ?? "",
       }}
     />

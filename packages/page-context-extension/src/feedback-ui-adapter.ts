@@ -11,6 +11,7 @@ import type {
 } from "@page-context/agentation-shell";
 
 import { sendRuntimeRequest } from "./runtime-rpc";
+import { markFeedbackUiMode } from "./feedback-ui-diagnostics";
 
 const AGENTATION_REACT_ROOT_ENTRY_KEY = "agentation-react-root";
 const AGENTATION_REACT_ROOT_COMPAT_ENTRY_KEYS = [
@@ -150,28 +151,36 @@ export function installAgentationReactRoot(deps: InstallAgentationReactRootDeps)
  * 3) legacy overlay（兜底）
  */
 export function installFeedbackUiWithFallback(deps: FeedbackUiMountFallbackDeps): void {
+  let shellFallbackReason = "react-root-skipped";
+
   try {
     const mountedByReact = deps.installReactRoot();
     if (mountedByReact) {
+      markFeedbackUiMode("react-root");
       deps.log("Agentation React root installed");
       return;
     }
     deps.log("Agentation React root skipped, fallback to agentation shell");
   } catch (error) {
+    shellFallbackReason = "react-root-install-failed";
     deps.log("Agentation React root install failed, fallback to agentation shell", error);
   }
 
+  let legacyOverlayReason = "agentation-shell-skipped";
   try {
     const mountedByShell = deps.installAgentationShell();
     if (mountedByShell) {
+      markFeedbackUiMode("shell-fallback", { reason: shellFallbackReason });
       deps.log("Agentation shell installed");
       return;
     }
     deps.log("Agentation shell skipped, fallback to legacy overlay");
   } catch (error) {
+    legacyOverlayReason = "agentation-shell-install-failed";
     deps.log("Agentation shell install failed, fallback to legacy overlay", error);
   }
 
+  markFeedbackUiMode("legacy-overlay", { reason: legacyOverlayReason });
   deps.installLegacyOverlay();
 }
 

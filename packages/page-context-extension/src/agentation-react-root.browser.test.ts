@@ -8,7 +8,8 @@ import {
   mountAgentationReactRoot,
   registerAgentationReactRootEntry,
 } from "./agentation-react-root";
-import { installAgentationReactRoot } from "./feedback-ui-adapter";
+import { installAgentationReactRoot, installFeedbackUiWithFallback } from "./feedback-ui-adapter";
+import { FEEDBACK_UI_MODE_ATTR, FEEDBACK_UI_REASON_ATTR } from "./feedback-ui-diagnostics";
 import { getStorageKey } from "./vendor/agentation/utils/storage";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
@@ -22,11 +23,13 @@ describe("mountAgentationReactRoot", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     localStorage.clear();
+    clearFeedbackUiDiagnostics();
     cleanupReactRootEntry();
   });
 
   afterEach(() => {
     cleanupReactRootEntry();
+    clearFeedbackUiDiagnostics();
     localStorage.clear();
     document.body.innerHTML = "";
   });
@@ -96,11 +99,13 @@ describe("agentation react root entry integration", () => {
   beforeEach(() => {
     document.body.innerHTML = "<main><h1>demo page</h1></main>";
     localStorage.clear();
+    clearFeedbackUiDiagnostics();
     cleanupReactRootEntry();
   });
 
   afterEach(() => {
     cleanupReactRootEntry();
+    clearFeedbackUiDiagnostics();
     localStorage.clear();
     document.body.innerHTML = "";
   });
@@ -138,6 +143,101 @@ describe("agentation react root entry integration", () => {
     }
     expect(document.getElementById(AGENTATION_REACT_HOST_ID)).toBeNull();
     expect(document.body.querySelector("[data-agentation-root]")).toBeNull();
+  });
+
+  it("keeps react-root mode on normal path and does not expose shell fallback marker", async () => {
+    registerAgentationReactRootEntry({ win: window });
+
+    const mounted = installAgentationReactRoot({
+      adapter: createAdapterMock(),
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("react-root");
+    });
+    expect(document.documentElement.hasAttribute(FEEDBACK_UI_REASON_ATTR)).toBe(false);
+
+    const reactHost = document.getElementById(AGENTATION_REACT_HOST_ID);
+    expect(reactHost?.shadowRoot?.querySelector('[data-agentation-feedback-ui-mode="shell-fallback"]')).toBeNull();
+    expect(reactHost?.shadowRoot?.querySelector('[data-agentation-react-shell-host="true"]')).toBeNull();
+  });
+
+  it("falls back to shell with visible reason when vendored render throws", async () => {
+    vi.resetModules();
+    vi.doMock("./agentation-source-runtime", async () => {
+      const actual = await vi.importActual<typeof import("./agentation-source-runtime")>("./agentation-source-runtime");
+      return {
+        ...actual,
+        Agentation: () => {
+          throw new Error("forced vendored render failure in test");
+        },
+      };
+    });
+
+    try {
+      const [{ registerAgentationReactRootEntry: registerEntry }, { installAgentationReactRoot: installReactRoot }] = await Promise.all([
+        import("./agentation-react-root"),
+        import("./feedback-ui-adapter"),
+      ]);
+
+      registerEntry({ win: window });
+      const mounted = installReactRoot({
+        adapter: createAdapterMock(),
+        doc: document,
+        win: window,
+      });
+      expect(mounted).toBe(true);
+
+      await vi.waitFor(() => {
+        expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("shell-fallback");
+      });
+      expect(document.documentElement.getAttribute(FEEDBACK_UI_REASON_ATTR)).toBe("agentation-package-render-failed");
+
+      const reactHost = document.getElementById(AGENTATION_REACT_HOST_ID);
+      const shellHost = reactHost?.shadowRoot?.querySelector('[data-agentation-react-shell-host="true"]');
+      expect(shellHost).not.toBeNull();
+      expect(shellHost?.getAttribute("data-agentation-react-shell-fallback-reason")).toBe(
+        "agentation-package-render-failed",
+      );
+    } finally {
+      vi.doUnmock("./agentation-source-runtime");
+      vi.resetModules();
+    }
+  });
+
+  it("marks shell fallback mode and reason when top-level installer skips react root", () => {
+    const installLegacyOverlay = vi.fn();
+
+    installFeedbackUiWithFallback({
+      installReactRoot: () => false,
+      installAgentationShell: () => true,
+      installLegacyOverlay,
+      log: vi.fn(),
+    });
+
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("shell-fallback");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_REASON_ATTR)).toBe("react-root-skipped");
+    expect(installLegacyOverlay).not.toHaveBeenCalled();
+  });
+
+  it("marks shell fallback mode and reason when top-level react root throws", () => {
+    const installLegacyOverlay = vi.fn();
+
+    installFeedbackUiWithFallback({
+      installReactRoot: () => {
+        throw new Error("react root install failed");
+      },
+      installAgentationShell: () => true,
+      installLegacyOverlay,
+      log: vi.fn(),
+    });
+
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_MODE_ATTR)).toBe("shell-fallback");
+    expect(document.documentElement.getAttribute(FEEDBACK_UI_REASON_ATTR)).toBe("react-root-install-failed");
+    expect(installLegacyOverlay).not.toHaveBeenCalled();
   });
 
   it("warms vendored annotation storage from snapshot before first package render", async () => {
@@ -420,4 +520,9 @@ function readStoredAnnotationBodies(storageKey: string): string[] {
   }
   const parsed = JSON.parse(stored) as Array<{ comment?: unknown }>;
   return parsed.map((item) => (typeof item.comment === "string" ? item.comment : "")).filter(Boolean);
+}
+
+function clearFeedbackUiDiagnostics(): void {
+  document.documentElement.removeAttribute(FEEDBACK_UI_MODE_ATTR);
+  document.documentElement.removeAttribute(FEEDBACK_UI_REASON_ATTR);
 }
