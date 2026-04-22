@@ -3,6 +3,8 @@ import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } fro
 import {
   installAgentationShell,
   type AgentationShellCreateAnnotationInput,
+  type AgentationShellDismissAnnotationInput,
+  type AgentationShellUpdateAnnotationInput,
 } from "@page-context/agentation-shell";
 import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
@@ -73,6 +75,8 @@ function installFeedbackUiWithFallback(): void {
     const installed = installAgentationShell({
       adapter: {
         createAnnotation: createAnnotationFromShell,
+        updateAnnotation: updateAnnotationFromShell,
+        dismissAnnotation: dismissAnnotationFromShell,
       },
       // 统一复用 content-script 日志前缀，便于定位现场问题。
       logger(level, message, extra) {
@@ -112,6 +116,23 @@ async function createAnnotationFromShell(
   };
   const raw = await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, payload);
   return normalizeCreateResult(raw);
+}
+
+async function updateAnnotationFromShell(input: AgentationShellUpdateAnnotationInput): Promise<unknown> {
+  const payload = {
+    annotationId: input.annotationId,
+    body: input.body,
+    priority: input.priority,
+  };
+  return await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate, payload);
+}
+
+async function dismissAnnotationFromShell(input: AgentationShellDismissAnnotationInput): Promise<unknown> {
+  const payload = {
+    annotationId: input.annotationId,
+    dismissReason: input.dismissReason,
+  };
+  return await sendRuntimeRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, payload);
 }
 
 function normalizeCreateResult(raw: unknown): { id?: string; raw?: unknown } {

@@ -125,4 +125,29 @@ describe("mcp-registry feedback tools", () => {
     ]);
     expect(typeof parsed.lastSeq).toBe("number");
   });
+
+  it("updates and dismisses annotation through registry methods", () => {
+    const registry = createRegistry();
+    const created = registry.createFeedbackAnnotation({
+      body: "初始内容",
+      priority: "normal",
+      tabId: 11,
+      url: "https://example.com/form",
+    });
+
+    const updated = registry.updateFeedbackAnnotation({
+      annotationId: created.id,
+      body: "编辑后的内容",
+      priority: "critical",
+    });
+    expect(updated.body).toBe("编辑后的内容");
+    expect(updated.priority).toBe("critical");
+
+    const dismissed = registry.dismissFeedbackAnnotation({
+      annotationId: created.id,
+      dismissReason: "marker deleted from agentation shell",
+    });
+    expect(dismissed.status).toBe("dismissed");
+    expect(dismissed.dismissReason).toContain("marker deleted");
+  });
 });

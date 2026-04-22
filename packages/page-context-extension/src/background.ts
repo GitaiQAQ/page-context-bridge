@@ -10,6 +10,7 @@ import {
   type FeedbackAnnotationDismissParams,
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,
+  type FeedbackAnnotationUpdateParams,
   type FeedbackStateSnapshotParams,
   type PageContextManifest,
   RpcProtocolError,
@@ -36,6 +37,7 @@ type FeedbackCreatePayloadFromUi = Pick<FeedbackAnnotationCreateParams, "body" |
    */
   anchor?: FeedbackAnnotationCreateParams["uiAnchor"];
 };
+type FeedbackUpdatePayloadFromUi = Pick<FeedbackAnnotationUpdateParams, "annotationId" | "body" | "priority">;
 
 let pageToolPreferences: PageToolPreferences = {};
 let pageToolPreferencesReady: Promise<void> | null = null;
@@ -219,6 +221,14 @@ function buildFeedbackAnnotationCreateParams(
     title: context.title,
     selectedText: payload.selectedText?.trim() || context.selectedText,
     uiAnchor: normalizeFeedbackUiAnchor(payload.uiAnchor ?? payload.anchor),
+  };
+}
+
+function buildFeedbackAnnotationUpdateParams(payload: FeedbackUpdatePayloadFromUi): FeedbackAnnotationUpdateParams {
+  return {
+    annotationId: payload.annotationId.trim(),
+    body: payload.body.trim(),
+    priority: payload.priority,
   };
 }
 
@@ -645,6 +655,16 @@ chrome.runtime.onMessage.addListener(
           payload.uiAnchor = await enrichUiAnchorReactMetaInMainWorld(context.tabId, payload.uiAnchor);
         }
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationCreate, buildFeedbackAnnotationCreateParams(payload, context));
+      }
+      case BRIDGE_METHODS.extensionFeedbackAnnotationUpdate: {
+        const payload = (message.params ?? {}) as FeedbackUpdatePayloadFromUi;
+        if (!payload.annotationId?.trim()) {
+          throw new Error("Feedback annotationId is required");
+        }
+        if (!payload.body?.trim()) {
+          throw new Error("Feedback body is required");
+        }
+        return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationUpdate, buildFeedbackAnnotationUpdateParams(payload));
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationClaim: {
         const payload = (message.params ?? {}) as FeedbackAnnotationClaimParams;

@@ -62,6 +62,7 @@ export {
   type FeedbackStateDeltaParams,
   type FeedbackStateDeltaResult,
   type FeedbackAnnotationCreateParams,
+  type FeedbackAnnotationUpdateParams,
   type FeedbackAnnotationClaimParams,
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,

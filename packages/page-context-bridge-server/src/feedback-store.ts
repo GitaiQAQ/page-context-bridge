@@ -3,6 +3,7 @@ import type {
   FeedbackAnnotation,
   FeedbackAnnotationDismissParams,
   FeedbackAnnotationResolveParams,
+  FeedbackAnnotationUpdateParams,
   FeedbackAnnotationStatus,
   FeedbackCapabilityLinks,
   FeedbackContext,
@@ -80,6 +81,10 @@ export interface ResolveFeedbackAnnotationInput extends Omit<FeedbackAnnotationR
 }
 
 export interface DismissFeedbackAnnotationInput extends Omit<FeedbackAnnotationDismissParams, "actor"> {
+  actor: FeedbackActor;
+}
+
+export interface UpdateFeedbackAnnotationInput extends Omit<FeedbackAnnotationUpdateParams, "actor"> {
   actor: FeedbackActor;
 }
 
@@ -325,6 +330,38 @@ export class FeedbackStore {
       source: input.actor.source,
       payload: {
         status: annotation.status,
+      },
+    });
+    this.bumpSnapshotVersion();
+    return cloneValue(annotation);
+  }
+
+  updateAnnotation(input: UpdateFeedbackAnnotationInput): FeedbackAnnotation {
+    const annotation = this.requireAnnotation(input.annotationId);
+
+    // 终态标注不允许再编辑，避免“已处理项”被静默篡改。
+    if (annotation.status === "resolved" || annotation.status === "dismissed") {
+      throw new Error(`Cannot update annotation in status: ${annotation.status}`);
+    }
+
+    const normalizedBody = normalizeText(input.body);
+    if (!normalizedBody) {
+      throw new Error("Annotation body is required");
+    }
+    annotation.body = normalizedBody;
+    if (input.priority) {
+      annotation.priority = input.priority;
+    }
+    annotation.updatedAt = this.now();
+
+    this.appendEvent({
+      sessionId: annotation.sessionId,
+      annotationId: annotation.id,
+      eventType: "annotation.updated",
+      source: input.actor.source,
+      payload: {
+        status: annotation.status,
+        priority: annotation.priority,
       },
     });
     this.bumpSnapshotVersion();

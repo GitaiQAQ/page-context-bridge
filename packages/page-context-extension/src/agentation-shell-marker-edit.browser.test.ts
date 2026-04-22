@@ -18,10 +18,12 @@ describe("agentation shell marker edit flow", () => {
     });
   });
 
-  it("supports marker reopen edit and local delete without extra create call", async () => {
+  it("supports marker reopen edit/delete with update + dismiss sync", async () => {
     const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-1" });
+    const updateAnnotation = vi.fn().mockResolvedValue({ ok: true });
+    const dismissAnnotation = vi.fn().mockResolvedValue({ ok: true });
     const mounted = installAgentationShell({
-      adapter: { createAnnotation },
+      adapter: { createAnnotation, updateAnnotation, dismissAnnotation },
       doc: document,
       win: window,
     });
@@ -56,14 +58,26 @@ describe("agentation shell marker edit flow", () => {
     popup.requestSubmit();
     await flushMicrotasks();
 
-    // 编辑只改本地 marker，不应再次触发 create。
+    // 编辑不应再次 create，而是走 update 同步远端。
     expect(createAnnotation).toHaveBeenCalledTimes(1);
+    expect(updateAnnotation).toHaveBeenCalledTimes(1);
+    expect(updateAnnotation).toHaveBeenCalledWith({
+      annotationId: "marker-1",
+      body: "updated feedback",
+      priority: "critical",
+    });
     marker = queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-1"]');
     expect(readMarkerTooltip(marker)).toContain("updated feedback");
 
     marker.click();
     queryRequired<HTMLButtonElement>(shadow, "[data-popup-delete]").click();
+    await flushMicrotasks();
 
+    expect(dismissAnnotation).toHaveBeenCalledTimes(1);
+    expect(dismissAnnotation).toHaveBeenCalledWith({
+      annotationId: "marker-1",
+      dismissReason: "marker deleted from agentation shell",
+    });
     expect(shadow.querySelector('[data-marker-id="marker-1"]')).toBeNull();
     expect(popup.hidden).toBe(true);
   });

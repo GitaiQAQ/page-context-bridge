@@ -153,6 +153,13 @@ export const feedbackAnnotationCreateParamsSchema = z.object({
   actor: feedbackActorSchema.optional(),
 });
 
+export const feedbackAnnotationUpdateParamsSchema = z.object({
+  annotationId: z.string().min(1),
+  body: z.string().trim().min(1),
+  priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+  actor: feedbackActorSchema.optional(),
+});
+
 export const feedbackAnnotationClaimParamsSchema = z.object({
   annotationId: z.string().min(1),
   actor: feedbackActorSchema.optional(),

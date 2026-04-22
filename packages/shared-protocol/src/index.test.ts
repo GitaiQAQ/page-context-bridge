@@ -52,7 +52,9 @@ describe("RpcPeer", () => {
   it("exports feedback method constants through the shared barrel", () => {
     expect(BRIDGE_METHODS.feedbackStateSnapshot).toBe("feedback.state.snapshot");
     expect(BRIDGE_METHODS.extensionFeedbackAnnotationCreate).toBe("extension.feedback.annotation.create");
+    expect(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate).toBe("extension.feedback.annotation.update");
     expect(FEEDBACK_METHODS.feedbackAnnotationResolve).toBe("feedback.annotation.resolve");
+    expect(FEEDBACK_METHODS.feedbackAnnotationUpdate).toBe("feedback.annotation.update");
   });
 
   it("keeps feedback create payload backward compatible while supporting uiAnchor", () => {

@@ -6,16 +6,20 @@ import type {
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
   AgentationShellDeps,
+  AgentationShellDismissAnnotationInput,
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
+  AgentationShellUpdateAnnotationInput,
 } from "./types";
 export type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
   AgentationShellCreateAnnotationResult,
   AgentationShellDeps,
+  AgentationShellDismissAnnotationInput,
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
+  AgentationShellUpdateAnnotationInput,
 } from "./types";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
@@ -26,6 +30,7 @@ const PRIORITY_ORDER: FeedbackPriority[] = ["low", "normal", "high", "critical"]
 const DRAG_SELECTION_THRESHOLD_PX = 6;
 const AREA_SELECTION_MIN_SIZE_PX = 20;
 const DEFAULT_ANNOTATING_HINT = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+const MARKER_DISMISS_REASON = "marker deleted from agentation shell";
 const AREA_SELECTION_ELEMENT_SELECTOR = "button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th";
 const DRAG_SELECTION_TEXT_TAGS = new Set([
   "P",
@@ -69,6 +74,7 @@ const DRAG_SELECTION_TEXT_TAGS = new Set([
 
 interface MarkerRecord {
   id: string;
+  remoteAnnotationId?: string;
   body: string;
   priority: FeedbackPriority;
   selectedText?: string;
@@ -778,7 +784,7 @@ class AgentationShellRuntime {
     this.closePopup();
   };
 
-  private readonly onPopupDeleteClick = (event: MouseEvent): void => {
+  private readonly onPopupDeleteClick = async (event: MouseEvent): Promise<void> => {
     event.preventDefault();
     if (this.submitting || !this.popupState || this.popupState.mode !== "edit") {
       return;
@@ -788,6 +794,27 @@ class AgentationShellRuntime {
     if (!markerId) {
       this.setPopupStatus("删除失败：找不到标注", "error");
       return;
+    }
+
+    const marker = this.findMarkerById(markerId);
+    if (!marker) {
+      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      return;
+    }
+
+    this.submitting = true;
+    this.syncPopupSubmittingState();
+    this.setPopupStatus("Deleting...", "info");
+    try {
+      await this.dismissRemoteAnnotationIfNeeded(marker);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setPopupStatus(`删除失败: ${message}`, "error");
+      this.log("error", "Agentation shell dismiss annotation failed", error);
+      return;
+    } finally {
+      this.submitting = false;
+      this.syncPopupSubmittingState();
     }
 
     if (!this.deleteMarkerById(markerId)) {
@@ -820,12 +847,33 @@ class AgentationShellRuntime {
 
     const priority = normalizePriority(this.popupPrioritySelect.value);
     if (popupState.mode === "edit") {
-      // 编辑链路只更新本地 marker，不依赖 bridge 新协议。
       const markerId = popupState.editMarkerId;
       if (!markerId) {
         this.setPopupStatus("更新失败：找不到标注", "error");
         return;
       }
+
+      const marker = this.findMarkerById(markerId);
+      if (!marker) {
+        this.setPopupStatus("更新失败：标注可能已被移除", "error");
+        return;
+      }
+
+      this.submitting = true;
+      this.syncPopupSubmittingState();
+      this.setPopupStatus("Updating...", "info");
+      try {
+        await this.updateRemoteAnnotationIfNeeded(marker, body, priority);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.setPopupStatus(`更新失败: ${message}`, "error");
+        this.log("error", "Agentation shell update annotation failed", error);
+        return;
+      } finally {
+        this.submitting = false;
+        this.syncPopupSubmittingState();
+      }
+
       if (!this.updateMarkerById(markerId, body, priority)) {
         this.setPopupStatus("更新失败：标注可能已被移除", "error");
         return;
@@ -871,8 +919,41 @@ class AgentationShellRuntime {
     }
   };
 
+  private findMarkerById(markerId: string): MarkerRecord | undefined {
+    return this.markers.find((item) => item.id === markerId);
+  }
+
+  private async updateRemoteAnnotationIfNeeded(
+    marker: MarkerRecord,
+    body: string,
+    priority: FeedbackPriority,
+  ): Promise<void> {
+    // 仅对有远端 ID 且 adapter 支持 update 的 marker 做同步，其余场景保持本地可用。
+    if (!marker.remoteAnnotationId || !this.adapter.updateAnnotation) {
+      return;
+    }
+    const payload: AgentationShellUpdateAnnotationInput = {
+      annotationId: marker.remoteAnnotationId,
+      body,
+      priority,
+    };
+    await this.adapter.updateAnnotation(payload);
+  }
+
+  private async dismissRemoteAnnotationIfNeeded(marker: MarkerRecord): Promise<void> {
+    // 删除优先走远端 dismiss，保证 bridge/server 能识别“已移除”。
+    if (!marker.remoteAnnotationId || !this.adapter.dismissAnnotation) {
+      return;
+    }
+    const payload: AgentationShellDismissAnnotationInput = {
+      annotationId: marker.remoteAnnotationId,
+      dismissReason: MARKER_DISMISS_REASON,
+    };
+    await this.adapter.dismissAnnotation(payload);
+  }
+
   private updateMarkerById(markerId: string, body: string, priority: FeedbackPriority): boolean {
-    const marker = this.markers.find((item) => item.id === markerId);
+    const marker = this.findMarkerById(markerId);
     if (!marker) {
       return false;
     }
@@ -901,9 +982,11 @@ class AgentationShellRuntime {
       return;
     }
     const idFromResult = typeof result?.id === "string" ? result.id : "";
-    const markerId = idFromResult.trim() || `local-${Date.now()}-${this.markerIdSeq++}`;
+    const remoteAnnotationId = idFromResult.trim() || undefined;
+    const markerId = remoteAnnotationId ?? `local-${Date.now()}-${this.markerIdSeq++}`;
     this.markers.push({
       id: markerId,
+      remoteAnnotationId,
       body: input.body,
       priority: input.priority,
       selectedText: input.selectedText,

@@ -7,12 +7,14 @@ export const FEEDBACK_METHODS = {
   feedbackStateSnapshot: "feedback.state.snapshot",
   feedbackStateDelta: "feedback.state.delta",
   feedbackAnnotationCreate: "feedback.annotation.create",
+  feedbackAnnotationUpdate: "feedback.annotation.update",
   feedbackAnnotationClaim: "feedback.annotation.claim",
   feedbackAnnotationReply: "feedback.annotation.reply",
   feedbackAnnotationResolve: "feedback.annotation.resolve",
   feedbackAnnotationDismiss: "feedback.annotation.dismiss",
   extensionFeedbackStateSnapshot: "extension.feedback.state.snapshot",
   extensionFeedbackAnnotationCreate: "extension.feedback.annotation.create",
+  extensionFeedbackAnnotationUpdate: "extension.feedback.annotation.update",
   extensionFeedbackAnnotationClaim: "extension.feedback.annotation.claim",
   extensionFeedbackAnnotationReply: "extension.feedback.annotation.reply",
   extensionFeedbackAnnotationResolve: "extension.feedback.annotation.resolve",
@@ -144,6 +146,7 @@ export interface FeedbackAnnotation {
 export type FeedbackEventType =
   | "session.started"
   | "annotation.created"
+  | "annotation.updated"
   | "annotation.claimed"
   | "annotation.replied"
   | "annotation.resolved"
@@ -191,6 +194,13 @@ export interface FeedbackAnnotationCreateParams {
   title?: string;
   selectedText?: string;
   uiAnchor?: FeedbackUiAnchor;
+  actor?: FeedbackActor;
+}
+
+export interface FeedbackAnnotationUpdateParams {
+  annotationId: string;
+  body: string;
+  priority?: FeedbackPriority;
   actor?: FeedbackActor;
 }
 

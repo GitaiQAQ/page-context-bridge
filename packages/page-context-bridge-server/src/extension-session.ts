@@ -12,6 +12,7 @@ import {
   type FeedbackAnnotationDismissParams,
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,
+  type FeedbackAnnotationUpdateParams,
   type FeedbackStateDeltaParams,
   type FeedbackStateSnapshotParams,
   type ContextResourcePayload,
@@ -32,6 +33,7 @@ import {
   feedbackStateSnapshotParamsSchema,
   feedbackStateDeltaParamsSchema,
   feedbackAnnotationCreateParamsSchema,
+  feedbackAnnotationUpdateParamsSchema,
   feedbackAnnotationClaimParamsSchema,
   feedbackAnnotationReplyParamsSchema,
   feedbackAnnotationResolveParamsSchema,
@@ -215,6 +217,11 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
   peer.register(BRIDGE_METHODS.feedbackAnnotationCreate, async (params: unknown) => {
     const payload = validateParams(feedbackAnnotationCreateParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationCreate);
     return registry.createFeedbackAnnotation(payload as FeedbackAnnotationCreateParams);
+  });
+
+  peer.register(BRIDGE_METHODS.feedbackAnnotationUpdate, async (params: unknown) => {
+    const payload = validateParams(feedbackAnnotationUpdateParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationUpdate);
+    return registry.updateFeedbackAnnotation(payload as FeedbackAnnotationUpdateParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationClaim, async (params: unknown) => {

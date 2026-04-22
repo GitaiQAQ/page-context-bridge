@@ -134,6 +134,47 @@ describe("feedback-store", () => {
     expect(delta.lastSeq).toBe(4);
   });
 
+  it("supports update + dismiss for marker edit/delete sync", () => {
+    const store = createDeterministicStore();
+    const created = store.createAnnotation({
+      actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
+      body: "原始文案",
+      priority: "normal",
+      tabId: 12,
+      url: "https://example.com/d",
+      linkedCapabilities: {
+        namespaceHints: [],
+        relatedToolNames: [],
+        relatedResourceIds: [],
+        relatedSkillIds: [],
+        linkReasons: [],
+      },
+    });
+
+    const updated = store.updateAnnotation({
+      annotationId: created.id,
+      actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
+      body: "更新后的文案",
+      priority: "high",
+    });
+    expect(updated.body).toBe("更新后的文案");
+    expect(updated.priority).toBe("high");
+
+    const dismissed = store.dismissAnnotation({
+      annotationId: created.id,
+      actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
+      dismissReason: "marker deleted from agentation shell",
+    });
+    expect(dismissed.status).toBe("dismissed");
+    expect(dismissed.dismissReason).toContain("marker deleted");
+
+    const delta = store.readDelta({ afterSeq: 2 });
+    expect(delta.events.map((item) => item.eventType)).toEqual([
+      "annotation.updated",
+      "annotation.dismissed",
+    ]);
+  });
+
   it("rejects invalid status transition", () => {
     const store = createDeterministicStore();
     const created = store.createAnnotation({

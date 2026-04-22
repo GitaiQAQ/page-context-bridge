@@ -15,6 +15,7 @@ import {
   type FeedbackAnnotationDismissParams,
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,
+  type FeedbackAnnotationUpdateParams,
   type FeedbackCapabilityLinks,
   type FeedbackStateDeltaParams,
   type FeedbackStateSnapshotParams,
@@ -151,6 +152,15 @@ export class McpRegistry {
       log(`[feedback-agent-push] unexpected trigger error: ${error instanceof Error ? error.message : String(error)}`);
     }
     return created;
+  }
+
+  updateFeedbackAnnotation(params: FeedbackAnnotationUpdateParams) {
+    return this.feedbackStore.updateAnnotation({
+      annotationId: params.annotationId,
+      body: params.body,
+      priority: params.priority,
+      actor: params.actor ?? createFeedbackActor({ source: "extension", id: "extension.user", displayName: "Extension User" }),
+    });
   }
 
   claimFeedbackAnnotation(params: FeedbackAnnotationClaimParams) {

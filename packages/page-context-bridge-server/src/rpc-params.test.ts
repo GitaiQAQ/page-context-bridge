@@ -8,6 +8,7 @@ import {
   bridgeToolCallParamsSchema,
   feedbackStateDeltaParamsSchema,
   feedbackAnnotationCreateParamsSchema,
+  feedbackAnnotationUpdateParamsSchema,
   feedbackAnnotationClaimParamsSchema,
 } from "./rpc-params.js";
 
@@ -128,6 +129,16 @@ describe("rpc-params: validateParams", () => {
     );
     expect(result.uiAnchor?.cssSelector).toBe("#submit");
     expect(result.uiAnchor?.textRange).toEqual({ start: 2, end: 8 });
+  });
+
+  it("validates feedback update params", () => {
+    const result = validateParams(
+      feedbackAnnotationUpdateParamsSchema,
+      { annotationId: "annotation-7", body: "updated body", priority: "critical" },
+      "feedback.annotation.update"
+    );
+    expect(result.annotationId).toBe("annotation-7");
+    expect(result.priority).toBe("critical");
   });
 
   it("applies default cursor for feedback delta params", () => {

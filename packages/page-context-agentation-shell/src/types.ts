@@ -47,11 +47,32 @@ export interface AgentationShellCreateAnnotationResult {
 }
 
 /**
+ * 编辑 marker 时写回远端 annotation 的最小输入。
+ * 只同步当前需求中的 body/priority，避免引入额外耦合。
+ */
+export interface AgentationShellUpdateAnnotationInput {
+  annotationId: string;
+  body: string;
+  priority: FeedbackPriority;
+}
+
+/**
+ * 删除 marker 时在远端做可识别移除。
+ * 当前走 dismiss 语义，保留历史痕迹，满足“可识别移除”。
+ */
+export interface AgentationShellDismissAnnotationInput {
+  annotationId: string;
+  dismissReason?: string;
+}
+
+/**
  * 壳体与 bridge 的注入边界。
  * UI 只依赖接口，不感知 runtime/network/store 实现。
  */
 export interface AgentationShellBridgeAdapter {
   createAnnotation(input: AgentationShellCreateAnnotationInput): Promise<AgentationShellCreateAnnotationResult>;
+  updateAnnotation?(input: AgentationShellUpdateAnnotationInput): Promise<unknown>;
+  dismissAnnotation?(input: AgentationShellDismissAnnotationInput): Promise<unknown>;
 }
 
 export interface AgentationShellDeps {
