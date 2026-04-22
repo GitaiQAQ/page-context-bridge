@@ -218,6 +218,7 @@ class AgentationShellRuntime {
   private readonly popupForm: HTMLFormElement;
   private readonly popupTitleView: HTMLParagraphElement;
   private readonly popupTargetView: HTMLParagraphElement;
+  private readonly popupSelectionLabel: HTMLLabelElement;
   private readonly popupSelectionView: HTMLParagraphElement;
   private readonly popupBodyInput: HTMLTextAreaElement;
   private readonly popupPrioritySelect: HTMLSelectElement;
@@ -280,6 +281,7 @@ class AgentationShellRuntime {
     this.popupForm = queryRequired<HTMLFormElement>(this.shadow, "[data-popup]");
     this.popupTitleView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-title]");
     this.popupTargetView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-target]");
+    this.popupSelectionLabel = queryRequired<HTMLLabelElement>(this.shadow, "[data-popup-selection-label]");
     this.popupSelectionView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-selection]");
     this.popupBodyInput = queryRequired<HTMLTextAreaElement>(this.shadow, "[data-popup-body]");
     this.popupPrioritySelect = queryRequired<HTMLSelectElement>(this.shadow, "[data-popup-priority]");
@@ -1063,7 +1065,7 @@ class AgentationShellRuntime {
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Deleting...", "info");
+    this.setPopupStatus("正在删除...", "info");
     try {
       await this.dismissRemoteAnnotationIfNeeded(marker);
     } catch (error) {
@@ -1102,7 +1104,7 @@ class AgentationShellRuntime {
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Deleting...", "info");
+    this.setPopupStatus("正在删除...", "info");
     try {
       await this.dismissRemoteAnnotationIfNeeded(marker);
     } catch (error) {
@@ -1198,7 +1200,7 @@ class AgentationShellRuntime {
 
       this.submitting = true;
       this.syncPopupSubmittingState();
-      this.setPopupStatus("Updating...", "info");
+      this.setPopupStatus("正在更新...", "info");
       try {
         await this.updateRemoteAnnotationIfNeeded(marker, body, priority);
       } catch (error) {
@@ -1239,7 +1241,7 @@ class AgentationShellRuntime {
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Submitting...", "info");
+    this.setPopupStatus("正在提交...", "info");
 
     try {
       const result = await this.adapter.createAnnotation(payload);
@@ -1411,7 +1413,13 @@ class AgentationShellRuntime {
 
       const tooltip = this.doc.createElement("span");
       tooltip.className = "pc-agent-marker-tooltip";
-      tooltip.textContent = buildMarkerTooltip(marker);
+      const tooltipQuote = this.doc.createElement("span");
+      tooltipQuote.className = "pc-agent-marker-quote";
+      tooltipQuote.textContent = buildMarkerTooltipQuote(marker);
+      const tooltipNote = this.doc.createElement("span");
+      tooltipNote.className = "pc-agent-marker-note";
+      tooltipNote.textContent = buildMarkerTooltipNote(marker);
+      tooltip.append(tooltipQuote, tooltipNote);
       button.appendChild(tooltip);
 
       this.markerLayer.appendChild(button);
@@ -1672,31 +1680,36 @@ class AgentationShellRuntime {
     this.popupForm.style.top = `${nextTop}px`;
     this.popupForm.style.left = `${nextLeft}px`;
     if (state.mode === "edit") {
-      this.popupTitleView.textContent = "Edit Annotation";
-      this.popupSubmitButton.textContent = "更新";
+      this.popupTitleView.textContent = "编辑标注";
+      this.popupSubmitButton.textContent = "保存修改";
       this.popupDeleteButton.hidden = false;
     } else {
-      this.popupTitleView.textContent = "Create Annotation";
-      this.popupSubmitButton.textContent = "提交";
+      this.popupTitleView.textContent = "新建标注";
+      this.popupSubmitButton.textContent = "提交标注";
       this.popupDeleteButton.hidden = true;
     }
     this.popupTargetView.textContent = `${state.targetInput.elementName} · ${state.targetInput.elementPath || "unknown path"}`;
     if (state.selectedText) {
+      this.popupSelectionLabel.textContent = "当前选中文本";
       this.popupSelectionView.textContent = state.selectedText;
     } else if (state.multiSelectMeta) {
       if (state.multiSelectMeta.count > 0) {
+        // 聚合与区域场景共用一个展示区，只切换标签名，减少模板分叉。
+        this.popupSelectionLabel.textContent = "聚合范围说明";
         this.popupSelectionView.textContent = `已聚合 ${state.multiSelectMeta.count} 个元素，提交后会写入一条合并标注。`;
       } else {
+        this.popupSelectionLabel.textContent = "区域说明";
         this.popupSelectionView.textContent = "已选择一个区域，提交后会写入一条区域标注。";
       }
     } else {
+      this.popupSelectionLabel.textContent = "当前选中文本";
       this.popupSelectionView.textContent = "未检测到页面选中内容";
     }
     this.popupBodyInput.value = state.initialBody ?? "";
     this.popupPrioritySelect.value = normalizePriority(state.initialPriority ?? "normal");
     this.popupForm.hidden = false;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Idle", "info");
+    this.setPopupStatus("等待操作", "info");
     this.win.setTimeout(() => {
       this.popupBodyInput.focus();
     }, 0);
@@ -1709,11 +1722,12 @@ class AgentationShellRuntime {
     this.popupState = null;
     this.popupForm.hidden = true;
     this.popupDeleteButton.hidden = true;
-    this.popupTitleView.textContent = "Create Annotation";
-    this.popupSubmitButton.textContent = "提交";
+    this.popupTitleView.textContent = "新建标注";
+    this.popupSubmitButton.textContent = "提交标注";
+    this.popupSelectionLabel.textContent = "当前选中文本";
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
-    this.setPopupStatus("Idle", "info");
+    this.setPopupStatus("等待操作", "info");
     // 弹窗关闭后回收焦点，保证键盘用户可继续无鼠标操作。
     if (returnFocusTarget && returnFocusTarget.isConnected) {
       returnFocusTarget.focus();
@@ -2408,9 +2422,15 @@ function isFocusableInPopup(element: HTMLElement): boolean {
   return true;
 }
 
-function buildMarkerTooltip(marker: MarkerRecord): string {
-  const selected = marker.selectedText ? `“${marker.selectedText.slice(0, 40)}”` : "无选中文本";
-  return `${marker.elementName} | ${selected} | ${marker.body.slice(0, 80)}`;
+function buildMarkerTooltipQuote(marker: MarkerRecord): string {
+  if (!marker.selectedText) {
+    return "无选中文本";
+  }
+  return `“${marker.selectedText.slice(0, 40)}”`;
+}
+
+function buildMarkerTooltipNote(marker: MarkerRecord): string {
+  return `${marker.elementName} · ${marker.body.slice(0, 80)}`;
 }
 
 function resolveMarkerTooltipPlacement(
@@ -2454,7 +2474,8 @@ function computeMarkerContextMenuTop(clientY: number, viewportHeight: number): n
 }
 
 function computePopupLeft(clientX: number, viewportWidth: number): number {
-  const width = 320;
+  // 与当前样式宽度保持一致，避免靠边时出现过度保守的留白。
+  const width = 280;
   const min = 12;
   const max = Math.max(min, viewportWidth - width - 12);
   return clamp(clientX - width / 2, min, max);
@@ -2491,6 +2512,9 @@ function queryRequired<T extends Element>(root: ParentNode, selector: string): T
 const SHELL_TEMPLATE = `
   <style>
     .pc-agent-root {
+      --agentation-color-blue: #0088ff;
+      --agentation-color-green: #34c759;
+      --agentation-color-red: #ff383c;
       position: fixed;
       inset: 0;
       z-index: 2147483647;
@@ -2670,20 +2694,31 @@ const SHELL_TEMPLATE = `
       height: 22px;
       border: 0;
       border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       color: #fff;
-      font-size: 11px;
+      font-size: 0.6875rem;
       font-weight: 600;
       transform: translate(-50%, -50%);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+      box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.2),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.04);
       cursor: pointer;
       pointer-events: auto;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      user-select: none;
+      will-change: transform, opacity;
+      contain: layout style;
+      z-index: 1;
+      transition:
+        background-color 0.15s ease,
+        transform 0.1s ease;
     }
 
     .pc-agent-marker:hover,
     .pc-agent-marker:focus-visible {
-      transform: translate(-50%, -50%) scale(1.06);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      transform: translate(-50%, -50%) scale(1.1);
+      z-index: 2;
     }
 
     .pc-agent-marker-affordance {
@@ -2707,17 +2742,20 @@ const SHELL_TEMPLATE = `
     .pc-agent-marker-tooltip {
       position: absolute;
       left: 50%;
-      top: calc(100% + 8px);
-      transform: translateX(-50%);
+      top: calc(100% + 10px);
+      transform: translateX(-50%) scale(0.909);
       min-width: 120px;
-      max-width: 260px;
-      border-radius: 10px;
+      max-width: 200px;
+      z-index: 100002;
+      border-radius: 0.75rem;
       background: #1a1a1a;
-      color: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-      font-size: 12px;
+      color: #fff;
+      box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.08);
+      font-size: 13px;
       line-height: 1.4;
-      padding: 6px 8px;
+      padding: 8px 0.75rem;
       white-space: normal;
       text-align: left;
       opacity: 0;
@@ -2727,13 +2765,15 @@ const SHELL_TEMPLATE = `
 
     .pc-agent-marker[data-tooltip-x="left"] .pc-agent-marker-tooltip {
       left: 0;
-      transform: none;
+      transform: scale(0.909);
+      transform-origin: left top;
     }
 
     .pc-agent-marker[data-tooltip-x="right"] .pc-agent-marker-tooltip {
       left: auto;
       right: 0;
-      transform: none;
+      transform: scale(0.909);
+      transform-origin: right top;
     }
 
     .pc-agent-marker[data-tooltip-y="top"] .pc-agent-marker-tooltip {
@@ -2749,6 +2789,29 @@ const SHELL_TEMPLATE = `
     .pc-agent-marker:hover .pc-agent-marker-tooltip,
     .pc-agent-marker:focus-visible .pc-agent-marker-tooltip {
       opacity: 1;
+    }
+
+    .pc-agent-marker-quote {
+      display: block;
+      font-size: 12px;
+      font-style: italic;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 0.3125rem;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pc-agent-marker-note {
+      display: block;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-bottom: 2px;
     }
 
     .pc-agent-marker-context-menu {
@@ -2792,15 +2855,18 @@ const SHELL_TEMPLATE = `
 
     .pc-agent-popup {
       position: fixed;
-      width: 320px;
+      width: 280px;
       box-sizing: border-box;
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 16px;
       background: #1a1a1a;
-      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
-      padding: 12px;
+      box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.08);
+      padding: 0.75rem 1rem 14px;
       color: #fff;
       pointer-events: auto;
+      will-change: transform, opacity;
     }
 
     .pc-agent-popup[hidden] {
@@ -2816,13 +2882,13 @@ const SHELL_TEMPLATE = `
 
     .pc-agent-popup-target,
     .pc-agent-popup-selection {
-      margin: 0 0 8px 0;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.08);
-      color: rgba(255, 255, 255, 0.74);
+      margin: 0 0 0.5rem 0;
+      border-radius: 0.375rem;
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.65);
       font-size: 12px;
-      line-height: 1.4;
-      padding: 6px 8px;
+      line-height: 1.45;
+      padding: 0.4rem 0.5rem;
       max-height: 72px;
       overflow: auto;
       white-space: pre-wrap;
@@ -2831,7 +2897,7 @@ const SHELL_TEMPLATE = `
 
     .pc-agent-popup-label {
       display: block;
-      margin: 8px 0 4px;
+      margin: 0.5rem 0 0.25rem;
       font-size: 12px;
       color: rgba(255, 255, 255, 0.75);
     }
@@ -2842,10 +2908,10 @@ const SHELL_TEMPLATE = `
       width: 100%;
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.05);
       color: #fff;
-      font-size: 12px;
-      padding: 8px;
+      font-size: 0.8125rem;
+      padding: 0.5rem 0.625rem;
     }
 
     .pc-agent-popup-body {
@@ -2854,33 +2920,50 @@ const SHELL_TEMPLATE = `
     }
 
     .pc-agent-popup-actions {
-      margin-top: 10px;
+      margin-top: 0.5rem;
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      gap: 8px;
+      gap: 0.375rem;
+    }
+
+    .pc-agent-popup-actions-secondary {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
     }
 
     .pc-agent-popup-btn {
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.04);
-      color: rgba(255, 255, 255, 0.88);
+      border: 0;
+      border-radius: 1rem;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.5);
       cursor: pointer;
-      font-size: 12px;
-      padding: 6px 12px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.4rem 0.875rem;
+      transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        opacity 0.15s ease;
+    }
+
+    .pc-agent-popup-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.8);
     }
 
     .pc-agent-popup-btn.primary {
-      border-color: #0088ff;
-      background: #0088ff;
+      background: var(--agentation-color-blue);
       color: #fff;
       font-weight: 600;
     }
 
+    .pc-agent-popup-btn.primary:hover {
+      filter: brightness(0.9);
+    }
+
     .pc-agent-popup-btn.danger {
-      margin-right: auto;
-      border-color: rgba(255, 123, 123, 0.5);
       background: rgba(255, 123, 123, 0.14);
       color: #ffd2d2;
     }
@@ -2932,10 +3015,10 @@ const SHELL_TEMPLATE = `
     <button type="button" class="pc-agent-toolbar-dock" data-toolbar-dock hidden>标注</button>
 
     <form class="pc-agent-popup" data-popup hidden>
-      <p class="pc-agent-popup-title" data-popup-title>Create Annotation</p>
+      <p class="pc-agent-popup-title" data-popup-title>新建标注</p>
       <p class="pc-agent-popup-target" data-popup-target>unknown target</p>
 
-      <label class="pc-agent-popup-label">当前选中文本</label>
+      <label class="pc-agent-popup-label" data-popup-selection-label>当前选中文本</label>
       <p class="pc-agent-popup-selection" data-popup-selection>未检测到页面选中内容</p>
 
       <label class="pc-agent-popup-label" for="pc-agent-popup-body">反馈内容</label>
@@ -2950,11 +3033,13 @@ const SHELL_TEMPLATE = `
       </select>
 
       <div class="pc-agent-popup-actions">
-        <button type="button" class="pc-agent-popup-btn danger" data-popup-delete hidden>删除</button>
-        <button type="button" class="pc-agent-popup-btn" data-popup-cancel>取消</button>
-        <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交</button>
+        <div class="pc-agent-popup-actions-secondary">
+          <button type="button" class="pc-agent-popup-btn" data-popup-cancel>取消</button>
+          <button type="button" class="pc-agent-popup-btn danger" data-popup-delete hidden>删除标注</button>
+        </div>
+        <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交标注</button>
       </div>
-      <p class="pc-agent-popup-status info" data-popup-status>Idle</p>
+      <p class="pc-agent-popup-status info" data-popup-status>等待操作</p>
     </form>
   </div>
 `;

@@ -90,8 +90,58 @@ describe("agentation shell popup keyboard flow", () => {
     expect(marker.title).toBe("点击编辑；弹窗内可删除");
     const affordance = queryRequired<HTMLSpanElement>(marker, ".pc-agent-marker-affordance");
     expect(affordance.textContent).toBe("编辑 / 删除");
+    // marker tooltip 改成 quote + note 结构，便于后续和 agentation 样式层对齐。
+    const tooltip = queryRequired<HTMLSpanElement>(marker, ".pc-agent-marker-tooltip");
+    expect(queryRequired<HTMLSpanElement>(tooltip, ".pc-agent-marker-quote").textContent).toBe("无选中文本");
+    expect(queryRequired<HTMLSpanElement>(tooltip, ".pc-agent-marker-note").textContent).toContain("seed affordance marker");
 
     // 主动关掉标注态，避免全局监听影响其它用例。
+    toolbarToggle.click();
+  });
+
+  it("uses popup copy and action grouping closer to agentation shell product shape", async () => {
+    const createAnnotation = vi.fn().mockResolvedValue({ id: "marker-popup-copy-1" });
+    const mounted = installAgentationShell({
+      adapter: { createAnnotation, updateAnnotation: vi.fn(), dismissAnnotation: vi.fn() },
+      doc: document,
+      win: window,
+    });
+    expect(mounted).toBe(true);
+
+    const shadow = getAgentationShellShadowRoot();
+    const toolbarToggle = queryRequired<HTMLButtonElement>(shadow, "[data-toolbar-toggle]");
+    toolbarToggle.click();
+    dispatchMouse(document.body, "click", 120, 96);
+
+    const popup = queryRequired<HTMLFormElement>(shadow, "[data-popup]");
+    const popupTitle = queryRequired<HTMLParagraphElement>(shadow, "[data-popup-title]");
+    const popupSubmit = queryRequired<HTMLButtonElement>(shadow, "[data-popup-submit]");
+    const popupCancel = queryRequired<HTMLButtonElement>(shadow, "[data-popup-cancel]");
+    const popupDelete = queryRequired<HTMLButtonElement>(shadow, "[data-popup-delete]");
+    const popupSelectionLabel = queryRequired<HTMLLabelElement>(shadow, "[data-popup-selection-label]");
+    const actionSecondary = queryRequired<HTMLDivElement>(shadow, ".pc-agent-popup-actions-secondary");
+
+    // create 态先校验文案与按钮分组，保证壳层结构不再回退到旧版布局。
+    expect(popupTitle.textContent).toBe("新建标注");
+    expect(popupSubmit.textContent).toBe("提交标注");
+    expect(popupCancel.textContent).toBe("取消");
+    expect(popupDelete.textContent).toBe("删除标注");
+    expect(popupDelete.hidden).toBe(true);
+    expect(popupSelectionLabel.textContent).toBe("当前选中文本");
+    expect(actionSecondary.contains(popupCancel)).toBe(true);
+    expect(actionSecondary.contains(popupDelete)).toBe(true);
+
+    queryRequired<HTMLTextAreaElement>(shadow, "[data-popup-body]").value = "seed popup copy marker";
+    popup.requestSubmit();
+    await flushMicrotasks();
+    expect(createAnnotation).toHaveBeenCalledTimes(1);
+
+    // marker 回开后应切到 edit 态文案，并显式展示删除入口。
+    queryRequired<HTMLButtonElement>(shadow, '[data-marker-id="marker-popup-copy-1"]').click();
+    expect(popupTitle.textContent).toBe("编辑标注");
+    expect(popupSubmit.textContent).toBe("保存修改");
+    expect(popupDelete.hidden).toBe(false);
+
     toolbarToggle.click();
   });
 
