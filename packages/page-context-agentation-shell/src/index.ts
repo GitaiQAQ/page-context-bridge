@@ -1,6 +1,6 @@
 import type { FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
 
-import { extractReactAnchorMeta, identifyElement } from "./element-identification";
+import { extractElementContextMeta, extractReactAnchorMeta, identifyElement } from "./element-identification";
 import type {
   AgentationShellBridgeAdapter,
   AgentationShellCreateAnnotationInput,
@@ -1572,6 +1572,11 @@ function buildUiAnchorFromTarget(
     elementName: target.elementName,
     elementPath: target.elementPath,
   };
+
+  // DOM/a11y/邻近文本上下文只做轻量快照，帮助后续回放和定位。
+  if (options?.targetElement) {
+    meta.elementContext = extractElementContextMeta(options.targetElement);
+  }
 
   // React 线索可选注入，拿不到时保持静默，不影响普通页面。
   if (options?.targetElement) {
