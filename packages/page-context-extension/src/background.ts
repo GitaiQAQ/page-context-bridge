@@ -46,6 +46,7 @@ let pageToolPreferencesReady: Promise<void> | null = null;
 const inFlightToolCalls = new Map<string, string>();
 const pageToolsByTab = new Map<number, PageToolEntry[]>();
 const discoveryInFlight = new Map<number, Promise<PageToolEntry[]>>();
+const tabReloadDiscoveryInFlight = new Map<number, Promise<void>>();
 
 // ── Preferences ──
 
@@ -182,11 +183,39 @@ async function discoverPageToolsForTab(tabId: number, force = false): Promise<Pa
 }
 
 function clearPageTools(tabId: number): void {
-  if (!pageToolsByTab.has(tabId)) {
-    return;
-  }
+  // 清理动作保持幂等：即使本地没有缓存，也主动通知 bridge 删除 tab 工具。
+  // 这样可避免 service worker 重启后本地状态丢失、但 bridge 侧残留旧工具的问题。
   pageToolsByTab.delete(tabId);
   queueNotification(BRIDGE_METHODS.bridgePageToolsUnregistered, { tabId });
+}
+
+async function discoverPageToolsAfterTabReload(tabId: number): Promise<void> {
+  const existing = tabReloadDiscoveryInFlight.get(tabId);
+  if (existing) {
+    return await existing;
+  }
+
+  const discoveryTask = (async () => {
+    // 页面刷新后，页面脚本重建 bridge 可能晚于 tabs.onUpdated("complete")。
+    // 这里做一次延迟补偿发现，减少“必须手动刷新 sidepanel 才能看到工具”的情况。
+    const reloadDelays = [0, 2_000];
+    for (const delay of reloadDelays) {
+      if (delay > 0) {
+        await sleep(delay);
+      }
+      const entries = await discoverPageToolsForTab(tabId, true);
+      if (entries.length > 0) {
+        return;
+      }
+    }
+  })();
+
+  tabReloadDiscoveryInFlight.set(tabId, discoveryTask);
+  try {
+    await discoveryTask;
+  } finally {
+    tabReloadDiscoveryInFlight.delete(tabId);
+  }
 }
 
 // ── Tab helpers ──
@@ -771,7 +800,10 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading" && changeInfo.url) {
+  if (changeInfo.status === "loading") {
+    // 同 URL 刷新也会触发 loading，但 changeInfo.url 可能为空。
+    // 因此只要进入 loading 就清理，确保后续一定走“重新发现 -> 重新发布”。
+    tabReloadDiscoveryInFlight.delete(tabId);
     clearPageTools(tabId);
   }
 
@@ -784,11 +816,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 
   if (changeInfo.status === "complete") {
-    void discoverPageToolsForTab(tabId, true).catch((error) => log("Discovery on tab update failed", error));
+    void discoverPageToolsAfterTabReload(tabId).catch((error) => log("Discovery on tab update failed", error));
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  tabReloadDiscoveryInFlight.delete(tabId);
   clearPageTools(tabId);
 });
 
