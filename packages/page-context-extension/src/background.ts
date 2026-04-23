@@ -624,11 +624,13 @@ chrome.runtime.onMessage.addListener(
       }
       case BRIDGE_METHODS.extensionPageToolsTreeGet:
         return await buildPageToolsTreeResponse();
-      case BRIDGE_METHODS.extensionPageToolsDiscover: {
+      case BRIDGE_METHODS.extensionPageToolsDiscover:
+      case BRIDGE_METHODS.extensionPageToolsRefresh: {
         const tabId = Number((message.params as { tabId?: number })?.tabId ?? 0);
         if (!tabId) {
           throw new Error("No tabId provided");
         }
+        // refresh 与 discover 复用同一条发现链路，避免两套逻辑漂移。
         const entries = await discoverPageToolsForTab(tabId, true);
         return { tools: flattenPageTools(entries) };
       }

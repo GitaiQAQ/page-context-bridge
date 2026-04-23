@@ -21,6 +21,7 @@ export const BRIDGE_METHODS = {
   extensionPageToolsGet: "extension.pageTools.get",
   extensionPageToolsTreeGet: "extension.pageTools.tree.get",
   extensionPageToolsDiscover: "extension.pageTools.discover",
+  extensionPageToolsRefresh: "extension.pageTools.refresh",
   extensionPageToolsSetEnabled: "extension.pageTools.setEnabled",
   extensionContextManifestGet: "extension.context.manifest.get",
   extensionContextResourceRead: "extension.context.resource.read",

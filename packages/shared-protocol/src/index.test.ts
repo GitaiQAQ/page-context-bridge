@@ -54,6 +54,7 @@ describe("RpcPeer", () => {
     expect(BRIDGE_METHODS.extensionFeedbackStateDelta).toBe("extension.feedback.state.delta");
     expect(BRIDGE_METHODS.extensionFeedbackAnnotationCreate).toBe("extension.feedback.annotation.create");
     expect(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate).toBe("extension.feedback.annotation.update");
+    expect(BRIDGE_METHODS.extensionPageToolsRefresh).toBe("extension.pageTools.refresh");
     expect(FEEDBACK_METHODS.feedbackAnnotationResolve).toBe("feedback.annotation.resolve");
     expect(FEEDBACK_METHODS.feedbackAnnotationUpdate).toBe("feedback.annotation.update");
   });
