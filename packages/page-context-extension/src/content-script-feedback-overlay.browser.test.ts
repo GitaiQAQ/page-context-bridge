@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 
 import { installFeedbackOverlay } from "./content-script-feedback-overlay";
 
 const FEEDBACK_OVERLAY_HOST_ID = "__page_context_feedback_overlay_host__";
 
 describe("installFeedbackOverlay", () => {
+  const originalChrome = globalThis.chrome;
+
   beforeEach(() => {
     document.body.innerHTML = `<p id="target">这是一段可选中文本</p>`;
     window.getSelection()?.removeAllRanges();
@@ -48,6 +51,46 @@ describe("installFeedbackOverlay", () => {
       selectedText: "这是一段可选中文本",
     });
   });
+
+  it("uses default runtime request path when submit handler is not injected", async () => {
+    selectTargetText();
+
+    const sendMessage = vi.fn(async (message: { id?: string }) => ({
+      jsonrpc: "2.0",
+      id: message.id ?? "missing-id",
+      result: { ok: true },
+    }));
+    installChromeMock(sendMessage);
+
+    installFeedbackOverlay();
+
+    const shadow = getOverlayShadowRoot();
+    queryRequired<HTMLButtonElement>(shadow, "[data-entry]").click();
+
+    const bodyInput = queryRequired<HTMLTextAreaElement>(shadow, "[data-body]");
+    const prioritySelect = queryRequired<HTMLSelectElement>(shadow, "[data-priority]");
+    bodyInput.value = "  直接走 runtime 的提交链路  ";
+    prioritySelect.value = "critical";
+
+    queryRequired<HTMLFormElement>(shadow, "[data-panel]").requestSubmit();
+    await flushMicrotasks();
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
+        params: {
+          body: "直接走 runtime 的提交链路",
+          priority: "critical",
+          selectedText: "这是一段可选中文本",
+        },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    restoreChromeGlobal(originalChrome);
+  });
 });
 
 function getOverlayShadowRoot(): ShadowRoot {
@@ -83,4 +126,30 @@ function selectTargetText(): void {
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function installChromeMock(sendMessage: ReturnType<typeof vi.fn>): void {
+  const chromeMock = {
+    runtime: {
+      sendMessage,
+    },
+  } as unknown as typeof chrome;
+
+  Object.defineProperty(globalThis, "chrome", {
+    value: chromeMock,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function restoreChromeGlobal(originalChrome: typeof chrome | undefined): void {
+  if (originalChrome) {
+    Object.defineProperty(globalThis, "chrome", {
+      value: originalChrome,
+      configurable: true,
+      writable: true,
+    });
+    return;
+  }
+  Reflect.deleteProperty(globalThis, "chrome");
 }

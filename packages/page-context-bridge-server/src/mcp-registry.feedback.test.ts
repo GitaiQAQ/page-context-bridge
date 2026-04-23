@@ -97,6 +97,25 @@ describe("mcp-registry feedback tools", () => {
     expect(pushedIds).toEqual([created.id]);
   });
 
+  it("keeps annotation creation successful when agent push throws", () => {
+    const registry = createRegistry({
+      pushNewAnnotation: () => {
+        throw new Error("spawn failed");
+      },
+    });
+
+    // agent 触发失败不应回滚 annotation 创建，仓库状态要先落地成功。
+    const created = registry.createFeedbackAnnotation({
+      body: "异常兜底验证",
+      tabId: 13,
+      url: "https://example.com/fallback",
+    });
+
+    expect(created.body).toBe("异常兜底验证");
+    const annotations = registry.listFeedbackAnnotations({ tabId: 13 });
+    expect(annotations.some((item) => item.id === created.id)).toBe(true);
+  });
+
   it("registers MCP feedback tools and returns cursor-based events", async () => {
     const registry = createRegistry();
     const fakeServer = new FakeMcpServer();

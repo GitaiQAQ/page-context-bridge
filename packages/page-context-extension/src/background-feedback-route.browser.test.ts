@@ -1,0 +1,298 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BRIDGE_METHODS, createRequest } from "@page-context/shared-protocol";
+
+const requestBridgeMock = vi.fn();
+const captureActiveTabFeedbackContextMock = vi.fn();
+const enrichUiAnchorReactMetaInMainWorldMock = vi.fn();
+
+let runtimeMessageListener:
+  | ((message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => boolean)
+  | null = null;
+
+vi.mock("./bg-ws-connection", () => ({
+  connectWebSocket: vi.fn(async () => undefined),
+  forceReconnect: vi.fn(async () => undefined),
+  getWsReady: vi.fn(() => false),
+  getSessionId: vi.fn(() => "session-test"),
+  initDefaultWsUrl: vi.fn(async () => undefined),
+  log: vi.fn(),
+  queueNotification: vi.fn(),
+  requestBridge: requestBridgeMock,
+}));
+
+vi.mock("./bg-feedback-context", () => ({
+  captureActiveTabFeedbackContext: captureActiveTabFeedbackContextMock,
+}));
+
+vi.mock("./bg-react-meta", () => ({
+  enrichUiAnchorReactMetaInMainWorld: enrichUiAnchorReactMetaInMainWorldMock,
+}));
+
+vi.mock("./bg-page-context", () => ({
+  discoverPageToolsInTab: vi.fn(async () => []),
+  getRawPageContextManifest: vi.fn(async () => null),
+  getPageContextSkill: vi.fn(async () => null),
+  readPageContextResource: vi.fn(async () => ({ id: "r", mimeType: "application/json", text: "{}" })),
+  sleep: vi.fn(async () => undefined),
+}));
+
+vi.mock("./bg-tool-executor", () => ({
+  executeToolCall: vi.fn(async () => ({ ok: true })),
+  getBuiltinToolDefinitions: vi.fn(() => []),
+}));
+
+vi.mock("./context-manifest-filter-debug", () => ({
+  buildContextManifestFilterDebug: vi.fn(() => ({ filtered: true })),
+}));
+
+vi.mock("./page-tool-registry", () => ({
+  flattenPageTools: vi.fn((entries?: unknown[]) => entries ?? []),
+  mergePageToolEntry: vi.fn((entries: unknown[]) => entries),
+  normalizePageToolEntries: vi.fn((entries: unknown[]) => entries ?? []),
+}));
+
+vi.mock("./page-tool-visibility", () => ({
+  buildToolTree: vi.fn(async () => ({ tabs: [] })),
+  getEnabledBuiltinTools: vi.fn((tools: unknown[]) => tools),
+  getEnabledToolsForTab: vi.fn((entries?: unknown[]) => entries ?? []),
+  isToolEnabled: vi.fn(() => true),
+  setScopeEnabled: vi.fn((current: Record<string, unknown>) => current),
+}));
+
+describe("background feedback runtime route", () => {
+  const originalChrome = globalThis.chrome;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    runtimeMessageListener = null;
+    installChromeMock();
+
+    // 避免 background 顶层常驻 interval 影响测试生命周期。
+    vi.spyOn(globalThis, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
+
+    captureActiveTabFeedbackContextMock.mockResolvedValue({
+      tabId: 12,
+      url: "https://sender.example/path",
+      title: "sender-tab",
+      selectedText: "from context selection",
+    });
+    enrichUiAnchorReactMetaInMainWorldMock.mockImplementation(async (_tabId: number, anchor: Record<string, unknown>) => ({
+      ...anchor,
+      cssSelector: " .cta-enriched ",
+      meta: {
+        from: "react-meta",
+      },
+    }));
+    requestBridgeMock.mockResolvedValue({ annotation: { id: "anno-1" } });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    restoreChromeGlobal(originalChrome);
+  });
+
+  it("maps extension create request to bridge create call with sender tab context", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+
+    const keepChannel = listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
+        {
+          body: "  需要修复按钮点击态  ",
+          priority: "high",
+          selectedText: "  用户选区  ",
+          uiAnchor: {
+            cssSelector: " .cta ",
+            meta: {},
+          },
+        },
+        "req-feedback-1",
+      ),
+      {
+        tab: {
+          id: 12,
+        },
+      } as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+
+    expect(keepChannel).toBe(true);
+    await flushMicrotasks();
+
+    expect(captureActiveTabFeedbackContextMock).toHaveBeenCalledTimes(1);
+    expect(enrichUiAnchorReactMetaInMainWorldMock).toHaveBeenCalledWith(12, {
+      cssSelector: " .cta ",
+      meta: {},
+    });
+    expect(requestBridgeMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.feedbackAnnotationCreate,
+      expect.objectContaining({
+        body: "需要修复按钮点击态",
+        priority: "high",
+        tabId: 12,
+        url: "https://sender.example/path",
+        title: "sender-tab",
+        selectedText: "用户选区",
+        uiAnchor: expect.objectContaining({
+          cssSelector: ".cta-enriched",
+          meta: {
+            from: "react-meta",
+          },
+        }),
+      }),
+      { timeoutMs: 20_000 },
+    );
+
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+    });
+    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: unknown } | undefined;
+    expect(response?.id).toBe("req-feedback-1");
+    expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
+  });
+
+  it("uses context selectedText and alias anchor when UI selectedText is empty", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+
+    listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
+        {
+          body: "补充兜底选区",
+          priority: "normal",
+          selectedText: "   ",
+          anchor: {
+            xpath: " //button[1] ",
+            framePath: [0, -1, 2.5, 1],
+            meta: {},
+          },
+        },
+        "req-feedback-2",
+      ),
+      {
+        tab: {
+          id: 12,
+        },
+      } as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await flushMicrotasks();
+
+    // 兼容字段 anchor 不走 enrich，直接进入统一归一化路径。
+    expect(enrichUiAnchorReactMetaInMainWorldMock).not.toHaveBeenCalled();
+    expect(requestBridgeMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.feedbackAnnotationCreate,
+      expect.objectContaining({
+        body: "补充兜底选区",
+        selectedText: "from context selection",
+        uiAnchor: expect.objectContaining({
+          xpath: "//button[1]",
+          framePath: [0, 1],
+        }),
+      }),
+      { timeoutMs: 20_000 },
+    );
+  });
+
+  it("returns rpc error response when body is empty", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+
+    listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
+        {
+          body: "   ",
+          priority: "normal",
+        },
+        "req-feedback-3",
+      ),
+      {} as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await flushMicrotasks();
+
+    expect(captureActiveTabFeedbackContextMock).not.toHaveBeenCalled();
+    expect(requestBridgeMock).not.toHaveBeenCalled();
+
+    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; error?: { message?: string } } | undefined;
+    expect(response?.id).toBe("req-feedback-3");
+    expect(response?.error?.message).toContain("Feedback body is required");
+  });
+});
+
+async function importBackgroundAndGetRuntimeMessageListener() {
+  await import("./background");
+  if (!runtimeMessageListener) {
+    throw new Error("Missing background runtime listener");
+  }
+  return runtimeMessageListener;
+}
+
+function installChromeMock(): void {
+  const chromeMock = {
+    runtime: {
+      onMessage: {
+        addListener: vi.fn((listener: typeof runtimeMessageListener) => {
+          runtimeMessageListener = listener;
+        }),
+      },
+      onInstalled: {
+        addListener: vi.fn(),
+      },
+      onStartup: {
+        addListener: vi.fn(),
+      },
+      getPlatformInfo: vi.fn((callback?: () => void) => callback?.()),
+    },
+    tabs: {
+      query: vi.fn(async () => []),
+      get: vi.fn(async () => ({ id: 12, url: "https://sender.example/path", title: "sender-tab" })),
+      sendMessage: vi.fn(async () => ({})),
+      onActivated: {
+        addListener: vi.fn(),
+      },
+      onUpdated: {
+        addListener: vi.fn(),
+      },
+      onRemoved: {
+        addListener: vi.fn(),
+      },
+    },
+    scripting: {
+      executeScript: vi.fn(async () => []),
+    },
+    storage: {
+      local: {
+        get: vi.fn(async (defaults: Record<string, unknown>) => defaults),
+        set: vi.fn(async () => undefined),
+      },
+    },
+  } as unknown as typeof chrome;
+
+  Object.defineProperty(globalThis, "chrome", {
+    value: chromeMock,
+    configurable: true,
+    writable: true,
+  });
+}
+
+function restoreChromeGlobal(originalChrome: typeof chrome | undefined): void {
+  if (originalChrome) {
+    Object.defineProperty(globalThis, "chrome", {
+      value: originalChrome,
+      configurable: true,
+      writable: true,
+    });
+    return;
+  }
+  Reflect.deleteProperty(globalThis, "chrome");
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
