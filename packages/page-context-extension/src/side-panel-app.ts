@@ -2,6 +2,7 @@ import {
   BRIDGE_METHODS,
   type ContextResourcePayload,
   type FeedbackAnnotation,
+  type FeedbackPushAgentStatus,
   type FeedbackAnnotationClaimParams,
   type FeedbackAnnotationDismissParams,
   type FeedbackAnnotationReplyParams,
@@ -534,6 +535,40 @@ export class SidePanelApp extends LitElement {
       default:
         return "badge badge-warning badge-sm";
     }
+  }
+
+  private _feedbackPushAgentBadgeClass(status: FeedbackPushAgentStatus | null): string {
+    if (!status) {
+      return "badge badge-ghost badge-sm";
+    }
+    if (!status.enabled) {
+      return "badge badge-ghost badge-sm";
+    }
+    const lastResult = status.lastLaunch?.result;
+    if (lastResult === "failed") {
+      return "badge badge-error badge-sm";
+    }
+    if (lastResult === "success") {
+      return "badge badge-success badge-sm";
+    }
+    return "badge badge-info badge-sm";
+  }
+
+  private _feedbackPushAgentBadgeText(status: FeedbackPushAgentStatus | null): string {
+    if (!status) {
+      return "unknown";
+    }
+    if (!status.enabled) {
+      return "disabled";
+    }
+    const lastResult = status.lastLaunch?.result;
+    if (lastResult === "failed") {
+      return "last launch failed";
+    }
+    if (lastResult === "success") {
+      return "last launch ok";
+    }
+    return "ready";
   }
 
   private _createFeedbackActionState(): FeedbackAnnotationActionState {
@@ -1091,6 +1126,7 @@ export class SidePanelApp extends LitElement {
       : "";
     const currentFeedbackSession = this._feedbackSnapshot?.sessions[0] ?? null;
     const feedbackAnnotations = this._feedbackSnapshot?.annotations ?? [];
+    const feedbackPushAgentStatus = this._feedbackSnapshot?.pushAgent ?? null;
 
     return html`
       <!-- Header: status-dot (clickable refresh) / title / icon-nav (right) -->
@@ -1261,6 +1297,36 @@ export class SidePanelApp extends LitElement {
           <button class="btn btn-xs btn-ghost ml-auto" @click=${() => this._loadFeedbackSnapshot()}>Refresh</button>
         </div>
         <div class="flex-1 overflow-y-auto p-3 bg-base-200 flex flex-col gap-3">
+          <div class="card bg-base-100 border border-base-300 shadow-sm">
+            <div class="card-body p-3 gap-2">
+              <div class="flex items-center gap-2">
+                <div class="font-bold text-sm">Auto Push Agent</div>
+                <span class="${this._feedbackPushAgentBadgeClass(feedbackPushAgentStatus)} ml-auto">${this._feedbackPushAgentBadgeText(feedbackPushAgentStatus)}</span>
+              </div>
+              ${!feedbackPushAgentStatus
+                ? html`<div class="text-xs opacity-60">当前快照未携带 push-agent 状态。</div>`
+                : html`
+                  <div class="text-xs opacity-70">
+                    enabled: <span class="font-mono">${String(feedbackPushAgentStatus.enabled)}</span>
+                    · readiness: <span class="font-mono">${feedbackPushAgentStatus.readiness}</span>
+                    · mode: <span class="font-mono">${feedbackPushAgentStatus.mode}</span>
+                  </div>
+                  ${feedbackPushAgentStatus.lastLaunch
+                    ? html`
+                      <div class="text-xs opacity-70">
+                        last launch: <span class="font-mono">${feedbackPushAgentStatus.lastLaunch.result}</span>
+                        · at ${this._formatFeedbackTime(feedbackPushAgentStatus.lastLaunch.attemptedAt)}
+                        · annotation ${feedbackPushAgentStatus.lastLaunch.annotationId}
+                      </div>
+                      ${feedbackPushAgentStatus.lastLaunch.failureReason
+                        ? html`<div class="text-xs text-error">failure: ${feedbackPushAgentStatus.lastLaunch.failureReason}</div>`
+                        : nothing}
+                    `
+                    : html`<div class="text-xs opacity-60">last launch: (暂无记录)</div>`}
+                `}
+            </div>
+          </div>
+
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-2">
               <div class="font-bold text-sm">Create Feedback</div>

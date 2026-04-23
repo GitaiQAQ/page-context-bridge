@@ -6,6 +6,7 @@ import {
   buildFeedbackAgentSpawnEnv,
   buildFeedbackAgentPrompt,
   createFeedbackAgentPushAdapterFromEnv,
+  createFeedbackPushAgentStatusFromEnv,
   LocalFeedbackAgentPushAdapter,
 } from "./feedback-agent-push.js";
 
@@ -125,6 +126,38 @@ describe("feedback-agent-push adapter", () => {
     expect(spawnCalls[0]?.args).toContain("gpt-5");
     expect(spawnCalls[0]?.args).toContain("-agent");
     expect(spawnCalls[0]?.args).toContain("feedback-bot");
+    const status = adapter.getPushAgentStatus();
+    expect(status.enabled).toBe(true);
+    expect(status.readiness).toBe("ready");
+    expect(status.mode).toBe("local-opencode");
+    expect(status.lastLaunch?.annotationId).toBe("annotation_1");
+    expect(status.lastLaunch?.result).toBe("success");
+    expect(status.lastLaunch?.failureReason).toBeUndefined();
+  });
+
+  it("captures launch failure reason when spawn throws", () => {
+    const adapter = new LocalFeedbackAgentPushAdapter({
+      tenantId: "tenant-z",
+      opencodeBin: "opencode",
+      workingDirectory: "/tmp/browser-debug-extension-feedback-agent-push",
+      spawnProcess: () => {
+        throw new Error("ENOENT: opencode not found");
+      },
+    });
+
+    adapter.pushNewAnnotation(createAnnotation({ id: "annotation_fail" }));
+    const status = adapter.getPushAgentStatus();
+    expect(status.lastLaunch?.annotationId).toBe("annotation_fail");
+    expect(status.lastLaunch?.result).toBe("failed");
+    expect(status.lastLaunch?.failureReason).toContain("ENOENT");
+  });
+
+  it("derives disabled status from env when auto-push is off", () => {
+    const status = createFeedbackPushAgentStatusFromEnv({});
+    expect(status.enabled).toBe(false);
+    expect(status.readiness).toBe("disabled");
+    expect(status.mode).toBe("disabled");
+    expect(status.lastLaunch).toBeNull();
   });
 
   it("builds prompt with tenant + annotation identity and tool instructions", () => {

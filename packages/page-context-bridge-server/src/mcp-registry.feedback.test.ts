@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { PageContextManifest } from "@page-context/shared-protocol";
+import type { FeedbackPushAgentStatus, PageContextManifest } from "@page-context/shared-protocol";
 
 import { McpRegistry } from "./mcp-registry.js";
 import type { FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
@@ -28,13 +28,13 @@ class FakeMcpServer {
   }
 }
 
-function createRegistry(feedbackAgentPushAdapter: FeedbackAgentPushAdapter | null = null) {
+function createRegistry(feedbackAgentPushAdapter: FeedbackAgentPushAdapter | null | undefined = null, env?: NodeJS.ProcessEnv) {
   return new McpRegistry({
     sendToolCall: async () => ({}),
     getContextManifest: async () => null,
     readContextResource: async () => ({ id: "r", text: "{}" }),
     getContextSkillPrompt: async () => null,
-  }, "tenant-z", { feedbackAgentPushAdapter });
+  }, "tenant-z", { feedbackAgentPushAdapter, env });
 }
 
 function parseTextResponse(payload: unknown) {
@@ -114,6 +114,59 @@ describe("mcp-registry feedback tools", () => {
     expect(created.body).toBe("异常兜底验证");
     const annotations = registry.listFeedbackAnnotations({ tabId: 13 });
     expect(annotations.some((item) => item.id === created.id)).toBe(true);
+  });
+
+  it("exposes push-agent status in snapshot and keeps failure reason", () => {
+    let status: FeedbackPushAgentStatus = {
+      enabled: true,
+      readiness: "ready",
+      mode: "custom",
+      lastLaunch: null,
+    };
+
+    const registry = createRegistry({
+      pushNewAnnotation: (annotation) => {
+        status = {
+          ...status,
+          lastLaunch: {
+            annotationId: annotation.id,
+            sessionId: annotation.sessionId,
+            attemptedAt: "2026-04-23T00:00:00.000Z",
+            result: "failed",
+            failureReason: "spawn timeout",
+          },
+        };
+      },
+      getPushAgentStatus: () => ({ ...status, lastLaunch: status.lastLaunch ? { ...status.lastLaunch } : null }),
+    });
+
+    const created = registry.createFeedbackAnnotation({
+      body: "auto push 失败可观测性",
+      tabId: 21,
+      url: "https://example.com/failure",
+    });
+    const snapshot = registry.getFeedbackSnapshot({ tabId: 21 });
+
+    expect(snapshot.pushAgent?.enabled).toBe(true);
+    expect(snapshot.pushAgent?.readiness).toBe("ready");
+    expect(snapshot.pushAgent?.mode).toBe("custom");
+    expect(snapshot.pushAgent?.lastLaunch?.annotationId).toBe(created.id);
+    expect(snapshot.pushAgent?.lastLaunch?.result).toBe("failed");
+    expect(snapshot.pushAgent?.lastLaunch?.failureReason).toBe("spawn timeout");
+  });
+
+  it("returns disabled push-agent status when auto-push env is off", () => {
+    const registry = createRegistry(undefined, {
+      FEEDBACK_PUSH_AGENT_ENABLED: "0",
+    });
+
+    const snapshot = registry.getFeedbackSnapshot();
+    expect(snapshot.pushAgent).toEqual({
+      enabled: false,
+      readiness: "disabled",
+      mode: "disabled",
+      lastLaunch: null,
+    });
   });
 
   it("registers MCP feedback tools and returns cursor-based events", async () => {

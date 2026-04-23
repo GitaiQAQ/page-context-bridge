@@ -170,11 +170,37 @@ export interface FeedbackStateSnapshotParams {
   sessionId?: string;
 }
 
+/**
+ * feedback auto-push 的最近一次 launch 结果。
+ * 只保留排障最关键的信息，避免把实现细节泄漏给 UI 层。
+ */
+export interface FeedbackPushAgentLastLaunch {
+  annotationId: string;
+  sessionId: string;
+  attemptedAt: string;
+  result: "success" | "failed";
+  failureReason?: string;
+}
+
+/**
+ * feedback auto-push 的运行态信号。
+ * - enabled：配置开关是否开启
+ * - readiness：当前是否可尝试 launch（最小就绪信号）
+ * - lastLaunch：最近一次 launch 结果（含失败原因）
+ */
+export interface FeedbackPushAgentStatus {
+  enabled: boolean;
+  readiness: "ready" | "disabled";
+  mode: "local-opencode" | "disabled" | "custom";
+  lastLaunch: FeedbackPushAgentLastLaunch | null;
+}
+
 export interface FeedbackStateSnapshotResult {
   sessions: FeedbackSession[];
   annotations: FeedbackAnnotation[];
   snapshotVersion: number;
   lastSeq: number;
+  pushAgent?: FeedbackPushAgentStatus;
 }
 
 export interface FeedbackStateDeltaParams {

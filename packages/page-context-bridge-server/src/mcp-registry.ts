@@ -17,6 +17,7 @@ import {
   type FeedbackAnnotationResolveParams,
   type FeedbackAnnotationUpdateParams,
   type FeedbackCapabilityLinks,
+  type FeedbackPushAgentStatus,
   type FeedbackStateDeltaParams,
   type FeedbackStateSnapshotParams,
   type PageContextManifest,
@@ -29,7 +30,13 @@ import { z } from "zod";
 import { buildRegisteredPageToolName } from "./page-tool-routing.js";
 import { buildZodSchema, type JsonSchemaLike } from "./schema.js";
 import { FeedbackStore } from "./feedback-store.js";
-import { createFeedbackAgentPushAdapterFromEnv, type FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
+import {
+  createFeedbackAgentPushAdapterFromEnv,
+  createFeedbackPushAgentStatus,
+  createFeedbackPushAgentStatusFromEnv,
+  type FeedbackAgentPushAdapter,
+  type FeedbackAgentPushStatusReader,
+} from "./feedback-agent-push.js";
 import { getRuntimeEnv } from "./runtime-env.js";
 
 export interface PageToolSpec {
@@ -65,6 +72,7 @@ export interface ExtensionRpcCaller {
 
 export interface McpRegistryOptions {
   feedbackAgentPushAdapter?: FeedbackAgentPushAdapter | null;
+  feedbackAgentPushStatus?: FeedbackPushAgentStatus;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -79,6 +87,7 @@ export class McpRegistry {
   private readonly pageContextManifestByTab = new Map<number, PageContextManifest>();
   private readonly feedbackStore: FeedbackStore;
   private readonly feedbackAgentPushAdapter: FeedbackAgentPushAdapter | null;
+  private readonly feedbackAgentPushStatusFallback: FeedbackPushAgentStatus;
 
   private enabledBuiltinToolNames: Set<string>;
   private readonly toolProviders: BridgeToolProvider[] = [new BuiltinBridgeProvider()];
@@ -86,10 +95,18 @@ export class McpRegistry {
   constructor(private readonly rpcCaller: ExtensionRpcCaller, tenantId = "default", options: McpRegistryOptions = {}) {
     this.enabledBuiltinToolNames = new Set(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
     this.feedbackStore = new FeedbackStore(tenantId);
+    const runtimeEnv = options.env ?? getRuntimeEnv();
     // 允许测试注入 adapter；未注入时才按环境变量自动创建。
     this.feedbackAgentPushAdapter = options.feedbackAgentPushAdapter !== undefined
       ? options.feedbackAgentPushAdapter
-      : createFeedbackAgentPushAdapterFromEnv(tenantId, options.env ?? getRuntimeEnv(), (message) => log(message));
+      : createFeedbackAgentPushAdapterFromEnv(tenantId, runtimeEnv, (message) => log(message));
+    this.feedbackAgentPushStatusFallback = options.feedbackAgentPushStatus
+      ?? (options.feedbackAgentPushAdapter !== undefined
+        ? createFeedbackPushAgentStatus({
+            enabled: this.feedbackAgentPushAdapter != null,
+            mode: this.feedbackAgentPushAdapter ? "custom" : "disabled",
+          })
+        : createFeedbackPushAgentStatusFromEnv(runtimeEnv));
   }
 
   addServer(server: McpServer): void {
@@ -112,11 +129,28 @@ export class McpRegistry {
   }
 
   getFeedbackSnapshot(params: FeedbackStateSnapshotParams = {}) {
-    return this.feedbackStore.readSnapshot(params);
+    const snapshot = this.feedbackStore.readSnapshot(params);
+    return {
+      ...snapshot,
+      pushAgent: this.readFeedbackAgentPushStatus(),
+    };
   }
 
   getFeedbackDelta(params: FeedbackStateDeltaParams) {
     return this.feedbackStore.readDelta(params);
+  }
+
+  private readFeedbackAgentPushStatus(): FeedbackPushAgentStatus {
+    // adapter 可能是测试注入或未来扩展实现，优先走能力探测，保证可插拔。
+    if (isFeedbackAgentPushStatusReader(this.feedbackAgentPushAdapter)) {
+      return this.feedbackAgentPushAdapter.getPushAgentStatus();
+    }
+    return {
+      ...this.feedbackAgentPushStatusFallback,
+      lastLaunch: this.feedbackAgentPushStatusFallback.lastLaunch
+        ? { ...this.feedbackAgentPushStatusFallback.lastLaunch }
+        : null,
+    };
   }
 
   createFeedbackAnnotation(params: FeedbackAnnotationCreateParams) {
@@ -772,6 +806,12 @@ function createFeedbackActor(input: FeedbackActor): FeedbackActor {
 
 function createTextResponse(text: string) {
   return { content: [{ type: "text" as const, text }] };
+}
+
+function isFeedbackAgentPushStatusReader(
+  adapter: FeedbackAgentPushAdapter | null,
+): adapter is FeedbackAgentPushAdapter & FeedbackAgentPushStatusReader {
+  return !!adapter && typeof (adapter as FeedbackAgentPushStatusReader).getPushAgentStatus === "function";
 }
 
 export function log(...args: unknown[]): void {

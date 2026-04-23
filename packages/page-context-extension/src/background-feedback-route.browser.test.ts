@@ -153,6 +153,56 @@ describe("background feedback runtime route", () => {
     expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
   });
 
+  it("passes snapshot push-agent observability fields through to sidepanel callers", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+    requestBridgeMock.mockResolvedValueOnce({
+      sessions: [],
+      annotations: [],
+      snapshotVersion: 3,
+      lastSeq: 19,
+      pushAgent: {
+        enabled: true,
+        readiness: "ready",
+        mode: "local-opencode",
+        lastLaunch: {
+          annotationId: "annotation_77",
+          sessionId: "session_9",
+          attemptedAt: "2026-04-23T01:23:45.000Z",
+          result: "failed",
+          failureReason: "ENOENT: opencode not found",
+        },
+      },
+    });
+
+    listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+        {},
+        "req-feedback-snapshot-1",
+      ),
+      {
+        tab: {
+          id: 12,
+        },
+      } as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await flushMicrotasks();
+
+    expect(requestBridgeMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.feedbackStateSnapshot,
+      { tabId: 12 },
+      { timeoutMs: 20_000 },
+    );
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+    });
+    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: { pushAgent?: { lastLaunch?: { failureReason?: string } } } } | undefined;
+    expect(response?.id).toBe("req-feedback-snapshot-1");
+    expect(response?.result?.pushAgent?.lastLaunch?.failureReason).toContain("ENOENT");
+  });
+
   it("uses context selectedText and alias anchor when UI selectedText is empty", async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();

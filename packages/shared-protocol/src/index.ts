@@ -58,6 +58,8 @@ export {
   type FeedbackEventType,
   type FeedbackEvent,
   type FeedbackStateSnapshotParams,
+  type FeedbackPushAgentLastLaunch,
+  type FeedbackPushAgentStatus,
   type FeedbackStateSnapshotResult,
   type FeedbackStateDeltaParams,
   type FeedbackStateDeltaResult,
