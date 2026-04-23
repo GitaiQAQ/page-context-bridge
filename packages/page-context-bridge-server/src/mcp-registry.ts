@@ -48,6 +48,24 @@ export interface PageToolSpec {
   _instanceId?: string;
 }
 
+export interface PageToolEnableUpdate {
+  root?: "builtin" | "page";
+  tabId?: number;
+  namespace?: string;
+  instanceId?: string;
+  toolName?: string;
+  enabled: boolean;
+}
+
+const pageToolEnableUpdateSchema = z.object({
+  root: z.enum(["builtin", "page"]).optional(),
+  tabId: z.number().int().positive().optional(),
+  namespace: z.string().trim().min(1).optional(),
+  instanceId: z.string().trim().min(1).optional(),
+  toolName: z.string().trim().min(1).optional(),
+  enabled: z.boolean(),
+});
+
 interface RegisteredPageTool {
   registeredTool: { remove: () => void };
   tabId: number;
@@ -66,8 +84,11 @@ interface RegisteredContextPrompt {
 export interface ExtensionRpcCaller {
   sendToolCall<TResult = unknown>(tool: string, args: Record<string, unknown>, tabId?: number): Promise<TResult>;
   getContextManifest(tabId: number): Promise<PageContextManifest | null>;
+  refreshPageTools(tabId: number): Promise<PageToolSpec[]>;
   readContextResource(tabId: number, resourceId: string): Promise<ContextResourcePayload>;
   getContextSkillPrompt(tabId: number, skillId: string, input?: Record<string, unknown>): Promise<ContextSkillPrompt | null>;
+  getPageToolsTree(): Promise<unknown>;
+  setPageToolsEnabledBatch(updates: PageToolEnableUpdate[]): Promise<unknown>;
 }
 
 export interface McpRegistryOptions {
@@ -81,6 +102,7 @@ export class McpRegistry {
   private readonly pageToolHandlesByServer = new WeakMap<McpServer, Map<string, RegisteredPageTool>>();
   private readonly builtinToolHandlesByServer = new WeakMap<McpServer, Map<string, { remove: () => void }>>();
   private readonly feedbackToolHandlesByServer = new WeakMap<McpServer, Map<string, { remove: () => void }>>();
+  private readonly extensionToolControlHandlesByServer = new WeakMap<McpServer, Map<string, { remove: () => void }>>();
   private readonly contextResourceHandlesByServer = new WeakMap<McpServer, Map<string, RegisteredContextResource>>();
   private readonly contextPromptHandlesByServer = new WeakMap<McpServer, Map<string, RegisteredContextPrompt>>();
   private readonly pageToolsByTab = new Map<number, PageToolSpec[]>();
@@ -112,12 +134,14 @@ export class McpRegistry {
   addServer(server: McpServer): void {
     this.mcpServers.add(server);
     this.registerFeedbackToolsOnServer(server);
+    this.registerExtensionToolControlToolsOnServer(server);
   }
 
   removeServer(server: McpServer): void {
     this.mcpServers.delete(server);
     this.pageToolHandlesByServer.delete(server);
     this.feedbackToolHandlesByServer.delete(server);
+    this.extensionToolControlHandlesByServer.delete(server);
   }
 
   getServerCount(): number {
@@ -528,7 +552,120 @@ export class McpRegistry {
     );
   }
 
+  registerExtensionToolControlToolsOnServer(mcpServer: McpServer): void {
+    let handles = this.extensionToolControlHandlesByServer.get(mcpServer);
+    if (!handles) {
+      handles = new Map();
+      this.extensionToolControlHandlesByServer.set(mcpServer, handles);
+    }
+
+    if (handles.size > 0) {
+      return;
+    }
+
+    const register = (
+      name: string,
+      config: { description: string; inputSchema: Record<string, z.ZodTypeAny> },
+      handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
+    ) => {
+      const handle = mcpServer.registerTool(
+        name,
+        config as unknown as Parameters<typeof mcpServer.registerTool>[1],
+        handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
+      ) as { remove: () => void };
+      handles!.set(name, handle);
+    };
+
+    register(
+      "extension_get_tool_tree",
+      {
+        description: "Read extension tool tree (builtin + page tools) with enabled counters.",
+        inputSchema: {},
+      },
+      async () => {
+        const tree = await this.rpcCaller.getPageToolsTree();
+        return createTextResponse(JSON.stringify(tree, null, 2));
+      },
+    );
+
+    register(
+      "extension_set_tools_enabled",
+      {
+        description: "Batch set enable state for builtin/page tool scopes and return updated tool tree.",
+        inputSchema: {
+          updates: z.array(pageToolEnableUpdateSchema).min(1),
+        },
+      },
+      async (args) => {
+        const updates = Array.isArray(args.updates)
+          ? (args.updates as PageToolEnableUpdate[])
+          : [];
+        // 明确拒绝“page scope 缺 tabId”的输入，避免进入 extension 后变成静默 no-op。
+        for (let index = 0; index < updates.length; index += 1) {
+          assertValidPageToolEnableUpdate(updates[index]!, index);
+        }
+        const tree = await this.rpcCaller.setPageToolsEnabledBatch(updates);
+        return createTextResponse(JSON.stringify({
+          applied: updates.length,
+          tree,
+        }, null, 2));
+      },
+    );
+
+    register(
+      "extension_refresh_page_tools",
+      {
+        description: "Force extension to rediscover one tab's page tools and sync bridge registry.",
+        inputSchema: {
+          tabId: z.number().int().positive(),
+        },
+      },
+      async (args) => {
+        const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
+        if (!Number.isInteger(tabId) || tabId <= 0) {
+          return createTextResponse(JSON.stringify({
+            ok: false,
+            error: "tabId must be a positive integer",
+          }, null, 2));
+        }
+
+        try {
+          const refreshed = await this.refreshPageToolsForTab(tabId);
+          return createTextResponse(JSON.stringify({
+            ok: true,
+            tabId,
+            refreshedToolCount: refreshed.tools.length,
+            toolNames: refreshed.tools.map((tool) => normalizePageToolName(tool)),
+            manifestSynced: refreshed.manifest != null,
+          }, null, 2));
+        } catch (error) {
+          return createTextResponse(JSON.stringify({
+            ok: false,
+            tabId,
+            error: error instanceof Error ? error.message : String(error),
+          }, null, 2));
+        }
+      },
+    );
+  }
+
   // ── Page tools ──
+
+  async refreshPageToolsForTab(tabId: number): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
+    // 主动刷新走“discover + 本地 registry 覆盖”路径，保证 agent 当前会话立即看到新工具。
+    const tools = await this.rpcCaller.refreshPageTools(tabId);
+    this.unregisterPageToolsFromAllServers(tabId);
+    this.setPageTools(tabId, tools);
+    this.registerPageToolsOnAllServers(tabId, tools);
+
+    // manifest 同步失败不影响 tools 刷新，降级为 null，避免整个刷新动作回滚。
+    const manifest = await this.rpcCaller.getContextManifest(tabId).catch((error) => {
+      log(`Refresh manifest failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    });
+    this.syncContextManifestOnAllServers(tabId, manifest);
+    return { tools, manifest };
+  }
 
   registerPageToolsOnServer(mcpServer: McpServer, tabId: number, tools: PageToolSpec[]): void {
     let handles = this.pageToolHandlesByServer.get(mcpServer);
@@ -757,6 +894,7 @@ export class McpRegistry {
   syncPageToolsToNewServer(mcpServer: McpServer): void {
     this.syncBuiltinToolsOnServer(mcpServer);
     this.registerFeedbackToolsOnServer(mcpServer);
+    this.registerExtensionToolControlToolsOnServer(mcpServer);
     for (const [tabId, tools] of this.pageToolsByTab.entries()) {
       this.registerPageToolsOnServer(mcpServer, tabId, tools);
     }
@@ -767,6 +905,14 @@ export class McpRegistry {
 }
 
 // ── Helpers ──
+
+function assertValidPageToolEnableUpdate(update: PageToolEnableUpdate, index: number): void {
+  const root = update.root ?? "page";
+  // extension 侧 root=page 且缺 tabId 时会直接 no-op，这里提前拦截，避免 agent 误以为切换成功。
+  if (root === "page" && update.tabId == null) {
+    throw new Error(`updates[${index}] requires tabId when root is "page"`);
+  }
+}
 
 function normalizePageToolName(tool: PageToolSpec): string {
   const namespace = tool._namespace;
@@ -811,7 +957,7 @@ function createTextResponse(text: string) {
 function isFeedbackAgentPushStatusReader(
   adapter: FeedbackAgentPushAdapter | null,
 ): adapter is FeedbackAgentPushAdapter & FeedbackAgentPushStatusReader {
-  return !!adapter && typeof (adapter as FeedbackAgentPushStatusReader).getPushAgentStatus === "function";
+  return !!adapter && typeof (adapter as unknown as FeedbackAgentPushStatusReader).getPushAgentStatus === "function";
 }
 
 export function log(...args: unknown[]): void {

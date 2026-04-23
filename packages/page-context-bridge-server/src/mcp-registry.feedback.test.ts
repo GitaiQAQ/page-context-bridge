@@ -32,8 +32,11 @@ function createRegistry(feedbackAgentPushAdapter: FeedbackAgentPushAdapter | nul
   return new McpRegistry({
     sendToolCall: async () => ({}),
     getContextManifest: async () => null,
+    refreshPageTools: async () => [],
     readContextResource: async () => ({ id: "r", text: "{}" }),
     getContextSkillPrompt: async () => null,
+    getPageToolsTree: async () => ({}),
+    setPageToolsEnabledBatch: async () => ({}),
   }, "tenant-z", { feedbackAgentPushAdapter, env });
 }
 

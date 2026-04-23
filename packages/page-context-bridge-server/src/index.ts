@@ -13,6 +13,9 @@ import {
   getContextManifestFromExtension,
   readContextResourceFromExtension,
   getContextSkillPromptFromExtension,
+  getPageToolsTreeFromExtension,
+  refreshPageToolsFromExtension,
+  setPageToolsEnabledBatchOnExtension,
   sendToolCallToExtension,
   startWebSocketServer,
   startHeartbeatWatchdog,
@@ -34,8 +37,11 @@ const tenantManager: TenantManager = new TenantManager({
     return new McpRegistry({
       sendToolCall: (tool, args, tabId) => sendToolCallToExtension(tenantId, tenantManager, tool, args, tabId),
       getContextManifest: (tabId) => getContextManifestFromExtension(tenantId, tenantManager, tabId),
+      refreshPageTools: (tabId) => refreshPageToolsFromExtension(tenantId, tenantManager, tabId),
       readContextResource: (tabId, resourceId) => readContextResourceFromExtension(tenantId, tenantManager, tabId, resourceId),
       getContextSkillPrompt: (tabId, skillId, input) => getContextSkillPromptFromExtension(tenantId, tenantManager, tabId, skillId, input),
+      getPageToolsTree: () => getPageToolsTreeFromExtension(tenantId, tenantManager),
+      setPageToolsEnabledBatch: (updates) => setPageToolsEnabledBatchOnExtension(tenantId, tenantManager, updates),
     }, tenantId);
   },
 });

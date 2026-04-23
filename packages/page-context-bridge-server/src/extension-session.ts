@@ -7,6 +7,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import {
   BRIDGE_METHODS,
+  RPC_ERROR_CODES,
   type FeedbackAnnotationClaimParams,
   type FeedbackAnnotationCreateParams,
   type FeedbackAnnotationDismissParams,
@@ -19,6 +20,7 @@ import {
   type ContextSkillPrompt,
   type PageContextManifest,
   RpcPeer,
+  RpcProtocolError,
 } from "@page-context/shared-protocol";
 
 import {
@@ -48,6 +50,15 @@ const TOOL_CALL_TIMEOUT_MS = 30_000;
 const HEARTBEAT_GRACE_MS = 45_000;
 
 let wsServerReady = false;
+
+export interface PageToolEnableUpdate {
+  root?: "builtin" | "page";
+  tabId?: number;
+  namespace?: string;
+  instanceId?: string;
+  toolName?: string;
+  enabled: boolean;
+}
 
 export function isWsServerReady(): boolean {
   return wsServerReady;
@@ -110,6 +121,69 @@ export async function getContextSkillPromptFromExtension(
   const current = assertExtensionReady(tenantId, manager);
   const result = await current.peer.request<{ prompt: ContextSkillPrompt | null }>(BRIDGE_METHODS.extensionContextSkillGet, { tabId, skillId, input }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
   return result.prompt;
+}
+
+export async function refreshPageToolsFromExtension(
+  tenantId: string,
+  manager: TenantManager,
+  tabId: number,
+): Promise<PageToolSpec[]> {
+  const current = assertExtensionReady(tenantId, manager);
+  const params = { tabId };
+
+  try {
+    const result = await current.peer.request<{ tools?: PageToolSpec[] }>(
+      BRIDGE_METHODS.extensionPageToolsRefresh,
+      params,
+      { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+    );
+    return result.tools ?? [];
+  } catch (error) {
+    // 兼容旧版扩展：未实现 refresh 时，自动回退到 discover。
+    if (!isRpcMethodNotFound(error)) {
+      throw error;
+    }
+    const legacyResult = await current.peer.request<{ tools?: PageToolSpec[] }>(
+      BRIDGE_METHODS.extensionPageToolsDiscover,
+      params,
+      { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+    );
+    return legacyResult.tools ?? [];
+  }
+}
+
+export async function getPageToolsTreeFromExtension(
+  tenantId: string,
+  manager: TenantManager,
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionPageToolsTreeGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+}
+
+export async function setPageToolsEnabledBatchOnExtension(
+  tenantId: string,
+  manager: TenantManager,
+  updates: PageToolEnableUpdate[],
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  // 批量场景按顺序复用 extension 现有 setEnabled 逻辑，确保偏好存储与发布行为完全一致。
+  if (updates.length === 0) {
+    return await current.peer.request<unknown>(BRIDGE_METHODS.extensionPageToolsTreeGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  }
+
+  let latestTree: unknown = null;
+  for (const update of updates) {
+    latestTree = await current.peer.request<unknown>(
+      BRIDGE_METHODS.extensionPageToolsSetEnabled,
+      update,
+      { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+    );
+  }
+  return latestTree;
+}
+
+function isRpcMethodNotFound(error: unknown): boolean {
+  return error instanceof RpcProtocolError && error.code === RPC_ERROR_CODES.methodNotFound;
 }
 
 // ── Per-tenant extension state creation ──
