@@ -24,7 +24,11 @@ import {
   type BridgeToolProvider,
   type ToolSpec,
 } from "@page-context/shared-protocol";
-import { BuiltinBridgeProvider } from "@page-context/builtin-tools";
+import {
+  BuiltinBridgeProvider,
+  ExtensionControlBridgeProvider,
+  type PageToolEnableUpdate,
+} from "@page-context/builtin-tools";
 import { z } from "zod";
 
 import { buildRegisteredPageToolName } from "./page-tool-routing.js";
@@ -48,23 +52,7 @@ export interface PageToolSpec {
   _instanceId?: string;
 }
 
-export interface PageToolEnableUpdate {
-  root?: "builtin" | "page";
-  tabId?: number;
-  namespace?: string;
-  instanceId?: string;
-  toolName?: string;
-  enabled: boolean;
-}
-
-const pageToolEnableUpdateSchema = z.object({
-  root: z.enum(["builtin", "page"]).optional(),
-  tabId: z.number().int().positive().optional(),
-  namespace: z.string().trim().min(1).optional(),
-  instanceId: z.string().trim().min(1).optional(),
-  toolName: z.string().trim().min(1).optional(),
-  enabled: z.boolean(),
-});
+export type { PageToolEnableUpdate } from "@page-context/builtin-tools";
 
 interface RegisteredPageTool {
   registeredTool: { remove: () => void };
@@ -83,6 +71,8 @@ interface RegisteredContextPrompt {
 
 export interface ExtensionRpcCaller {
   sendToolCall<TResult = unknown>(tool: string, args: Record<string, unknown>, tabId?: number): Promise<TResult>;
+  getRuntimeStatus(): Promise<unknown>;
+  reconnectExtension(): Promise<unknown>;
   getContextManifest(tabId: number): Promise<PageContextManifest | null>;
   refreshPageTools(tabId: number): Promise<PageToolSpec[]>;
   readContextResource(tabId: number, resourceId: string): Promise<ContextResourcePayload>;
@@ -113,6 +103,7 @@ export class McpRegistry {
 
   private enabledBuiltinToolNames: Set<string>;
   private readonly toolProviders: BridgeToolProvider[] = [new BuiltinBridgeProvider()];
+  private readonly extensionToolControlProvider = new ExtensionControlBridgeProvider();
 
   constructor(private readonly rpcCaller: ExtensionRpcCaller, tenantId = "default", options: McpRegistryOptions = {}) {
     this.enabledBuiltinToolNames = new Set(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
@@ -563,90 +554,23 @@ export class McpRegistry {
       return;
     }
 
-    const register = (
-      name: string,
-      config: { description: string; inputSchema: Record<string, z.ZodTypeAny> },
-      handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
-    ) => {
-      const handle = mcpServer.registerTool(
+    // extension 工具树控制类能力集中到 builtin provider，registry 只负责注入依赖和存储句柄。
+    const providerHandles = this.extensionToolControlProvider.registerOnBridge(
+      (name, schema, handler) => mcpServer.registerTool(
         name,
-        config as unknown as Parameters<typeof mcpServer.registerTool>[1],
+        schema as unknown as Parameters<typeof mcpServer.registerTool>[1],
         handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
-      ) as { remove: () => void };
-      handles!.set(name, handle);
-    };
-
-    register(
-      "extension_get_tool_tree",
+      ),
       {
-        description: "Read extension tool tree (builtin + page tools) with enabled counters.",
-        inputSchema: {},
-      },
-      async () => {
-        const tree = await this.rpcCaller.getPageToolsTree();
-        return createTextResponse(JSON.stringify(tree, null, 2));
+        getPageToolsTree: () => this.rpcCaller.getPageToolsTree(),
+        setPageToolsEnabledBatch: (updates) => this.rpcCaller.setPageToolsEnabledBatch(updates),
+        refreshPageToolsForTab: (tabId) => this.refreshPageToolsForTab(tabId),
+        normalizePageToolName: (tool) => normalizePageToolName(tool),
       },
     );
-
-    register(
-      "extension_set_tools_enabled",
-      {
-        description: "Batch set enable state for builtin/page tool scopes and return updated tool tree.",
-        inputSchema: {
-          updates: z.array(pageToolEnableUpdateSchema).min(1),
-        },
-      },
-      async (args) => {
-        const updates = Array.isArray(args.updates)
-          ? (args.updates as PageToolEnableUpdate[])
-          : [];
-        // 明确拒绝“page scope 缺 tabId”的输入，避免进入 extension 后变成静默 no-op。
-        for (let index = 0; index < updates.length; index += 1) {
-          assertValidPageToolEnableUpdate(updates[index]!, index);
-        }
-        const tree = await this.rpcCaller.setPageToolsEnabledBatch(updates);
-        return createTextResponse(JSON.stringify({
-          applied: updates.length,
-          tree,
-        }, null, 2));
-      },
-    );
-
-    register(
-      "extension_refresh_page_tools",
-      {
-        description: "Force extension to rediscover one tab's page tools and sync bridge registry.",
-        inputSchema: {
-          tabId: z.number().int().positive(),
-        },
-      },
-      async (args) => {
-        const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
-        if (!Number.isInteger(tabId) || tabId <= 0) {
-          return createTextResponse(JSON.stringify({
-            ok: false,
-            error: "tabId must be a positive integer",
-          }, null, 2));
-        }
-
-        try {
-          const refreshed = await this.refreshPageToolsForTab(tabId);
-          return createTextResponse(JSON.stringify({
-            ok: true,
-            tabId,
-            refreshedToolCount: refreshed.tools.length,
-            toolNames: refreshed.tools.map((tool) => normalizePageToolName(tool)),
-            manifestSynced: refreshed.manifest != null,
-          }, null, 2));
-        } catch (error) {
-          return createTextResponse(JSON.stringify({
-            ok: false,
-            tabId,
-            error: error instanceof Error ? error.message : String(error),
-          }, null, 2));
-        }
-      },
-    );
+    for (const [toolName, handle] of providerHandles.entries()) {
+      handles.set(toolName, handle);
+    }
   }
 
   // ── Page tools ──
@@ -905,14 +829,6 @@ export class McpRegistry {
 }
 
 // ── Helpers ──
-
-function assertValidPageToolEnableUpdate(update: PageToolEnableUpdate, index: number): void {
-  const root = update.root ?? "page";
-  // extension 侧 root=page 且缺 tabId 时会直接 no-op，这里提前拦截，避免 agent 误以为切换成功。
-  if (root === "page" && update.tabId == null) {
-    throw new Error(`updates[${index}] requires tabId when root is "page"`);
-  }
-}
 
 function normalizePageToolName(tool: PageToolSpec): string {
   const namespace = tool._namespace;
