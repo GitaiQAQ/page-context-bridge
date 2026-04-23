@@ -96,9 +96,41 @@ export async function getContextManifestFromExtension(
   manager: TenantManager,
   tabId: number,
 ): Promise<PageContextManifest | null> {
+  const payload = await getContextManifestDebugFromExtension(tenantId, manager, tabId);
+  return payload.manifest;
+}
+
+export interface ContextManifestDebugPayload {
+  manifest: PageContextManifest | null;
+  rawManifest: PageContextManifest | null;
+  debug: unknown | null;
+}
+
+export async function getContextManifestDebugFromExtension(
+  tenantId: string,
+  manager: TenantManager,
+  tabId: number,
+): Promise<ContextManifestDebugPayload> {
   const current = assertExtensionReady(tenantId, manager);
-  const result = await current.peer.request<{ manifest: PageContextManifest | null }>(BRIDGE_METHODS.extensionContextManifestGet, { tabId }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
-  return result.manifest;
+  const result = await current.peer.request<unknown>(BRIDGE_METHODS.extensionContextManifestGet, { tabId }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  return normalizeContextManifestDebugPayload(result);
+}
+
+export async function getRuntimeStatusFromExtension(
+  tenantId: string,
+  manager: TenantManager,
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionStatusGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+}
+
+export async function reconnectExtensionFromBridge(
+  tenantId: string,
+  manager: TenantManager,
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  // bridge 只负责转发 reconnect 指令，具体重连退避和会话重建仍由 extension 现有逻辑负责。
+  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionReconnect, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
 }
 
 export async function readContextResourceFromExtension(
@@ -184,6 +216,51 @@ export async function setPageToolsEnabledBatchOnExtension(
 
 function isRpcMethodNotFound(error: unknown): boolean {
   return error instanceof RpcProtocolError && error.code === RPC_ERROR_CODES.methodNotFound;
+}
+
+function normalizeContextManifestDebugPayload(payload: unknown): ContextManifestDebugPayload {
+  if (isRecord(payload) && ("manifest" in payload || "rawManifest" in payload || "debug" in payload)) {
+    const manifest = normalizeManifestValue(payload.manifest);
+    const rawManifest = normalizeManifestValue(payload.rawManifest) ?? manifest;
+    return {
+      manifest,
+      rawManifest,
+      debug: payload.debug ?? null,
+    };
+  }
+
+  // 兼容旧扩展：仅返回 manifest 对象时，桥接层补齐 raw/debug 字段。
+  const legacyManifest = normalizeManifestValue(payload);
+  return {
+    manifest: legacyManifest,
+    rawManifest: legacyManifest,
+    debug: null,
+  };
+}
+
+function normalizeManifestValue(value: unknown): PageContextManifest | null {
+  if (value == null) {
+    return null;
+  }
+  return isLikelyPageContextManifest(value) ? value : null;
+}
+
+function isLikelyPageContextManifest(value: unknown): value is PageContextManifest {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return typeof value.version === "string"
+    && typeof value.app === "string"
+    && typeof value.route === "string"
+    && typeof value.scene === "string"
+    && Array.isArray(value.namespaces)
+    && Array.isArray(value.resources)
+    && Array.isArray(value.skills)
+    && typeof value.generatedAt === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 // ── Per-tenant extension state creation ──

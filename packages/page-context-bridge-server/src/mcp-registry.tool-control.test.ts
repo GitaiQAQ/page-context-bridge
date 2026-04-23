@@ -36,12 +36,47 @@ function parseTextResponse(payload: unknown) {
 }
 
 const TOOL_NAMES = {
+  getRuntimeStatus: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.getRuntimeStatus}`,
+  reconnect: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.reconnect}`,
+  getContextManifestDebug: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.getContextManifestDebug}`,
   getToolTree: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
   setToolsEnabled: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
   refreshPageTools: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
 } as const;
 
 function createRegistry() {
+  const getRuntimeStatus = vi.fn(async () => ({
+    connected: true,
+    sessionId: "session-1",
+    pendingToolCalls: 0,
+  }));
+  const reconnectExtension = vi.fn(async () => ({ ok: true }));
+  const getContextManifestDebug = vi.fn(async (tabId: number) => ({
+    tabId,
+    manifest: {
+      version: "1",
+      app: "crm",
+      route: "/lead/1",
+      scene: "lead_detail",
+      namespaces: [],
+      resources: [],
+      skills: [],
+      generatedAt: "2026-04-23T00:00:00.000Z",
+    },
+    rawManifest: {
+      version: "1",
+      app: "crm",
+      route: "/lead/1",
+      scene: "lead_detail",
+      namespaces: [{ namespace: "lead", title: "Lead" }],
+      resources: [],
+      skills: [],
+      generatedAt: "2026-04-23T00:00:00.000Z",
+    },
+    debug: {
+      droppedNamespaces: ["lead"],
+    },
+  }));
   const getPageToolsTree = vi.fn(async () => ({
     totalTools: 3,
     enabledTools: 2,
@@ -57,7 +92,10 @@ function createRegistry() {
 
   const registry = new McpRegistry({
     sendToolCall: async () => ({}),
+    getRuntimeStatus,
+    reconnectExtension,
     getContextManifest,
+    getContextManifestDebug,
     refreshPageTools,
     readContextResource: async () => ({ id: "r", text: "{}" }),
     getContextSkillPrompt: async () => null,
@@ -67,6 +105,9 @@ function createRegistry() {
 
   return {
     registry,
+    getRuntimeStatus,
+    reconnectExtension,
+    getContextManifestDebug,
     getContextManifest,
     refreshPageTools,
     getPageToolsTree,
@@ -80,12 +121,76 @@ describe("mcp-registry extension tool control tools", () => {
     const fakeServer = new FakeMcpServer();
     registry.addServer(fakeServer as unknown as McpServer);
 
+    expect(fakeServer.tools.has(TOOL_NAMES.getRuntimeStatus)).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.reconnect)).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.getContextManifestDebug)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getRuntimeStatus)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.reconnect)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getContextManifestDebug)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools)).toBe(true);
+  });
+
+  it("reads extension runtime status through namespaced get_runtime_status", async () => {
+    const { registry, getRuntimeStatus } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.getRuntimeStatus);
+    const payload = await handler?.({});
+    const parsed = parseTextResponse(payload);
+
+    expect(getRuntimeStatus).toHaveBeenCalledTimes(1);
+    expect(parsed.connected).toBe(true);
+    expect(parsed.sessionId).toBe("session-1");
+  });
+
+  it("triggers extension reconnect through namespaced reconnect", async () => {
+    const { registry, reconnectExtension } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.reconnect);
+    const payload = await handler?.({});
+    const parsed = parseTextResponse(payload);
+
+    expect(reconnectExtension).toHaveBeenCalledTimes(1);
+    expect(parsed.ok).toBe(true);
+    expect((parsed.result as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("reads manifest debug payload through namespaced get_context_manifest_debug", async () => {
+    const { registry, getContextManifestDebug } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.getContextManifestDebug);
+    const payload = await handler?.({ tabId: 42 });
+    const parsed = parseTextResponse(payload);
+
+    // debug 工具应把 tabId 原样下发，避免 bridge 侧猜测当前 tab 造成混淆。
+    expect(getContextManifestDebug).toHaveBeenCalledTimes(1);
+    expect(getContextManifestDebug).toHaveBeenCalledWith(42);
+    expect(parsed.tabId).toBe(42);
+    expect((parsed.debug as { droppedNamespaces: string[] }).droppedNamespaces).toEqual(["lead"]);
+  });
+
+  it("returns explicit validation error when context manifest debug misses tabId", async () => {
+    const { registry, getContextManifestDebug } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.getContextManifestDebug);
+    const payload = await handler?.({});
+    const parsed = parseTextResponse(payload);
+
+    expect(getContextManifestDebug).not.toHaveBeenCalled();
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("tabId must be a positive integer");
   });
 
   it("reads tree through namespaced get_tool_tree", async () => {

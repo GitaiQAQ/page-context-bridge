@@ -31,6 +31,9 @@ export interface ExtensionControlRefreshResult {
 }
 
 export interface ExtensionControlBridgeRpc {
+  getRuntimeStatus(): Promise<unknown>;
+  reconnectExtension(): Promise<unknown>;
+  getContextManifestDebug(tabId: number): Promise<unknown>;
   getPageToolsTree(): Promise<unknown>;
   setPageToolsEnabledBatch(updates: PageToolEnableUpdate[]): Promise<unknown>;
   refreshPageToolsForTab(tabId: number): Promise<ExtensionControlRefreshResult>;
@@ -43,12 +46,18 @@ export interface ExtensionControlBridgeProviderOptions {
 }
 
 export const EXTENSION_CONTROL_TOOL_SUFFIXES = {
+  getRuntimeStatus: "get_runtime_status",
+  reconnect: "reconnect",
+  getContextManifestDebug: "get_context_manifest_debug",
   getToolTree: "get_tool_tree",
   setToolsEnabled: "set_tools_enabled",
   refreshPageTools: "refresh_page_tools",
 } as const;
 
 export const EXTENSION_CONTROL_LEGACY_TOOL_NAMES = {
+  getRuntimeStatus: "extension_get_runtime_status",
+  reconnect: "extension_reconnect",
+  getContextManifestDebug: "extension_get_context_manifest_debug",
   getToolTree: "extension_get_tool_tree",
   setToolsEnabled: "extension_set_tools_enabled",
   refreshPageTools: "extension_refresh_page_tools",
@@ -74,11 +83,17 @@ export class ExtensionControlBridgeProvider {
   }
 
   getToolNames(): {
+    getRuntimeStatus: string;
+    reconnect: string;
+    getContextManifestDebug: string;
     getToolTree: string;
     setToolsEnabled: string;
     refreshPageTools: string;
   } {
     return {
+      getRuntimeStatus: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getRuntimeStatus}`,
+      reconnect: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.reconnect}`,
+      getContextManifestDebug: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getContextManifestDebug}`,
       getToolTree: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
       setToolsEnabled: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
       refreshPageTools: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
@@ -128,6 +143,20 @@ export class ExtensionControlBridgeProvider {
       description: "Read extension tool tree (builtin + page tools) with enabled counters.",
       inputSchema: {},
     };
+    const getRuntimeStatusConfig = {
+      description: "Read extension runtime status (ws/session/in-flight diagnostics).",
+      inputSchema: {},
+    };
+    const reconnectConfig = {
+      description: "Ask extension service worker to force reconnect its bridge websocket session.",
+      inputSchema: {},
+    };
+    const getContextManifestDebugConfig = {
+      description: "Read one tab context manifest with raw/debug filter details from extension.",
+      inputSchema: {
+        tabId: z.number().int().positive(),
+      },
+    };
     const setToolsEnabledConfig = {
       description: "Batch set enable state for builtin/page tool scopes and return updated tool tree.",
       inputSchema: {
@@ -144,6 +173,56 @@ export class ExtensionControlBridgeProvider {
     const getToolTreeHandler = async () => {
       const tree = await rpc.getPageToolsTree();
       return createTextResponse(JSON.stringify(tree, null, 2));
+    };
+
+    const getRuntimeStatusHandler = async () => {
+      try {
+        // 状态查询保持“纯透传”，避免 bridge 侧自造字段导致调试口径漂移。
+        const status = await rpc.getRuntimeStatus();
+        return createTextResponse(JSON.stringify(status, null, 2));
+      } catch (error) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      }
+    };
+
+    const reconnectHandler = async () => {
+      try {
+        // 重连行为仍由 extension 控制，bridge 只触发并返回执行结果。
+        const result = await rpc.reconnectExtension();
+        return createTextResponse(JSON.stringify({
+          ok: true,
+          result,
+        }, null, 2));
+      } catch (error) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      }
+    };
+
+    const getContextManifestDebugHandler = async (args: Record<string, unknown>) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
+      if (!Number.isInteger(tabId) || tabId <= 0) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "tabId must be a positive integer",
+        }, null, 2));
+      }
+      try {
+        // manifest debug 直接复用 extension 现有返回结构，避免重复拼装调试信息。
+        const payload = await rpc.getContextManifestDebug(tabId);
+        return createTextResponse(JSON.stringify(payload, null, 2));
+      } catch (error) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          tabId,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      }
     };
 
     const setToolsEnabledHandler = async (args: Record<string, unknown>) => {
@@ -190,6 +269,15 @@ export class ExtensionControlBridgeProvider {
 
     register(names.getToolTree, getToolTreeConfig, getToolTreeHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree, names.getToolTree, getToolTreeConfig, getToolTreeHandler);
+
+    register(names.getRuntimeStatus, getRuntimeStatusConfig, getRuntimeStatusHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getRuntimeStatus, names.getRuntimeStatus, getRuntimeStatusConfig, getRuntimeStatusHandler);
+
+    register(names.reconnect, reconnectConfig, reconnectHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.reconnect, names.reconnect, reconnectConfig, reconnectHandler);
+
+    register(names.getContextManifestDebug, getContextManifestDebugConfig, getContextManifestDebugHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getContextManifestDebug, names.getContextManifestDebug, getContextManifestDebugConfig, getContextManifestDebugHandler);
 
     register(names.setToolsEnabled, setToolsEnabledConfig, setToolsEnabledHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled, names.setToolsEnabled, setToolsEnabledConfig, setToolsEnabledHandler);

@@ -10,7 +10,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { TenantManager } from "./tenant-manager.js";
 import { log } from "./mcp-registry.js";
 import {
+  getContextManifestDebugFromExtension,
   getContextManifestFromExtension,
+  getRuntimeStatusFromExtension,
+  reconnectExtensionFromBridge,
   readContextResourceFromExtension,
   getContextSkillPromptFromExtension,
   getPageToolsTreeFromExtension,
@@ -36,7 +39,10 @@ const tenantManager: TenantManager = new TenantManager({
     const { McpRegistry } = require("./mcp-registry.js") as typeof import("./mcp-registry.js");
     return new McpRegistry({
       sendToolCall: (tool, args, tabId) => sendToolCallToExtension(tenantId, tenantManager, tool, args, tabId),
+      getRuntimeStatus: () => getRuntimeStatusFromExtension(tenantId, tenantManager),
+      reconnectExtension: () => reconnectExtensionFromBridge(tenantId, tenantManager),
       getContextManifest: (tabId) => getContextManifestFromExtension(tenantId, tenantManager, tabId),
+      getContextManifestDebug: (tabId) => getContextManifestDebugFromExtension(tenantId, tenantManager, tabId),
       refreshPageTools: (tabId) => refreshPageToolsFromExtension(tenantId, tenantManager, tabId),
       readContextResource: (tabId, resourceId) => readContextResourceFromExtension(tenantId, tenantManager, tabId, resourceId),
       getContextSkillPrompt: (tabId, skillId, input) => getContextSkillPromptFromExtension(tenantId, tenantManager, tabId, skillId, input),

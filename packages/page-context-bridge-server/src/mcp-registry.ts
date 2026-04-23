@@ -75,6 +75,7 @@ export interface ExtensionRpcCaller {
   getRuntimeStatus(): Promise<unknown>;
   reconnectExtension(): Promise<unknown>;
   getContextManifest(tabId: number): Promise<PageContextManifest | null>;
+  getContextManifestDebug(tabId: number): Promise<unknown>;
   refreshPageTools(tabId: number): Promise<PageToolSpec[]>;
   readContextResource(tabId: number, resourceId: string): Promise<ContextResourcePayload>;
   getContextSkillPrompt(tabId: number, skillId: string, input?: Record<string, unknown>): Promise<ContextSkillPrompt | null>;
@@ -581,6 +582,9 @@ export class McpRegistry {
         handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
       ),
       {
+        getRuntimeStatus: () => this.rpcCaller.getRuntimeStatus(),
+        reconnectExtension: () => this.rpcCaller.reconnectExtension(),
+        getContextManifestDebug: (tabId) => this.rpcCaller.getContextManifestDebug(tabId),
         getPageToolsTree: () => this.rpcCaller.getPageToolsTree(),
         setPageToolsEnabledBatch: (updates) => this.rpcCaller.setPageToolsEnabledBatch(updates),
         refreshPageToolsForTab: (tabId) => this.refreshPageToolsForTab(tabId),
