@@ -42,6 +42,8 @@ const TOOL_NAMES = {
   getToolTree: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
   setToolsEnabled: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
   refreshPageTools: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
+  ensureMainWorldHost: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureMainWorldHost}`,
+  ensureAgentationMain: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureAgentationMain}`,
 } as const;
 
 function createRegistry() {
@@ -51,6 +53,8 @@ function createRegistry() {
     pendingToolCalls: 0,
   }));
   const reconnectExtension = vi.fn(async () => ({ ok: true }));
+  const ensureMainWorldHost = vi.fn(async (_tabId: number, _frameId?: number) => ({ ok: true }));
+  const ensureAgentationMain = vi.fn(async (_tabId: number, _frameId?: number) => ({ ok: true }));
   const getContextManifestDebug = vi.fn(async (tabId: number) => ({
     tabId,
     manifest: {
@@ -94,6 +98,8 @@ function createRegistry() {
     sendToolCall: async () => ({}),
     getRuntimeStatus,
     reconnectExtension,
+    ensureMainWorldHost,
+    ensureAgentationMain,
     getContextManifest,
     getContextManifestDebug,
     refreshPageTools,
@@ -107,6 +113,8 @@ function createRegistry() {
     registry,
     getRuntimeStatus,
     reconnectExtension,
+    ensureMainWorldHost,
+    ensureAgentationMain,
     getContextManifestDebug,
     getContextManifest,
     refreshPageTools,
@@ -127,12 +135,16 @@ describe("mcp-registry extension tool control tools", () => {
     expect(fakeServer.tools.has(TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.ensureMainWorldHost)).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.ensureAgentationMain)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getRuntimeStatus)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.reconnect)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getContextManifestDebug)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureAgentationMain)).toBe(true);
   });
 
   it("reads extension runtime status through namespaced get_runtime_status", async () => {
@@ -264,6 +276,52 @@ describe("mcp-registry extension tool control tools", () => {
     expect(registry.getPageToolsByTab().get(88)).toEqual([
       { name: "crm.inspect", description: "Inspect CRM entity" },
     ]);
+  });
+
+  it("ensures main world host through namespaced ensure_main_world_host", async () => {
+    const { registry, ensureMainWorldHost } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.ensureMainWorldHost);
+    const payload = await handler?.({ tabId: 88, frameId: 2 });
+    const parsed = parseTextResponse(payload);
+
+    expect(ensureMainWorldHost).toHaveBeenCalledTimes(1);
+    expect(ensureMainWorldHost).toHaveBeenCalledWith(88, 2);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.tabId).toBe(88);
+    expect(parsed.frameId).toBe(2);
+  });
+
+  it("returns explicit validation error when ensure_main_world_host misses tabId", async () => {
+    const { registry, ensureMainWorldHost } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.ensureMainWorldHost);
+    const payload = await handler?.({});
+    const parsed = parseTextResponse(payload);
+
+    expect(ensureMainWorldHost).not.toHaveBeenCalled();
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("tabId must be a positive integer");
+  });
+
+  it("ensures agentation main through namespaced ensure_agentation_main", async () => {
+    const { registry, ensureAgentationMain } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.ensureAgentationMain);
+    const payload = await handler?.({ tabId: 99 });
+    const parsed = parseTextResponse(payload);
+
+    expect(ensureAgentationMain).toHaveBeenCalledTimes(1);
+    expect(ensureAgentationMain).toHaveBeenCalledWith(99, undefined);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.tabId).toBe(99);
+    expect(parsed.frameId).toBeNull();
   });
 
   it("keeps legacy alias callable with same behavior", async () => {

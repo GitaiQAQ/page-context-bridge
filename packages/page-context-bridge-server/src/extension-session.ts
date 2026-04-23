@@ -133,6 +133,43 @@ export async function reconnectExtensionFromBridge(
   return await current.peer.request<unknown>(BRIDGE_METHODS.extensionReconnect, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
 }
 
+export async function ensureMainWorldHostFromBridge(
+  tenantId: string,
+  manager: TenantManager,
+  tabId: number,
+  frameId?: number,
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  // 这里不做参数“兜底修复”，让 extension 侧统一校验并返回明确错误，避免 bridge/extension 口径分叉。
+  const params: { tabId: number; frameId?: number } = { tabId };
+  if (typeof frameId === "number") {
+    params.frameId = frameId;
+  }
+  return await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionMainWorldHostEnsure,
+    params,
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
+}
+
+export async function ensureAgentationMainFromBridge(
+  tenantId: string,
+  manager: TenantManager,
+  tabId: number,
+  frameId?: number,
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  const params: { tabId: number; frameId?: number } = { tabId };
+  if (typeof frameId === "number") {
+    params.frameId = frameId;
+  }
+  return await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionAgentationMainEnsure,
+    params,
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
+}
+
 export async function readContextResourceFromExtension(
   tenantId: string,
   manager: TenantManager,

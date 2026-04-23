@@ -318,6 +318,42 @@ async function ensureMainWorldBridgeHostOnSenderTab(sender: chrome.runtime.Messa
   return await ensureMainWorldBridgeHostOnTab(tabId, frameId);
 }
 
+async function ensureAgentationMainOnTab(tabId: number, frameId?: number): Promise<{ ok: true }> {
+  await chrome.scripting.executeScript({
+    target: typeof frameId === "number" ? { tabId, frameIds: [frameId] } : { tabId },
+    world: "MAIN",
+    files: ["agentation-main.js"],
+  });
+  return { ok: true };
+}
+
+async function ensureAgentationMainOnSenderTab(sender: chrome.runtime.MessageSender): Promise<{ ok: true }> {
+  const tabId = sender.tab?.id;
+  if (!tabId) {
+    throw new Error("No sender tab available for Agentation MAIN world injection.");
+  }
+
+  const frameId = typeof sender.frameId === "number" ? sender.frameId : 0;
+  return await ensureAgentationMainOnTab(tabId, frameId);
+}
+
+function getMainWorldInjectionTarget(params: unknown): { tabId: number; frameId?: number } {
+  const payload = params as { tabId?: number; frameId?: number } | null | undefined;
+  const tabId = Number(payload?.tabId ?? 0);
+  if (!Number.isInteger(tabId) || tabId <= 0) {
+    throw new Error("tabId must be a positive integer");
+  }
+
+  if (payload?.frameId == null) {
+    return { tabId };
+  }
+  if (!Number.isInteger(payload.frameId) || payload.frameId < 0) {
+    throw new Error("frameId must be a non-negative integer");
+  }
+  // WS 入口允许不传 frameId，表示让 Chrome 在目标 tab 的可注入 frame 上执行默认注入。
+  return { tabId, frameId: payload.frameId };
+}
+
 function installPageContextBridgeHostInMainWorld(): void {
   const HOST_KEY = "__pageContextBridgeHost__";
   const BRIDGE_KEY = "__pageContextBridge__";
@@ -601,6 +637,133 @@ async function onTabsList(): Promise<unknown> {
   return await listTabs();
 }
 
+function buildExtensionStatusResponse() {
+  return {
+    connected: getWsReady(),
+    wsUrl: null,
+    pendingToolCalls: inFlightToolCalls.size,
+    sessionId: getSessionId(),
+  };
+}
+
+async function handleExtensionReconnect(): Promise<{ ok: true }> {
+  await forceReconnect(onToolCall, onToolsList, onTabsList, onBridgeWsExtensionRequest);
+  return { ok: true };
+}
+
+function handleExtensionPageToolsGet(params: unknown): { tools: PageToolSpec[] } {
+  const tabId = Number((params as { tabId?: number })?.tabId ?? 0);
+  return { tools: flattenPageTools(pageToolsByTab.get(tabId)) };
+}
+
+async function handleExtensionPageToolsRefresh(params: unknown): Promise<{ tools: PageToolSpec[] }> {
+  const tabId = Number((params as { tabId?: number })?.tabId ?? 0);
+  if (!tabId) {
+    throw new Error("No tabId provided");
+  }
+  // refresh 与 discover 复用同一条发现链路，避免两套逻辑漂移。
+  const entries = await discoverPageToolsForTab(tabId, true);
+  return { tools: flattenPageTools(entries) };
+}
+
+async function handleExtensionContextManifestGet(params: unknown) {
+  const tabId = Number((params as { tabId?: number })?.tabId ?? 0);
+  if (!tabId) {
+    throw new Error("No tabId provided");
+  }
+  const rawManifest = await getRawPageContextManifest(tabId);
+  const manifest = rawManifest ? filterManifestByPreferences(tabId, rawManifest) : null;
+  const enabledPageToolNames = new Set(getEnabledToolsForTab(pageToolsByTab.get(tabId), pageToolPreferences, tabId).map((tool) => tool.name));
+  const enabledBuiltinToolNames = new Set(getEnabledBuiltinTools(getBuiltinTools(), pageToolPreferences).map((tool) => tool.name));
+  return {
+    manifest,
+    rawManifest,
+    debug: buildContextManifestFilterDebug(rawManifest, manifest, enabledPageToolNames, enabledBuiltinToolNames),
+  };
+}
+
+async function handleExtensionContextResourceRead(params: unknown) {
+  const payload = params as { tabId?: number; resourceId?: string };
+  const tabId = Number(payload.tabId ?? 0);
+  if (!tabId || !payload.resourceId) {
+    throw new Error("tabId and resourceId are required");
+  }
+  return await readPageContextResource(tabId, payload.resourceId);
+}
+
+async function handleExtensionContextSkillGet(params: unknown) {
+  const payload = params as { tabId?: number; skillId?: string; input?: JsonRecord };
+  const tabId = Number(payload.tabId ?? 0);
+  if (!tabId || !payload.skillId) {
+    throw new Error("tabId and skillId are required");
+  }
+  return { prompt: await getPageContextSkill(tabId, payload.skillId, payload.input) };
+}
+
+async function handleExtensionPageToolsSetEnabled(params: unknown) {
+  const payload = params as { root?: "builtin" | "page"; tabId?: number; namespace?: string; instanceId?: string; toolName?: string; enabled: boolean };
+  const pageEntries = payload.root === "builtin" || payload.tabId == null
+    ? undefined
+    : (pageToolsByTab.get(payload.tabId) ?? []).filter((entry) => {
+        if (payload.namespace && entry.namespace !== payload.namespace) {
+          return false;
+        }
+        if (payload.instanceId && entry.instanceId !== payload.instanceId) {
+          return false;
+        }
+        return true;
+      });
+  pageToolPreferences = setScopeEnabled(pageToolPreferences, payload, payload.enabled, {
+    builtinTools: payload.root === "builtin" ? getBuiltinTools() : undefined,
+    pageEntries,
+  });
+  await persistPageToolPreferences();
+  if (payload.root === "builtin") {
+    publishBuiltinTools();
+  } else if (payload.tabId != null) {
+    publishPageToolsForTab(payload.tabId);
+  }
+  return await buildPageToolsTreeResponse();
+}
+
+async function onBridgeWsExtensionRequest(method: string, params: unknown): Promise<unknown> {
+  // 这条入口只处理 bridge 通过 WS 主动 request 的 extension 控制方法。
+  // 统一复用 runtime 分支里的同名 handler，确保 WS 与 runtime 行为一致。
+  await ensurePageToolPreferencesLoaded();
+
+  switch (method) {
+    case BRIDGE_METHODS.extensionStatusGet:
+      return buildExtensionStatusResponse();
+    case BRIDGE_METHODS.extensionReconnect:
+      return await handleExtensionReconnect();
+    case BRIDGE_METHODS.extensionPageToolsGet:
+      return handleExtensionPageToolsGet(params);
+    case BRIDGE_METHODS.extensionPageToolsTreeGet:
+      return await buildPageToolsTreeResponse();
+    case BRIDGE_METHODS.extensionPageToolsDiscover:
+    case BRIDGE_METHODS.extensionPageToolsRefresh:
+      return await handleExtensionPageToolsRefresh(params);
+    case BRIDGE_METHODS.extensionPageToolsSetEnabled:
+      return await handleExtensionPageToolsSetEnabled(params);
+    case BRIDGE_METHODS.extensionMainWorldHostEnsure: {
+      const target = getMainWorldInjectionTarget(params);
+      return await ensureMainWorldBridgeHostOnTab(target.tabId, target.frameId);
+    }
+    case BRIDGE_METHODS.extensionAgentationMainEnsure: {
+      const target = getMainWorldInjectionTarget(params);
+      return await ensureAgentationMainOnTab(target.tabId, target.frameId);
+    }
+    case BRIDGE_METHODS.extensionContextManifestGet:
+      return await handleExtensionContextManifestGet(params);
+    case BRIDGE_METHODS.extensionContextResourceRead:
+      return await handleExtensionContextResourceRead(params);
+    case BRIDGE_METHODS.extensionContextSkillGet:
+      return await handleExtensionContextSkillGet(params);
+    default:
+      throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled WS method: ${method}`);
+  }
+}
+
 // ── Extension event listeners ──
 
 chrome.runtime.onMessage.addListener(
@@ -609,62 +772,22 @@ chrome.runtime.onMessage.addListener(
 
     switch (message.method) {
       case BRIDGE_METHODS.extensionStatusGet:
-        return {
-          connected: getWsReady(),
-          wsUrl: null,
-          pendingToolCalls: inFlightToolCalls.size,
-          sessionId: getSessionId(),
-        };
+        return buildExtensionStatusResponse();
       case BRIDGE_METHODS.extensionReconnect:
-        await forceReconnect(onToolCall, onToolsList, onTabsList);
-        return { ok: true };
-      case BRIDGE_METHODS.extensionPageToolsGet: {
-        const tabId = Number((message.params as { tabId?: number })?.tabId ?? 0);
-        return { tools: flattenPageTools(pageToolsByTab.get(tabId)) };
-      }
+        return await handleExtensionReconnect();
+      case BRIDGE_METHODS.extensionPageToolsGet:
+        return handleExtensionPageToolsGet(message.params);
       case BRIDGE_METHODS.extensionPageToolsTreeGet:
         return await buildPageToolsTreeResponse();
       case BRIDGE_METHODS.extensionPageToolsDiscover:
-      case BRIDGE_METHODS.extensionPageToolsRefresh: {
-        const tabId = Number((message.params as { tabId?: number })?.tabId ?? 0);
-        if (!tabId) {
-          throw new Error("No tabId provided");
-        }
-        // refresh 与 discover 复用同一条发现链路，避免两套逻辑漂移。
-        const entries = await discoverPageToolsForTab(tabId, true);
-        return { tools: flattenPageTools(entries) };
-      }
-      case BRIDGE_METHODS.extensionContextManifestGet: {
-        const tabId = Number((message.params as { tabId?: number })?.tabId ?? 0);
-        if (!tabId) {
-          throw new Error("No tabId provided");
-        }
-        const rawManifest = await getRawPageContextManifest(tabId);
-        const manifest = rawManifest ? filterManifestByPreferences(tabId, rawManifest) : null;
-        const enabledPageToolNames = new Set(getEnabledToolsForTab(pageToolsByTab.get(tabId), pageToolPreferences, tabId).map((tool) => tool.name));
-        const enabledBuiltinToolNames = new Set(getEnabledBuiltinTools(getBuiltinTools(), pageToolPreferences).map((tool) => tool.name));
-        return {
-          manifest,
-          rawManifest,
-          debug: buildContextManifestFilterDebug(rawManifest, manifest, enabledPageToolNames, enabledBuiltinToolNames),
-        };
-      }
-      case BRIDGE_METHODS.extensionContextResourceRead: {
-        const payload = message.params as { tabId?: number; resourceId?: string };
-        const tabId = Number(payload.tabId ?? 0);
-        if (!tabId || !payload.resourceId) {
-          throw new Error("tabId and resourceId are required");
-        }
-        return await readPageContextResource(tabId, payload.resourceId);
-      }
-      case BRIDGE_METHODS.extensionContextSkillGet: {
-        const payload = message.params as { tabId?: number; skillId?: string; input?: JsonRecord };
-        const tabId = Number(payload.tabId ?? 0);
-        if (!tabId || !payload.skillId) {
-          throw new Error("tabId and skillId are required");
-        }
-        return { prompt: await getPageContextSkill(tabId, payload.skillId, payload.input) };
-      }
+      case BRIDGE_METHODS.extensionPageToolsRefresh:
+        return await handleExtensionPageToolsRefresh(message.params);
+      case BRIDGE_METHODS.extensionContextManifestGet:
+        return await handleExtensionContextManifestGet(message.params);
+      case BRIDGE_METHODS.extensionContextResourceRead:
+        return await handleExtensionContextResourceRead(message.params);
+      case BRIDGE_METHODS.extensionContextSkillGet:
+        return await handleExtensionContextSkillGet(message.params);
       case BRIDGE_METHODS.extensionFeedbackStateSnapshot: {
         const payload = (message.params ?? {}) as FeedbackStateSnapshotParams;
         const params: FeedbackStateSnapshotParams = { ...payload };
@@ -758,17 +881,8 @@ chrome.runtime.onMessage.addListener(
         publishPageToolsForTab(tabId);
         return { ok: true };
       }
-      case BRIDGE_METHODS.extensionPageToolsSetEnabled: {
-        const payload = message.params as { root?: "builtin" | "page"; tabId?: number; namespace?: string; instanceId?: string; toolName?: string; enabled: boolean };
-        pageToolPreferences = setScopeEnabled(pageToolPreferences, payload, payload.enabled);
-        await persistPageToolPreferences();
-        if (payload.root === "builtin") {
-          publishBuiltinTools();
-        } else if (payload.tabId != null) {
-          publishPageToolsForTab(payload.tabId);
-        }
-        return await buildPageToolsTreeResponse();
-      }
+      case BRIDGE_METHODS.extensionPageToolsSetEnabled:
+        return await handleExtensionPageToolsSetEnabled(message.params);
       case BRIDGE_METHODS.extensionToolDebugCall: {
         const payload = message.params as { toolName?: string; args?: JsonRecord; tabId?: number };
         if (!payload.toolName) {
@@ -787,6 +901,8 @@ chrome.runtime.onMessage.addListener(
       }
       case BRIDGE_METHODS.extensionMainWorldHostEnsure:
         return await ensureMainWorldBridgeHostOnSenderTab(sender);
+      case BRIDGE_METHODS.extensionAgentationMainEnsure:
+        return await ensureAgentationMainOnSenderTab(sender);
       default:
         throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled runtime method: ${message.method}`);
     }
@@ -829,14 +945,14 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.runtime.onInstalled.addListener(() => {
   void initDefaultWsUrl();
-  void connectWebSocket(onToolCall, onToolsList, onTabsList);
+  void connectWebSocket(onToolCall, onToolsList, onTabsList, onBridgeWsExtensionRequest);
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void connectWebSocket(onToolCall, onToolsList, onTabsList);
+  void connectWebSocket(onToolCall, onToolsList, onTabsList, onBridgeWsExtensionRequest);
 });
 
-void connectWebSocket(onToolCall, onToolsList, onTabsList);
+void connectWebSocket(onToolCall, onToolsList, onTabsList, onBridgeWsExtensionRequest);
 void ensurePageToolPreferencesLoaded().then(() => {
   publishBuiltinTools();
   for (const tabId of pageToolsByTab.keys()) {

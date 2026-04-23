@@ -37,6 +37,8 @@ export interface ExtensionControlBridgeRpc {
   getPageToolsTree(): Promise<unknown>;
   setPageToolsEnabledBatch(updates: PageToolEnableUpdate[]): Promise<unknown>;
   refreshPageToolsForTab(tabId: number): Promise<ExtensionControlRefreshResult>;
+  ensureMainWorldHost(tabId: number, frameId?: number): Promise<unknown>;
+  ensureAgentationMain(tabId: number, frameId?: number): Promise<unknown>;
   normalizePageToolName?(tool: ExtensionControlTool): string;
 }
 
@@ -52,6 +54,8 @@ export const EXTENSION_CONTROL_TOOL_SUFFIXES = {
   getToolTree: "get_tool_tree",
   setToolsEnabled: "set_tools_enabled",
   refreshPageTools: "refresh_page_tools",
+  ensureMainWorldHost: "ensure_main_world_host",
+  ensureAgentationMain: "ensure_agentation_main",
 } as const;
 
 export const EXTENSION_CONTROL_LEGACY_TOOL_NAMES = {
@@ -61,6 +65,8 @@ export const EXTENSION_CONTROL_LEGACY_TOOL_NAMES = {
   getToolTree: "extension_get_tool_tree",
   setToolsEnabled: "extension_set_tools_enabled",
   refreshPageTools: "extension_refresh_page_tools",
+  ensureMainWorldHost: "extension_ensure_main_world_host",
+  ensureAgentationMain: "extension_ensure_agentation_main",
 } as const;
 
 const pageToolEnableUpdateSchema = z.object({
@@ -89,6 +95,8 @@ export class ExtensionControlBridgeProvider {
     getToolTree: string;
     setToolsEnabled: string;
     refreshPageTools: string;
+    ensureMainWorldHost: string;
+    ensureAgentationMain: string;
   } {
     return {
       getRuntimeStatus: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getRuntimeStatus}`,
@@ -97,6 +105,8 @@ export class ExtensionControlBridgeProvider {
       getToolTree: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
       setToolsEnabled: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
       refreshPageTools: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
+      ensureMainWorldHost: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureMainWorldHost}`,
+      ensureAgentationMain: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureAgentationMain}`,
     };
   }
 
@@ -167,6 +177,20 @@ export class ExtensionControlBridgeProvider {
       description: "Force extension to rediscover one tab's page tools and sync bridge registry.",
       inputSchema: {
         tabId: z.number().int().positive(),
+      },
+    };
+    const ensureMainWorldHostConfig = {
+      description: "Ensure MAIN world bridge host script is injected on the target tab/frame.",
+      inputSchema: {
+        tabId: z.number().int().positive(),
+        frameId: z.number().int().nonnegative().optional(),
+      },
+    };
+    const ensureAgentationMainConfig = {
+      description: "Ensure agentation-main.js is injected into MAIN world on the target tab/frame.",
+      inputSchema: {
+        tabId: z.number().int().positive(),
+        frameId: z.number().int().nonnegative().optional(),
       },
     };
 
@@ -267,6 +291,72 @@ export class ExtensionControlBridgeProvider {
       }
     };
 
+    const ensureMainWorldHostHandler = async (args: Record<string, unknown>) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
+      const frameId = parseOptionalFrameId(args.frameId);
+      if (!Number.isInteger(tabId) || tabId <= 0) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "tabId must be a positive integer",
+        }, null, 2));
+      }
+      if (args.frameId != null && frameId == null) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "frameId must be a non-negative integer",
+        }, null, 2));
+      }
+      try {
+        const result = await rpc.ensureMainWorldHost(tabId, frameId);
+        return createTextResponse(JSON.stringify({
+          ok: true,
+          tabId,
+          frameId: frameId ?? null,
+          result,
+        }, null, 2));
+      } catch (error) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          tabId,
+          frameId: frameId ?? null,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      }
+    };
+
+    const ensureAgentationMainHandler = async (args: Record<string, unknown>) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
+      const frameId = parseOptionalFrameId(args.frameId);
+      if (!Number.isInteger(tabId) || tabId <= 0) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "tabId must be a positive integer",
+        }, null, 2));
+      }
+      if (args.frameId != null && frameId == null) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "frameId must be a non-negative integer",
+        }, null, 2));
+      }
+      try {
+        const result = await rpc.ensureAgentationMain(tabId, frameId);
+        return createTextResponse(JSON.stringify({
+          ok: true,
+          tabId,
+          frameId: frameId ?? null,
+          result,
+        }, null, 2));
+      } catch (error) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          tabId,
+          frameId: frameId ?? null,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      }
+    };
+
     register(names.getToolTree, getToolTreeConfig, getToolTreeHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree, names.getToolTree, getToolTreeConfig, getToolTreeHandler);
 
@@ -285,6 +375,12 @@ export class ExtensionControlBridgeProvider {
     register(names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools, names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
 
+    register(names.ensureMainWorldHost, ensureMainWorldHostConfig, ensureMainWorldHostHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost, names.ensureMainWorldHost, ensureMainWorldHostConfig, ensureMainWorldHostHandler);
+
+    register(names.ensureAgentationMain, ensureAgentationMainConfig, ensureAgentationMainHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureAgentationMain, names.ensureAgentationMain, ensureAgentationMainConfig, ensureAgentationMainHandler);
+
     return handles;
   }
 }
@@ -295,4 +391,13 @@ function assertValidPageToolEnableUpdate(update: PageToolEnableUpdate, index: nu
   if (root === "page" && update.tabId == null) {
     throw new Error(`updates[${index}] requires tabId when root is "page"`);
   }
+}
+
+function parseOptionalFrameId(value: unknown): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
 }

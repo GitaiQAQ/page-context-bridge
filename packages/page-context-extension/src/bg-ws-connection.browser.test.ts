@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class FakeRpcPeer {
   private static nextSessionId = 0;
+  static registeredMethods: string[] = [];
 
-  register(): void {}
+  register(method: string): void {
+    FakeRpcPeer.registeredMethods.push(method);
+  }
 
   async request<T>(method: string): Promise<T> {
     if (method === BRIDGE_METHODS.sessionRegister) {
@@ -63,6 +66,18 @@ const BRIDGE_METHODS = {
   bridgeTabsList: "bridge/tabsList",
   sessionRegister: "session/register",
   sessionHeartbeat: "session/heartbeat",
+  extensionStatusGet: "extension.status.get",
+  extensionReconnect: "extension.session.reconnect",
+  extensionPageToolsGet: "extension.pageTools.get",
+  extensionPageToolsTreeGet: "extension.pageTools.tree.get",
+  extensionPageToolsDiscover: "extension.pageTools.discover",
+  extensionPageToolsRefresh: "extension.pageTools.refresh",
+  extensionPageToolsSetEnabled: "extension.pageTools.setEnabled",
+  extensionMainWorldHostEnsure: "extension.mainWorld.host.ensure",
+  extensionAgentationMainEnsure: "extension.agentation.main.ensure",
+  extensionContextManifestGet: "extension.context.manifest.get",
+  extensionContextResourceRead: "extension.context.resource.read",
+  extensionContextSkillGet: "extension.context.skill.get",
 } as const;
 
 vi.mock("@page-context/shared-protocol", () => ({
@@ -90,6 +105,7 @@ describe("connectWebSocket", () => {
     vi.useFakeTimers();
     vi.resetModules();
     FakeWebSocket.instances = [];
+    FakeRpcPeer.registeredMethods = [];
     (globalThis as { WebSocket: typeof WebSocket }).WebSocket = FakeWebSocket as unknown as typeof WebSocket;
     installChromeMock();
   });
@@ -122,6 +138,24 @@ describe("connectWebSocket", () => {
     secondSocket.emitOpen();
     await expect(secondConnect).resolves.toBeUndefined();
     expect(wsModule.getWsReady()).toBe(true);
+  });
+
+  it("registers ws-forward extension methods including ensure main-world routes", async () => {
+    const wsModule = await import("./bg-ws-connection");
+    const noop = vi.fn(async () => ({}));
+
+    const connectPromise = wsModule.connectWebSocket(noop, noop, noop);
+    await flushMicrotasks();
+    const socket = FakeWebSocket.instances[0];
+    if (!socket) {
+      throw new Error("Missing socket instance");
+    }
+    socket.emitOpen();
+    await connectPromise;
+
+    // 确保 bridge 可直接通过 WS 调起 MAIN world 自愈入口。
+    expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionMainWorldHostEnsure);
+    expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionAgentationMainEnsure);
   });
 });
 

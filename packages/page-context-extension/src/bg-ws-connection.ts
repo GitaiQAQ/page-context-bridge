@@ -5,7 +5,9 @@
 
 import {
   BRIDGE_METHODS,
+  RPC_ERROR_CODES,
   RpcPeer,
+  RpcProtocolError,
 } from "@page-context/shared-protocol";
 
 const DEFAULT_MCP_WS_URL = "ws://127.0.0.1:22335/default";
@@ -23,7 +25,25 @@ interface BridgeWsHandlers {
   onToolCall: (params: unknown, requestId: string) => Promise<unknown>;
   onToolsList: () => Promise<unknown>;
   onTabsList: () => Promise<unknown>;
+  onExtensionRequest: (method: string, params: unknown) => Promise<unknown>;
 }
+
+// 这些方法由 bridge 主动 request 到 extension，用于 MCP 控制工具与上下文读取。
+// 必须显式注册到 WS RpcPeer，否则 bridge 侧会收到 method not found（假接口风险）。
+const WS_FORWARD_EXTENSION_METHODS = [
+  BRIDGE_METHODS.extensionStatusGet,
+  BRIDGE_METHODS.extensionReconnect,
+  BRIDGE_METHODS.extensionPageToolsGet,
+  BRIDGE_METHODS.extensionPageToolsTreeGet,
+  BRIDGE_METHODS.extensionPageToolsDiscover,
+  BRIDGE_METHODS.extensionPageToolsRefresh,
+  BRIDGE_METHODS.extensionPageToolsSetEnabled,
+  BRIDGE_METHODS.extensionMainWorldHostEnsure,
+  BRIDGE_METHODS.extensionAgentationMainEnsure,
+  BRIDGE_METHODS.extensionContextManifestGet,
+  BRIDGE_METHODS.extensionContextResourceRead,
+  BRIDGE_METHODS.extensionContextSkillGet,
+] as const;
 
 let ws: WebSocket | null = null;
 let rpcPeer: RpcPeer | null = null;
@@ -60,6 +80,10 @@ export function setWsReady(ready: boolean): void {
 
 export function getRpcPeer(): RpcPeer | null {
   return rpcPeer;
+}
+
+async function defaultOnExtensionRequest(method: string): Promise<never> {
+  throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled WS extension method: ${method}`);
 }
 
 // 统一桥接请求入口：background 其它模块不需要直接操作 RpcPeer。
@@ -142,17 +166,32 @@ function scheduleReconnect(): void {
     if (!reconnectHandlers) {
       return;
     }
-    void connectWebSocket(reconnectHandlers.onToolCall, reconnectHandlers.onToolsList, reconnectHandlers.onTabsList);
+    void connectWebSocket(
+      reconnectHandlers.onToolCall,
+      reconnectHandlers.onToolsList,
+      reconnectHandlers.onTabsList,
+      reconnectHandlers.onExtensionRequest,
+    );
   }, delay);
   log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+}
+
+function registerForwardedExtensionMethods(
+  peer: RpcPeer,
+  onExtensionRequest: (method: string, params: unknown) => Promise<unknown>,
+): void {
+  for (const method of WS_FORWARD_EXTENSION_METHODS) {
+    peer.register(method, async (params: unknown) => await onExtensionRequest(method, params));
+  }
 }
 
 export async function connectWebSocket(
   onToolCall: (params: unknown, requestId: string) => Promise<unknown>,
   onToolsList: () => Promise<unknown>,
   onTabsList: () => Promise<unknown>,
+  onExtensionRequest: (method: string, params: unknown) => Promise<unknown> = defaultOnExtensionRequest,
 ): Promise<void> {
-  reconnectHandlers = { onToolCall, onToolsList, onTabsList };
+  reconnectHandlers = { onToolCall, onToolsList, onTabsList, onExtensionRequest };
 
   if (connectPromise) {
     return await connectPromise;
@@ -186,6 +225,7 @@ export async function connectWebSocket(
 
     rpcPeer.register(BRIDGE_METHODS.bridgeToolsList, async () => onToolsList());
     rpcPeer.register(BRIDGE_METHODS.bridgeTabsList, async () => onTabsList());
+    registerForwardedExtensionMethods(rpcPeer, onExtensionRequest);
 
     await new Promise<void>((resolve, reject) => {
       // 连接握手必须“只结算一次”：成功走 resolve，失败走 reject。
@@ -277,13 +317,14 @@ export function forceReconnect(
   onToolCall: (params: unknown, requestId: string) => Promise<unknown>,
   onToolsList: () => Promise<unknown>,
   onTabsList: () => Promise<unknown>,
+  onExtensionRequest: (method: string, params: unknown) => Promise<unknown> = defaultOnExtensionRequest,
 ): Promise<void> {
   clearReconnectTimer();
   reconnectAttempts = 0;
   wsReady = false;
   connectPromise = null;
   ws?.close();
-  return connectWebSocket(onToolCall, onToolsList, onTabsList);
+  return connectWebSocket(onToolCall, onToolsList, onTabsList, onExtensionRequest);
 }
 
 export function initDefaultWsUrl(): Promise<void> {

@@ -37,6 +37,8 @@ function createRegistry(feedbackAgentPushAdapter: FeedbackAgentPushAdapter | nul
     sendToolCall: async () => ({}),
     getRuntimeStatus: async () => ({ connected: true }),
     reconnectExtension: async () => ({ ok: true }),
+    ensureMainWorldHost: async () => ({ ok: true }),
+    ensureAgentationMain: async () => ({ ok: true }),
     getContextManifest: async () => null,
     getContextManifestDebug: async () => ({ manifest: null, rawManifest: null, debug: null }),
     refreshPageTools: async () => [],
