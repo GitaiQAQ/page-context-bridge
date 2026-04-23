@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { FeedbackPushAgentStatus, PageContextManifest } from "@page-context/shared-protocol";
+import {
+  FEEDBACK_CONTROL_LEGACY_TOOL_NAMES,
+  FEEDBACK_CONTROL_TOOL_SUFFIXES,
+} from "@page-context/builtin-tools";
 
 import { McpRegistry } from "./mcp-registry.js";
 import type { FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
@@ -31,7 +35,10 @@ class FakeMcpServer {
 function createRegistry(feedbackAgentPushAdapter: FeedbackAgentPushAdapter | null | undefined = null, env?: NodeJS.ProcessEnv) {
   return new McpRegistry({
     sendToolCall: async () => ({}),
+    getRuntimeStatus: async () => ({ connected: true }),
+    reconnectExtension: async () => ({ ok: true }),
     getContextManifest: async () => null,
+    getContextManifestDebug: async () => ({ manifest: null, rawManifest: null, debug: null }),
     refreshPageTools: async () => [],
     readContextResource: async () => ({ id: "r", text: "{}" }),
     getContextSkillPrompt: async () => null,
@@ -44,6 +51,12 @@ function parseTextResponse(payload: unknown) {
   const text = (payload as { content: Array<{ text: string }> }).content[0]?.text ?? "{}";
   return JSON.parse(text) as Record<string, unknown>;
 }
+
+const FEEDBACK_CONTROL_TOOL_NAMES = {
+  getSnapshot: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.getSnapshot}`,
+  createAnnotation: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.createAnnotation}`,
+  updateAnnotation: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.updateAnnotation}`,
+} as const;
 
 describe("mcp-registry feedback tools", () => {
   it("derives links from manifest and page tools while creating annotation", () => {
@@ -199,6 +212,57 @@ describe("mcp-registry feedback tools", () => {
       "annotation.claimed",
     ]);
     expect(typeof parsed.lastSeq).toBe("number");
+  });
+
+  it("registers namespaced feedback control tools and keeps legacy aliases", () => {
+    const registry = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.getSnapshot)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.createAnnotation)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.updateAnnotation)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.createAnnotation)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation)).toBe(true);
+  });
+
+  it("supports snapshot/create/update through namespaced feedback control tools", async () => {
+    const registry = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const create = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.createAnnotation);
+    const createdPayload = await create?.({
+      body: "首版问题描述",
+      priority: "normal",
+      tabId: 33,
+      url: "https://example.com/feedback",
+      actorId: "agent-9",
+      actorName: "Agent Nine",
+    });
+    const created = parseTextResponse(createdPayload).annotation as { id: string; body: string; priority: string };
+
+    const update = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.updateAnnotation);
+    const updatedPayload = await update?.({
+      annotationId: created.id,
+      body: "修订后的问题描述",
+      priority: "high",
+    });
+    const updated = parseTextResponse(updatedPayload).annotation as { body: string; priority: string };
+
+    const getSnapshot = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.getSnapshot);
+    const snapshotPayload = await getSnapshot?.({ tabId: 33 });
+    const snapshot = parseTextResponse(snapshotPayload);
+    const annotations = snapshot.annotations as Array<{ id: string; body: string; priority: string }>;
+
+    // 这里验证“同一条 annotation 经由 MCP create+update 后，快照可直接拉到最终态”。
+    expect(updated.body).toBe("修订后的问题描述");
+    expect(updated.priority).toBe("high");
+    expect(annotations.some((item) =>
+      item.id === created.id
+      && item.body === "修订后的问题描述"
+      && item.priority === "high")).toBe(true);
   });
 
   it("updates and dismisses annotation through registry methods", () => {

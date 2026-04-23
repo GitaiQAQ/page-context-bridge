@@ -27,6 +27,7 @@ import {
 import {
   BuiltinBridgeProvider,
   ExtensionControlBridgeProvider,
+  FeedbackControlBridgeProvider,
   type PageToolEnableUpdate,
 } from "@page-context/builtin-tools";
 import { z } from "zod";
@@ -104,6 +105,7 @@ export class McpRegistry {
   private enabledBuiltinToolNames: Set<string>;
   private readonly toolProviders: BridgeToolProvider[] = [new BuiltinBridgeProvider()];
   private readonly extensionToolControlProvider = new ExtensionControlBridgeProvider();
+  private readonly feedbackControlProvider = new FeedbackControlBridgeProvider();
 
   constructor(private readonly rpcCaller: ExtensionRpcCaller, tenantId = "default", options: McpRegistryOptions = {}) {
     this.enabledBuiltinToolNames = new Set(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
@@ -338,6 +340,23 @@ export class McpRegistry {
       ) as { remove: () => void };
       handles!.set(name, handle);
     };
+
+    // 反馈控制新入口收敛到 provider：统一 namespace 命名，并保留旧别名兼容。
+    const feedbackControlHandles = this.feedbackControlProvider.registerOnBridge(
+      (name, schema, handler) => mcpServer.registerTool(
+        name,
+        schema as unknown as Parameters<typeof mcpServer.registerTool>[1],
+        handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
+      ),
+      {
+        getFeedbackSnapshot: (params) => this.getFeedbackSnapshot(params),
+        createFeedbackAnnotation: (params) => this.createFeedbackAnnotation(params),
+        updateFeedbackAnnotation: (params) => this.updateFeedbackAnnotation(params),
+      },
+    );
+    for (const [toolName, handle] of feedbackControlHandles.entries()) {
+      handles.set(toolName, handle);
+    }
 
     register(
       "feedback_list_sessions",
