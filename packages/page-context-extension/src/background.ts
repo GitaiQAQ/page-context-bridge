@@ -693,6 +693,14 @@ chrome.runtime.onMessage.addListener(
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationDismiss: {
         const payload = (message.params ?? {}) as FeedbackAnnotationDismissParams;
+        // 与 create/update 对齐：在 extension 边界先拦截空 annotationId，避免无效 bridge 往返。
+        if (!payload.annotationId?.trim()) {
+          throw new Error("Feedback annotationId is required");
+        }
+        payload.annotationId = payload.annotationId.trim();
+        if (payload.dismissReason) {
+          payload.dismissReason = payload.dismissReason.trim() || undefined;
+        }
         return await requestBridgeMethod(BRIDGE_METHODS.feedbackAnnotationDismiss, payload);
       }
       case BRIDGE_METHODS.extensionPageEvent:

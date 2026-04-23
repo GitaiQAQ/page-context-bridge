@@ -28,17 +28,21 @@ describe("installFeedbackOverlay", () => {
     expect(selectionView.textContent).toContain("这是一段可选中文本");
   });
 
-  it("submits feedback through injected submit handler", async () => {
+  it("supports create -> update -> dismiss through injected handlers", async () => {
     selectTargetText();
-    const submitFeedback = vi.fn().mockResolvedValue({ ok: true });
+    const submitFeedback = vi.fn().mockResolvedValue({ annotation: { id: "anno-injected-1" } });
+    const updateFeedback = vi.fn().mockResolvedValue({ ok: true });
+    const dismissFeedback = vi.fn().mockResolvedValue({ ok: true });
 
-    installFeedbackOverlay({ submitFeedback });
+    installFeedbackOverlay({ submitFeedback, updateFeedback, dismissFeedback });
 
     const shadow = getOverlayShadowRoot();
     queryRequired<HTMLButtonElement>(shadow, "[data-entry]").click();
 
     const bodyInput = queryRequired<HTMLTextAreaElement>(shadow, "[data-body]");
     const prioritySelect = queryRequired<HTMLSelectElement>(shadow, "[data-priority]");
+    const annotationIdInput = queryRequired<HTMLInputElement>(shadow, "[data-annotation-id]");
+    const dismissReasonInput = queryRequired<HTMLInputElement>(shadow, "[data-dismiss-reason]");
     bodyInput.value = "这里需要补充错误态提示";
     prioritySelect.value = "high";
 
@@ -50,15 +54,35 @@ describe("installFeedbackOverlay", () => {
       priority: "high",
       selectedText: "这是一段可选中文本",
     });
+    // create 响应里若有 annotation id，应自动回填给后续动作复用。
+    expect(annotationIdInput.value).toBe("anno-injected-1");
+
+    queryRequired<HTMLButtonElement>(shadow, "[data-entry]").click();
+    bodyInput.value = "更新后的描述";
+    queryRequired<HTMLButtonElement>(shadow, "[data-update]").click();
+    await flushMicrotasks();
+    expect(updateFeedback).toHaveBeenCalledWith({
+      annotationId: "anno-injected-1",
+      body: "更新后的描述",
+      priority: "high",
+    });
+
+    dismissReasonInput.value = "误报";
+    queryRequired<HTMLButtonElement>(shadow, "[data-dismiss]").click();
+    await flushMicrotasks();
+    expect(dismissFeedback).toHaveBeenCalledWith({
+      annotationId: "anno-injected-1",
+      dismissReason: "误报",
+    });
   });
 
-  it("uses default runtime request path when submit handler is not injected", async () => {
+  it("uses default runtime request path for create/update/dismiss when handlers are not injected", async () => {
     selectTargetText();
 
-    const sendMessage = vi.fn(async (message: { id?: string }) => ({
+    const sendMessage = vi.fn(async (message: { id?: string; method?: string }) => ({
       jsonrpc: "2.0",
       id: message.id ?? "missing-id",
-      result: { ok: true },
+      result: message.method === BRIDGE_METHODS.extensionFeedbackAnnotationCreate ? { annotation: { id: "anno-runtime-1" } } : { ok: true },
     }));
     installChromeMock(sendMessage);
 
@@ -69,20 +93,55 @@ describe("installFeedbackOverlay", () => {
 
     const bodyInput = queryRequired<HTMLTextAreaElement>(shadow, "[data-body]");
     const prioritySelect = queryRequired<HTMLSelectElement>(shadow, "[data-priority]");
+    const annotationIdInput = queryRequired<HTMLInputElement>(shadow, "[data-annotation-id]");
+    const dismissReasonInput = queryRequired<HTMLInputElement>(shadow, "[data-dismiss-reason]");
     bodyInput.value = "  直接走 runtime 的提交链路  ";
     prioritySelect.value = "critical";
 
     queryRequired<HTMLFormElement>(shadow, "[data-panel]").requestSubmit();
     await flushMicrotasks();
 
-    expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(sendMessage).toHaveBeenCalledWith(
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         method: BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
         params: {
           body: "直接走 runtime 的提交链路",
           priority: "critical",
           selectedText: "这是一段可选中文本",
+        },
+      }),
+    );
+
+    // create 后会自动收起面板，重新打开继续 update/dismiss。
+    queryRequired<HTMLButtonElement>(shadow, "[data-entry]").click();
+    expect(annotationIdInput.value).toBe("anno-runtime-1");
+
+    bodyInput.value = "继续走 update";
+    queryRequired<HTMLButtonElement>(shadow, "[data-update]").click();
+    await flushMicrotasks();
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: BRIDGE_METHODS.extensionFeedbackAnnotationUpdate,
+        params: {
+          annotationId: "anno-runtime-1",
+          body: "继续走 update",
+          priority: "critical",
+        },
+      }),
+    );
+
+    dismissReasonInput.value = "重复反馈";
+    queryRequired<HTMLButtonElement>(shadow, "[data-dismiss]").click();
+    await flushMicrotasks();
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        method: BRIDGE_METHODS.extensionFeedbackAnnotationDismiss,
+        params: {
+          annotationId: "anno-runtime-1",
+          dismissReason: "重复反馈",
         },
       }),
     );

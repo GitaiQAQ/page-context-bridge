@@ -11,10 +11,23 @@ interface FeedbackCreatePayload {
   selectedText?: string;
 }
 
+interface FeedbackUpdatePayload {
+  annotationId: string;
+  body: string;
+  priority?: FeedbackPriority;
+}
+
+interface FeedbackDismissPayload {
+  annotationId: string;
+  dismissReason?: string;
+}
+
 interface FeedbackOverlayDeps {
   doc?: Document;
   win?: Window;
   submitFeedback?: (payload: FeedbackCreatePayload) => Promise<unknown>;
+  updateFeedback?: (payload: FeedbackUpdatePayload) => Promise<unknown>;
+  dismissFeedback?: (payload: FeedbackDismissPayload) => Promise<unknown>;
 }
 
 /**
@@ -35,6 +48,8 @@ export function installFeedbackOverlay(deps: FeedbackOverlayDeps = {}): void {
   }
 
   const submitFeedback = deps.submitFeedback ?? defaultSubmitFeedback;
+  const updateFeedback = deps.updateFeedback ?? defaultUpdateFeedback;
+  const dismissFeedback = deps.dismissFeedback ?? defaultDismissFeedback;
 
   const host = doc.createElement("div");
   host.id = FEEDBACK_OVERLAY_HOST_ID;
@@ -158,11 +173,17 @@ export function installFeedbackOverlay(deps: FeedbackOverlayDeps = {}): void {
           <option value="high">high</option>
           <option value="critical">critical</option>
         </select>
+        <label class="pc-feedback-label" for="pc-feedback-annotation-id">Annotation ID（用于 update / dismiss）</label>
+        <input id="pc-feedback-annotation-id" class="pc-feedback-select" data-annotation-id placeholder="例如 anno-123" />
+        <label class="pc-feedback-label" for="pc-feedback-dismiss-reason">Dismiss 原因（可选）</label>
+        <input id="pc-feedback-dismiss-reason" class="pc-feedback-select" data-dismiss-reason placeholder="误报 / 重复 / 已处理" />
         <label class="pc-feedback-label">当前选中文本</label>
         <p class="pc-feedback-selection" data-selection>未检测到页面选中内容</p>
         <div class="pc-feedback-actions">
           <button type="button" class="pc-feedback-btn" data-refresh-selection>刷新选中</button>
-          <button type="submit" class="pc-feedback-btn pc-feedback-btn-primary" data-submit>提交</button>
+          <button type="button" class="pc-feedback-btn" data-update>更新</button>
+          <button type="button" class="pc-feedback-btn" data-dismiss>Dismiss</button>
+          <button type="submit" class="pc-feedback-btn pc-feedback-btn-primary" data-submit>Create</button>
         </div>
         <p class="pc-feedback-status info" data-status aria-live="polite">Idle</p>
       </form>
@@ -173,24 +194,32 @@ export function installFeedbackOverlay(deps: FeedbackOverlayDeps = {}): void {
   const panel = queryRequired<HTMLFormElement>(shadow, "[data-panel]");
   const bodyInput = queryRequired<HTMLTextAreaElement>(shadow, "[data-body]");
   const prioritySelect = queryRequired<HTMLSelectElement>(shadow, "[data-priority]");
+  const annotationIdInput = queryRequired<HTMLInputElement>(shadow, "[data-annotation-id]");
+  const dismissReasonInput = queryRequired<HTMLInputElement>(shadow, "[data-dismiss-reason]");
   const selectionView = queryRequired<HTMLParagraphElement>(shadow, "[data-selection]");
   const refreshSelectionButton = queryRequired<HTMLButtonElement>(shadow, "[data-refresh-selection]");
+  const updateButton = queryRequired<HTMLButtonElement>(shadow, "[data-update]");
+  const dismissButton = queryRequired<HTMLButtonElement>(shadow, "[data-dismiss]");
   const submitButton = queryRequired<HTMLButtonElement>(shadow, "[data-submit]");
   const statusView = queryRequired<HTMLParagraphElement>(shadow, "[data-status]");
 
   let cachedSelection = "";
   let currentSelectionText = "";
-  let submitting = false;
+  let mutating = false;
 
   const setStatus = (message: string, level: "info" | "success" | "error" = "info") => {
     statusView.textContent = message;
     statusView.className = `pc-feedback-status ${level}`;
   };
 
-  const setSubmitting = (next: boolean) => {
-    submitting = next;
+  const setMutating = (next: boolean) => {
+    mutating = next;
     submitButton.disabled = next;
+    updateButton.disabled = next;
+    dismissButton.disabled = next;
     refreshSelectionButton.disabled = next;
+    annotationIdInput.disabled = next;
+    dismissReasonInput.disabled = next;
     entryButton.disabled = next;
   };
 
@@ -232,13 +261,48 @@ export function installFeedbackOverlay(deps: FeedbackOverlayDeps = {}): void {
   });
 
   refreshSelectionButton.addEventListener("click", () => {
+    if (mutating) {
+      return;
+    }
     refreshSelection();
     setStatus("已刷新选中内容", "info");
   });
 
+  const buildUpdatePayload = (): FeedbackUpdatePayload | null => {
+    // update 与 create 共用 body/priority 输入，校验集中在这里，减少分支重复。
+    const annotationId = annotationIdInput.value.trim();
+    if (!annotationId) {
+      setStatus("请输入 Annotation ID", "error");
+      annotationIdInput.focus();
+      return null;
+    }
+    const body = bodyInput.value.trim();
+    if (!body) {
+      setStatus("请输入反馈内容", "error");
+      bodyInput.focus();
+      return null;
+    }
+    return {
+      annotationId,
+      body,
+      priority: (prioritySelect.value as FeedbackPriority) || "normal",
+    };
+  };
+
+  const getAnnotationIdOrFail = (): string | null => {
+    // dismiss 只依赖 annotationId，原因字段保持可选，尽量不阻塞操作链路。
+    const annotationId = annotationIdInput.value.trim();
+    if (annotationId) {
+      return annotationId;
+    }
+    setStatus("请输入 Annotation ID", "error");
+    annotationIdInput.focus();
+    return null;
+  };
+
   panel.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (submitting) {
+    if (mutating) {
       return;
     }
 
@@ -249,15 +313,20 @@ export function installFeedbackOverlay(deps: FeedbackOverlayDeps = {}): void {
       return;
     }
 
-    setSubmitting(true);
+    setMutating(true);
     setStatus("Submitting...", "info");
 
     try {
-      await submitFeedback({
+      const result = await submitFeedback({
         body,
         priority: (prioritySelect.value as FeedbackPriority) || "normal",
         selectedText: currentSelectionText || undefined,
       });
+      // create 成功后尽量自动回填 id，让 update/dismiss 能无缝接着走。
+      const createdAnnotationId = extractAnnotationId(result);
+      if (createdAnnotationId) {
+        annotationIdInput.value = createdAnnotationId;
+      }
       bodyInput.value = "";
       setStatus("反馈已创建", "success");
       closePanel();
@@ -265,7 +334,54 @@ export function installFeedbackOverlay(deps: FeedbackOverlayDeps = {}): void {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`提交失败: ${message}`, "error");
     } finally {
-      setSubmitting(false);
+      setMutating(false);
+    }
+  });
+
+  updateButton.addEventListener("click", async () => {
+    if (mutating) {
+      return;
+    }
+    const payload = buildUpdatePayload();
+    if (!payload) {
+      return;
+    }
+
+    setMutating(true);
+    setStatus("Updating...", "info");
+    try {
+      await updateFeedback(payload);
+      setStatus("反馈已更新", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`更新失败: ${message}`, "error");
+    } finally {
+      setMutating(false);
+    }
+  });
+
+  dismissButton.addEventListener("click", async () => {
+    if (mutating) {
+      return;
+    }
+    const annotationId = getAnnotationIdOrFail();
+    if (!annotationId) {
+      return;
+    }
+
+    setMutating(true);
+    setStatus("Dismissing...", "info");
+    try {
+      await dismissFeedback({
+        annotationId,
+        dismissReason: dismissReasonInput.value.trim() || undefined,
+      });
+      setStatus("反馈已 dismiss", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Dismiss 失败: ${message}`, "error");
+    } finally {
+      setMutating(false);
     }
   });
 }
@@ -322,4 +438,31 @@ function queryRequired<T extends Element>(root: ParentNode, selector: string): T
 
 async function defaultSubmitFeedback(payload: FeedbackCreatePayload): Promise<unknown> {
   return await sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, payload);
+}
+
+async function defaultUpdateFeedback(payload: FeedbackUpdatePayload): Promise<unknown> {
+  return await sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate, payload);
+}
+
+async function defaultDismissFeedback(payload: FeedbackDismissPayload): Promise<unknown> {
+  return await sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, payload);
+}
+
+function extractAnnotationId(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
+  const record = result as Record<string, unknown>;
+  if (typeof record.id === "string" && record.id.trim()) {
+    return record.id.trim();
+  }
+  const annotation = record.annotation;
+  if (!annotation || typeof annotation !== "object") {
+    return undefined;
+  }
+  const annotationId = (annotation as { id?: unknown }).id;
+  if (typeof annotationId === "string" && annotationId.trim()) {
+    return annotationId.trim();
+  }
+  return undefined;
 }

@@ -222,6 +222,101 @@ describe("background feedback runtime route", () => {
     expect(response?.id).toBe("req-feedback-3");
     expect(response?.error?.message).toContain("Feedback body is required");
   });
+
+  it("maps extension update request to bridge update call with normalized payload", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+
+    listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackAnnotationUpdate,
+        {
+          annotationId: "  anno-2  ",
+          body: "  update body  ",
+          priority: "critical",
+        },
+        "req-feedback-4",
+      ),
+      {} as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await flushMicrotasks();
+
+    expect(requestBridgeMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.feedbackAnnotationUpdate,
+      {
+        annotationId: "anno-2",
+        body: "update body",
+        priority: "critical",
+      },
+      { timeoutMs: 20_000 },
+    );
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+    });
+    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: unknown } | undefined;
+    expect(response?.id).toBe("req-feedback-4");
+    expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
+  });
+
+  it("maps extension dismiss request to bridge dismiss call with normalized payload", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+
+    listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackAnnotationDismiss,
+        {
+          annotationId: "  anno-3  ",
+          dismissReason: "  duplicated  ",
+        },
+        "req-feedback-5",
+      ),
+      {} as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await flushMicrotasks();
+
+    expect(requestBridgeMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.feedbackAnnotationDismiss,
+      {
+        annotationId: "anno-3",
+        dismissReason: "duplicated",
+      },
+      { timeoutMs: 20_000 },
+    );
+    await vi.waitFor(() => {
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+    });
+    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: unknown } | undefined;
+    expect(response?.id).toBe("req-feedback-5");
+    expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
+  });
+
+  it("returns rpc error response when dismiss annotationId is empty", async () => {
+    const listener = await importBackgroundAndGetRuntimeMessageListener();
+    const sendResponse = vi.fn();
+
+    listener(
+      createRequest(
+        BRIDGE_METHODS.extensionFeedbackAnnotationDismiss,
+        {
+          annotationId: "   ",
+          dismissReason: "invalid",
+        },
+        "req-feedback-6",
+      ),
+      {} as chrome.runtime.MessageSender,
+      sendResponse,
+    );
+    await flushMicrotasks();
+
+    // 输入校验失败时不应进入 bridge 请求。
+    expect(requestBridgeMock).not.toHaveBeenCalled();
+    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; error?: { message?: string } } | undefined;
+    expect(response?.id).toBe("req-feedback-6");
+    expect(response?.error?.message).toContain("Feedback annotationId is required");
+  });
 });
 
 async function importBackgroundAndGetRuntimeMessageListener() {
