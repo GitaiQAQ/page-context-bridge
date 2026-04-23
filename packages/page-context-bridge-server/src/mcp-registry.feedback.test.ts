@@ -58,6 +58,10 @@ const FEEDBACK_CONTROL_TOOL_NAMES = {
   getSnapshot: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.getSnapshot}`,
   createAnnotation: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.createAnnotation}`,
   updateAnnotation: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.updateAnnotation}`,
+  claim: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.claim}`,
+  reply: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.reply}`,
+  resolve: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.resolve}`,
+  dismiss: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.dismiss}`,
 } as const;
 
 describe("mcp-registry feedback tools", () => {
@@ -193,7 +197,7 @@ describe("mcp-registry feedback tools", () => {
     registry.addServer(fakeServer as unknown as McpServer);
 
     expect(fakeServer.tools.has("feedback_watch_events")).toBe(true);
-    expect(fakeServer.tools.has("feedback_claim_annotation")).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.claim)).toBe(true);
 
     const created = registry.createFeedbackAnnotation({
       body: "列表加载慢",
@@ -201,7 +205,7 @@ describe("mcp-registry feedback tools", () => {
       url: "https://example.com/list",
     });
 
-    const claim = fakeServer.tools.get("feedback_claim_annotation");
+    const claim = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.claim);
     await claim?.({ annotationId: created.id, actorId: "agent-1", actorName: "Agent One" });
 
     const watch = fakeServer.tools.get("feedback_watch_events");
@@ -224,12 +228,20 @@ describe("mcp-registry feedback tools", () => {
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.getSnapshot)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.createAnnotation)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.updateAnnotation)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.claim)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.reply)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.resolve)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.dismiss)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.createAnnotation)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.claim)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.reply)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.resolve)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.dismiss)).toBe(true);
   });
 
-  it("supports snapshot/create/update through namespaced feedback control tools", async () => {
+  it("supports full lifecycle through namespaced feedback control tools", async () => {
     const registry = createRegistry();
     const fakeServer = new FakeMcpServer();
     registry.addServer(fakeServer as unknown as McpServer);
@@ -253,14 +265,55 @@ describe("mcp-registry feedback tools", () => {
     });
     const updated = parseTextResponse(updatedPayload).annotation as { body: string; priority: string };
 
+    const claim = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.claim);
+    const claimedPayload = await claim?.({ annotationId: created.id, actorId: "agent-9", actorName: "Agent Nine" });
+    const claimed = parseTextResponse(claimedPayload).annotation as { status: string };
+
+    const reply = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.reply);
+    const repliedPayload = await reply?.({
+      annotationId: created.id,
+      body: "先复现并补日志，再给出修复 PR",
+      kind: "action_note",
+      actorId: "agent-9",
+    });
+    const replied = parseTextResponse(repliedPayload).annotation as { thread: Array<{ body: string; kind: string }> };
+
+    const resolve = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.resolve);
+    const resolvedPayload = await resolve?.({
+      annotationId: created.id,
+      resolution: "已定位为防抖参数错误并完成修复",
+      actorId: "agent-9",
+    });
+    const resolved = parseTextResponse(resolvedPayload).annotation as { status: string; resolution?: string };
+
+    const createSecondPayload = await create?.({
+      body: "误报样例",
+      tabId: 33,
+      url: "https://example.com/feedback",
+    });
+    const createdSecond = parseTextResponse(createSecondPayload).annotation as { id: string };
+    const dismiss = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.dismiss);
+    const dismissedPayload = await dismiss?.({
+      annotationId: createdSecond.id,
+      dismissReason: "与已处理主问题重复",
+      actorId: "agent-9",
+    });
+    const dismissed = parseTextResponse(dismissedPayload).annotation as { status: string; dismissReason?: string };
+
     const getSnapshot = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.getSnapshot);
     const snapshotPayload = await getSnapshot?.({ tabId: 33 });
     const snapshot = parseTextResponse(snapshotPayload);
     const annotations = snapshot.annotations as Array<{ id: string; body: string; priority: string }>;
 
-    // 这里验证“同一条 annotation 经由 MCP create+update 后，快照可直接拉到最终态”。
+    // 验证 feedback.* 主入口串起完整流程，且状态变更与 thread 都落在同一份 store 真值里。
     expect(updated.body).toBe("修订后的问题描述");
     expect(updated.priority).toBe("high");
+    expect(claimed.status).toBe("claimed");
+    expect(replied.thread.some((item) => item.body.includes("补日志") && item.kind === "action_note")).toBe(true);
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolution).toContain("防抖参数错误");
+    expect(dismissed.status).toBe("dismissed");
+    expect(dismissed.dismissReason).toContain("重复");
     expect(annotations.some((item) =>
       item.id === created.id
       && item.body === "修订后的问题描述"

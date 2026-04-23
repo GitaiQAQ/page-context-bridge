@@ -355,6 +355,10 @@ export class McpRegistry {
         getFeedbackSnapshot: (params) => this.getFeedbackSnapshot(params),
         createFeedbackAnnotation: (params) => this.createFeedbackAnnotation(params),
         updateFeedbackAnnotation: (params) => this.updateFeedbackAnnotation(params),
+        claimFeedbackAnnotation: (params) => this.claimFeedbackAnnotation(params),
+        replyFeedbackAnnotation: (params) => this.replyFeedbackAnnotation(params),
+        resolveFeedbackAnnotation: (params) => this.resolveFeedbackAnnotation(params),
+        dismissFeedbackAnnotation: (params) => this.dismissFeedbackAnnotation(params),
       },
     );
     for (const [toolName, handle] of feedbackControlHandles.entries()) {
@@ -425,124 +429,6 @@ export class McpRegistry {
         if (!annotation) {
           return createTextResponse(JSON.stringify({ error: `Annotation not found: ${annotationId}` }, null, 2));
         }
-        return createTextResponse(JSON.stringify({ annotation }, null, 2));
-      },
-    );
-
-    register(
-      "feedback_claim_annotation",
-      {
-        description: "Claim an open feedback annotation for execution.",
-        inputSchema: {
-          annotationId: z.string().min(1),
-          actorId: z.string().optional(),
-          actorName: z.string().optional(),
-        },
-      },
-      async (args) => {
-        const annotationId = typeof args.annotationId === "string" ? args.annotationId : "";
-        const actorId = typeof args.actorId === "string" ? args.actorId : undefined;
-        const actorName = typeof args.actorName === "string" ? args.actorName : undefined;
-        const annotation = this.claimFeedbackAnnotation({
-          annotationId,
-          actor: createFeedbackActor({
-            source: "agent",
-            id: actorId ?? "mcp.agent",
-            displayName: actorName ?? "MCP Agent",
-          }),
-        });
-        return createTextResponse(JSON.stringify({ annotation }, null, 2));
-      },
-    );
-
-    register(
-      "feedback_reply_annotation",
-      {
-        description: "Append a reply to an annotation thread.",
-        inputSchema: {
-          annotationId: z.string().min(1),
-          body: z.string().min(1),
-          kind: z.enum(["comment", "action_note", "resolution_note"]).optional(),
-          actorId: z.string().optional(),
-          actorName: z.string().optional(),
-        },
-      },
-      async (args) => {
-        const annotationId = typeof args.annotationId === "string" ? args.annotationId : "";
-        const body = typeof args.body === "string" ? args.body : "";
-        const kind = args.kind === "action_note" || args.kind === "resolution_note" || args.kind === "comment"
-          ? args.kind
-          : undefined;
-        const actorId = typeof args.actorId === "string" ? args.actorId : undefined;
-        const actorName = typeof args.actorName === "string" ? args.actorName : undefined;
-        const annotation = this.replyFeedbackAnnotation({
-          annotationId,
-          body,
-          kind,
-          actor: createFeedbackActor({
-            source: "agent",
-            id: actorId ?? "mcp.agent",
-            displayName: actorName ?? "MCP Agent",
-          }),
-        });
-        return createTextResponse(JSON.stringify({ annotation }, null, 2));
-      },
-    );
-
-    register(
-      "feedback_resolve_annotation",
-      {
-        description: "Resolve a claimed feedback annotation.",
-        inputSchema: {
-          annotationId: z.string().min(1),
-          resolution: z.string().optional(),
-          actorId: z.string().optional(),
-          actorName: z.string().optional(),
-        },
-      },
-      async (args) => {
-        const annotationId = typeof args.annotationId === "string" ? args.annotationId : "";
-        const resolution = typeof args.resolution === "string" ? args.resolution : undefined;
-        const actorId = typeof args.actorId === "string" ? args.actorId : undefined;
-        const actorName = typeof args.actorName === "string" ? args.actorName : undefined;
-        const annotation = this.resolveFeedbackAnnotation({
-          annotationId,
-          resolution,
-          actor: createFeedbackActor({
-            source: "agent",
-            id: actorId ?? "mcp.agent",
-            displayName: actorName ?? "MCP Agent",
-          }),
-        });
-        return createTextResponse(JSON.stringify({ annotation }, null, 2));
-      },
-    );
-
-    register(
-      "feedback_dismiss_annotation",
-      {
-        description: "Dismiss a feedback annotation.",
-        inputSchema: {
-          annotationId: z.string().min(1),
-          dismissReason: z.string().optional(),
-          actorId: z.string().optional(),
-          actorName: z.string().optional(),
-        },
-      },
-      async (args) => {
-        const annotationId = typeof args.annotationId === "string" ? args.annotationId : "";
-        const dismissReason = typeof args.dismissReason === "string" ? args.dismissReason : undefined;
-        const actorId = typeof args.actorId === "string" ? args.actorId : undefined;
-        const actorName = typeof args.actorName === "string" ? args.actorName : undefined;
-        const annotation = this.dismissFeedbackAnnotation({
-          annotationId,
-          dismissReason,
-          actor: createFeedbackActor({
-            source: "agent",
-            id: actorId ?? "mcp.agent",
-            displayName: actorName ?? "MCP Agent",
-          }),
-        });
         return createTextResponse(JSON.stringify({ annotation }, null, 2));
       },
     );

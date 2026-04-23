@@ -8,7 +8,11 @@
 import type {
   FeedbackActor,
   FeedbackActorSource,
+  FeedbackAnnotationClaimParams,
   FeedbackAnnotationCreateParams,
+  FeedbackAnnotationDismissParams,
+  FeedbackAnnotationReplyParams,
+  FeedbackAnnotationResolveParams,
   FeedbackAnnotationUpdateParams,
   FeedbackStateSnapshotParams,
 } from "@page-context/shared-protocol";
@@ -22,6 +26,10 @@ export interface FeedbackControlBridgeRpc {
   getFeedbackSnapshot(params: FeedbackStateSnapshotParams): unknown;
   createFeedbackAnnotation(params: FeedbackAnnotationCreateParams): unknown;
   updateFeedbackAnnotation(params: FeedbackAnnotationUpdateParams): unknown;
+  claimFeedbackAnnotation(params: FeedbackAnnotationClaimParams): unknown;
+  replyFeedbackAnnotation(params: FeedbackAnnotationReplyParams): unknown;
+  resolveFeedbackAnnotation(params: FeedbackAnnotationResolveParams): unknown;
+  dismissFeedbackAnnotation(params: FeedbackAnnotationDismissParams): unknown;
 }
 
 export interface FeedbackControlBridgeProviderOptions {
@@ -33,12 +41,20 @@ export const FEEDBACK_CONTROL_TOOL_SUFFIXES = {
   getSnapshot: "get_snapshot",
   createAnnotation: "create_annotation",
   updateAnnotation: "update_annotation",
+  claim: "claim",
+  reply: "reply",
+  resolve: "resolve",
+  dismiss: "dismiss",
 } as const;
 
 export const FEEDBACK_CONTROL_LEGACY_TOOL_NAMES = {
   getSnapshot: "feedback_get_snapshot",
   createAnnotation: "feedback_create_annotation",
   updateAnnotation: "feedback_update_annotation",
+  claim: "feedback_claim_annotation",
+  reply: "feedback_reply_annotation",
+  resolve: "feedback_resolve_annotation",
+  dismiss: "feedback_dismiss_annotation",
 } as const;
 
 const feedbackPrioritySchema = z.enum(["low", "normal", "high", "critical"]);
@@ -98,6 +114,38 @@ const feedbackUpdateAnnotationSchema = z.object({
   actorName: z.string().trim().min(1).optional(),
 });
 
+const feedbackClaimAnnotationSchema = z.object({
+  annotationId: z.string().trim().min(1),
+  actorSource: feedbackActorSourceSchema.optional(),
+  actorId: z.string().trim().min(1).optional(),
+  actorName: z.string().trim().min(1).optional(),
+});
+
+const feedbackReplyAnnotationSchema = z.object({
+  annotationId: z.string().trim().min(1),
+  body: z.string().trim().min(1),
+  kind: z.enum(["comment", "action_note", "resolution_note"]).optional(),
+  actorSource: feedbackActorSourceSchema.optional(),
+  actorId: z.string().trim().min(1).optional(),
+  actorName: z.string().trim().min(1).optional(),
+});
+
+const feedbackResolveAnnotationSchema = z.object({
+  annotationId: z.string().trim().min(1),
+  resolution: z.string().trim().min(1).optional(),
+  actorSource: feedbackActorSourceSchema.optional(),
+  actorId: z.string().trim().min(1).optional(),
+  actorName: z.string().trim().min(1).optional(),
+});
+
+const feedbackDismissAnnotationSchema = z.object({
+  annotationId: z.string().trim().min(1),
+  dismissReason: z.string().trim().min(1).optional(),
+  actorSource: feedbackActorSourceSchema.optional(),
+  actorId: z.string().trim().min(1).optional(),
+  actorName: z.string().trim().min(1).optional(),
+});
+
 export class FeedbackControlBridgeProvider {
   readonly id = "feedback-control";
   private readonly namespace: string;
@@ -112,11 +160,19 @@ export class FeedbackControlBridgeProvider {
     getSnapshot: string;
     createAnnotation: string;
     updateAnnotation: string;
+    claim: string;
+    reply: string;
+    resolve: string;
+    dismiss: string;
   } {
     return {
       getSnapshot: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.getSnapshot}`,
       createAnnotation: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.createAnnotation}`,
       updateAnnotation: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.updateAnnotation}`,
+      claim: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.claim}`,
+      reply: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.reply}`,
+      resolve: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.resolve}`,
+      dismiss: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.dismiss}`,
     };
   }
 
@@ -193,6 +249,46 @@ export class FeedbackControlBridgeProvider {
         actorName: feedbackUpdateAnnotationSchema.shape.actorName,
       },
     };
+    const claimConfig = {
+      description: "Claim an open feedback annotation for execution.",
+      inputSchema: {
+        annotationId: feedbackClaimAnnotationSchema.shape.annotationId,
+        actorSource: feedbackClaimAnnotationSchema.shape.actorSource,
+        actorId: feedbackClaimAnnotationSchema.shape.actorId,
+        actorName: feedbackClaimAnnotationSchema.shape.actorName,
+      },
+    };
+    const replyConfig = {
+      description: "Append a reply to an annotation thread.",
+      inputSchema: {
+        annotationId: feedbackReplyAnnotationSchema.shape.annotationId,
+        body: feedbackReplyAnnotationSchema.shape.body,
+        kind: feedbackReplyAnnotationSchema.shape.kind,
+        actorSource: feedbackReplyAnnotationSchema.shape.actorSource,
+        actorId: feedbackReplyAnnotationSchema.shape.actorId,
+        actorName: feedbackReplyAnnotationSchema.shape.actorName,
+      },
+    };
+    const resolveConfig = {
+      description: "Resolve a claimed feedback annotation.",
+      inputSchema: {
+        annotationId: feedbackResolveAnnotationSchema.shape.annotationId,
+        resolution: feedbackResolveAnnotationSchema.shape.resolution,
+        actorSource: feedbackResolveAnnotationSchema.shape.actorSource,
+        actorId: feedbackResolveAnnotationSchema.shape.actorId,
+        actorName: feedbackResolveAnnotationSchema.shape.actorName,
+      },
+    };
+    const dismissConfig = {
+      description: "Dismiss a feedback annotation.",
+      inputSchema: {
+        annotationId: feedbackDismissAnnotationSchema.shape.annotationId,
+        dismissReason: feedbackDismissAnnotationSchema.shape.dismissReason,
+        actorSource: feedbackDismissAnnotationSchema.shape.actorSource,
+        actorId: feedbackDismissAnnotationSchema.shape.actorId,
+        actorName: feedbackDismissAnnotationSchema.shape.actorName,
+      },
+    };
 
     const getSnapshotHandler = async (args: Record<string, unknown>) => {
       const parsed = feedbackGetSnapshotSchema.parse(args);
@@ -226,6 +322,46 @@ export class FeedbackControlBridgeProvider {
       return createTextResponse(JSON.stringify({ annotation }, null, 2));
     };
 
+    const claimHandler = async (args: Record<string, unknown>) => {
+      const parsed = feedbackClaimAnnotationSchema.parse(args);
+      const annotation = rpc.claimFeedbackAnnotation({
+        annotationId: parsed.annotationId,
+        actor: toFeedbackActor(parsed.actorSource, parsed.actorId, parsed.actorName),
+      });
+      return createTextResponse(JSON.stringify({ annotation }, null, 2));
+    };
+
+    const replyHandler = async (args: Record<string, unknown>) => {
+      const parsed = feedbackReplyAnnotationSchema.parse(args);
+      const annotation = rpc.replyFeedbackAnnotation({
+        annotationId: parsed.annotationId,
+        body: parsed.body,
+        kind: parsed.kind,
+        actor: toFeedbackActor(parsed.actorSource, parsed.actorId, parsed.actorName),
+      });
+      return createTextResponse(JSON.stringify({ annotation }, null, 2));
+    };
+
+    const resolveHandler = async (args: Record<string, unknown>) => {
+      const parsed = feedbackResolveAnnotationSchema.parse(args);
+      const annotation = rpc.resolveFeedbackAnnotation({
+        annotationId: parsed.annotationId,
+        resolution: parsed.resolution,
+        actor: toFeedbackActor(parsed.actorSource, parsed.actorId, parsed.actorName),
+      });
+      return createTextResponse(JSON.stringify({ annotation }, null, 2));
+    };
+
+    const dismissHandler = async (args: Record<string, unknown>) => {
+      const parsed = feedbackDismissAnnotationSchema.parse(args);
+      const annotation = rpc.dismissFeedbackAnnotation({
+        annotationId: parsed.annotationId,
+        dismissReason: parsed.dismissReason,
+        actor: toFeedbackActor(parsed.actorSource, parsed.actorId, parsed.actorName),
+      });
+      return createTextResponse(JSON.stringify({ annotation }, null, 2));
+    };
+
     register(names.getSnapshot, getSnapshotConfig, getSnapshotHandler);
     registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot, names.getSnapshot, getSnapshotConfig, getSnapshotHandler);
 
@@ -234,6 +370,19 @@ export class FeedbackControlBridgeProvider {
 
     register(names.updateAnnotation, updateAnnotationConfig, updateAnnotationHandler);
     registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation, names.updateAnnotation, updateAnnotationConfig, updateAnnotationHandler);
+
+    // 动作类入口统一走 feedback.*，别名仅用于兼容历史调用。
+    register(names.claim, claimConfig, claimHandler);
+    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.claim, names.claim, claimConfig, claimHandler);
+
+    register(names.reply, replyConfig, replyHandler);
+    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.reply, names.reply, replyConfig, replyHandler);
+
+    register(names.resolve, resolveConfig, resolveHandler);
+    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.resolve, names.resolve, resolveConfig, resolveHandler);
+
+    register(names.dismiss, dismissConfig, dismissHandler);
+    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.dismiss, names.dismiss, dismissConfig, dismissHandler);
 
     return handles;
   }

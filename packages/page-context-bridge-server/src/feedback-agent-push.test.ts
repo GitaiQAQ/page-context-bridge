@@ -165,8 +165,8 @@ describe("feedback-agent-push adapter", () => {
     expect(prompt).toContain("tenant_id: tenant-z");
     expect(prompt).toContain("annotation_id: annotation_77");
     expect(prompt).toContain("feedback_get_annotation");
-    expect(prompt).toContain("feedback_claim_annotation");
-    expect(prompt).toContain("feedback_reply_annotation");
-    expect(prompt).toContain("feedback_resolve_annotation");
+    expect(prompt).toContain("feedback.claim");
+    expect(prompt).toContain("feedback.reply");
+    expect(prompt).toContain("feedback.resolve");
   });
 });
