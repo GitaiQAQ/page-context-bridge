@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { installAgentationShell, type AgentationShellFeedbackDelta, type AgentationShellFeedbackSnapshot } from "@page-context/agentation-shell";
+import type { Annotation as AgentationAnnotation } from "./agentation-source-runtime";
 import {
   AGENTATION_REACT_HOST_ID,
   AGENTATION_REACT_ROOT_ENTRY_KEY,
@@ -447,6 +448,167 @@ describe("agentation react root entry integration", () => {
     });
   });
 
+  it("queues marker update before create returns and flushes to remote id afterwards", async () => {
+    vi.resetModules();
+    const callbacks: {
+      onAnnotationAdd?: (annotation: AgentationAnnotation) => void;
+      onAnnotationUpdate?: (annotation: AgentationAnnotation) => void;
+    } = {};
+
+    vi.doMock("./agentation-source-runtime", async () => {
+      const React = await vi.importActual<typeof import("react")>("react");
+      return {
+        Agentation: (props: {
+          onAnnotationAdd?: (annotation: AgentationAnnotation) => void;
+          onAnnotationUpdate?: (annotation: AgentationAnnotation) => void;
+        }) => {
+          callbacks.onAnnotationAdd = props.onAnnotationAdd;
+          callbacks.onAnnotationUpdate = props.onAnnotationUpdate;
+          return React.createElement("div", { "data-agentation-root": "true" });
+        },
+      };
+    });
+
+    try {
+      const [{ registerAgentationReactRootEntry: registerEntry }, { installAgentationReactRoot: installReactRoot }] = await Promise.all([
+        import("./agentation-react-root"),
+        import("./feedback-ui-adapter"),
+      ]);
+
+      registerEntry({ win: window });
+      let resolveCreate: ((result: { id: string }) => void) | null = null;
+      const createAnnotation = vi.fn().mockImplementation(
+        () =>
+          new Promise<{ id: string }>((resolve) => {
+            resolveCreate = resolve;
+          }),
+      );
+      const updateAnnotation = vi.fn().mockResolvedValue({ ok: true });
+
+      const mounted = installReactRoot({
+        adapter: {
+          createAnnotation,
+          updateAnnotation,
+        },
+        doc: document,
+        win: window,
+      });
+      expect(mounted).toBe(true);
+
+      await vi.waitFor(() => {
+        expect(typeof callbacks.onAnnotationAdd).toBe("function");
+        expect(typeof callbacks.onAnnotationUpdate).toBe("function");
+      });
+
+      callbacks.onAnnotationAdd?.(buildMockAgentationAnnotation({
+        id: "local-queue-update-1",
+        comment: "before update",
+        severity: "important",
+      }));
+      callbacks.onAnnotationUpdate?.(buildMockAgentationAnnotation({
+        id: "local-queue-update-1",
+        comment: "after update",
+        severity: "blocking",
+      }));
+
+      expect(createAnnotation).toHaveBeenCalledTimes(1);
+      // create 还没返回 remoteId 前，update 只入队，不应提前发 RPC。
+      expect(updateAnnotation).toHaveBeenCalledTimes(0);
+
+      resolveCreate?.({ id: "remote-update-1" });
+      await vi.waitFor(() => {
+        expect(updateAnnotation).toHaveBeenCalledTimes(1);
+      });
+      expect(updateAnnotation).toHaveBeenCalledWith({
+        annotationId: "remote-update-1",
+        body: "after update",
+        priority: "critical",
+      });
+    } finally {
+      vi.doUnmock("./agentation-source-runtime");
+      vi.resetModules();
+    }
+  });
+
+  it("queues marker delete before create returns and flushes dismiss after remote id is known", async () => {
+    vi.resetModules();
+    const callbacks: {
+      onAnnotationAdd?: (annotation: AgentationAnnotation) => void;
+      onAnnotationDelete?: (annotation: AgentationAnnotation) => void;
+    } = {};
+
+    vi.doMock("./agentation-source-runtime", async () => {
+      const React = await vi.importActual<typeof import("react")>("react");
+      return {
+        Agentation: (props: {
+          onAnnotationAdd?: (annotation: AgentationAnnotation) => void;
+          onAnnotationDelete?: (annotation: AgentationAnnotation) => void;
+        }) => {
+          callbacks.onAnnotationAdd = props.onAnnotationAdd;
+          callbacks.onAnnotationDelete = props.onAnnotationDelete;
+          return React.createElement("div", { "data-agentation-root": "true" });
+        },
+      };
+    });
+
+    try {
+      const [{ registerAgentationReactRootEntry: registerEntry }, { installAgentationReactRoot: installReactRoot }] = await Promise.all([
+        import("./agentation-react-root"),
+        import("./feedback-ui-adapter"),
+      ]);
+
+      registerEntry({ win: window });
+      let resolveCreate: ((result: { id: string }) => void) | null = null;
+      const createAnnotation = vi.fn().mockImplementation(
+        () =>
+          new Promise<{ id: string }>((resolve) => {
+            resolveCreate = resolve;
+          }),
+      );
+      const dismissAnnotation = vi.fn().mockResolvedValue({ ok: true });
+
+      const mounted = installReactRoot({
+        adapter: {
+          createAnnotation,
+          dismissAnnotation,
+        },
+        doc: document,
+        win: window,
+      });
+      expect(mounted).toBe(true);
+
+      await vi.waitFor(() => {
+        expect(typeof callbacks.onAnnotationAdd).toBe("function");
+        expect(typeof callbacks.onAnnotationDelete).toBe("function");
+      });
+
+      callbacks.onAnnotationAdd?.(buildMockAgentationAnnotation({
+        id: "local-queue-dismiss-1",
+        comment: "dismiss me",
+      }));
+      callbacks.onAnnotationDelete?.(buildMockAgentationAnnotation({
+        id: "local-queue-dismiss-1",
+        comment: "dismiss me",
+      }));
+
+      expect(createAnnotation).toHaveBeenCalledTimes(1);
+      // create 结果未返回前先记账，避免删除动作丢失。
+      expect(dismissAnnotation).toHaveBeenCalledTimes(0);
+
+      resolveCreate?.({ id: "remote-dismiss-1" });
+      await vi.waitFor(() => {
+        expect(dismissAnnotation).toHaveBeenCalledTimes(1);
+      });
+      expect(dismissAnnotation).toHaveBeenCalledWith({
+        annotationId: "remote-dismiss-1",
+        dismissReason: "marker deleted from agentation package",
+      });
+    } finally {
+      vi.doUnmock("./agentation-source-runtime");
+      vi.resetModules();
+    }
+  });
+
   it("keeps direct installAgentationShell path available", () => {
     const mounted = installAgentationShell({
       adapter: createAdapterMock(),
@@ -562,6 +724,26 @@ function buildFeedbackDeltaEvent(options: {
     occurredAt: "2026-04-22T00:00:00.000Z",
     source: "bridge",
     payload: {},
+  };
+}
+
+function buildMockAgentationAnnotation(overrides: Partial<AgentationAnnotation> = {}): AgentationAnnotation {
+  return {
+    id: overrides.id ?? "mock-local-annotation",
+    x: overrides.x ?? 40,
+    y: overrides.y ?? 120,
+    comment: overrides.comment ?? "mock comment",
+    element: overrides.element ?? "button",
+    elementPath: overrides.elementPath ?? "#target",
+    timestamp: overrides.timestamp ?? 1_234_567_890,
+    selectedText: overrides.selectedText,
+    boundingBox: overrides.boundingBox,
+    fullPath: overrides.fullPath,
+    reactComponents: overrides.reactComponents,
+    sourceFile: overrides.sourceFile,
+    isMultiSelect: overrides.isMultiSelect,
+    isFixed: overrides.isFixed,
+    severity: overrides.severity,
   };
 }
 

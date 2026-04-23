@@ -45,6 +45,13 @@ const entryByWindow = new WeakMap<Window, AgentationReactRootEntryObject>();
 interface AgentationRemoteBinding {
   remoteId?: string;
   priority: FeedbackPriority;
+  // create 未返回 remoteId 前，先把“最后一次编辑”暂存，返回后再补发。
+  pendingUpdate?: {
+    body: string;
+    priority: FeedbackPriority;
+  };
+  // create 结果晚到时，仍需把本地已删动作补发到远端，避免“UI 已删但 agent 仍保留”。
+  dismissRequested?: boolean;
 }
 
 interface AgentationPackageMountBridgeProps extends AgentationReactRootEntryMountArgs {
@@ -341,6 +348,70 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
   const [portalTargetReady, setPortalTargetReady] = useState(() => hasAgentationPortalTarget(props.doc));
   const [packageRemountVersion, setPackageRemountVersion] = useState(0);
 
+  const sendPendingDismiss = useCallback(
+    (localId: string, remoteId: string) => {
+      const dismissAnnotation = props.adapter.dismissAnnotation;
+      if (!dismissAnnotation) {
+        return;
+      }
+      const payload: AgentationShellDismissAnnotationInput = {
+        annotationId: remoteId,
+        dismissReason: AGENTATION_SHELL_DISMISS_REASON,
+      };
+      void dismissAnnotation(payload).catch((error) => {
+        props.logger?.("error", "agentation package dismiss annotation failed", {
+          localId,
+          remoteId,
+          error,
+        });
+      });
+    },
+    [props.adapter, props.logger],
+  );
+
+  const sendPendingUpdate = useCallback(
+    (localId: string, remoteId: string, update: NonNullable<AgentationRemoteBinding["pendingUpdate"]>) => {
+      const updateAnnotation = props.adapter.updateAnnotation;
+      if (!updateAnnotation) {
+        return;
+      }
+      const payload: AgentationShellUpdateAnnotationInput = {
+        annotationId: remoteId,
+        body: update.body,
+        priority: update.priority,
+      };
+      void updateAnnotation(payload).catch((error) => {
+        props.logger?.("error", "agentation package update annotation failed", {
+          localId,
+          remoteId,
+          error,
+        });
+      });
+    },
+    [props.adapter, props.logger],
+  );
+
+  const flushPendingMutationAfterCreate = useCallback(
+    (localId: string, binding: AgentationRemoteBinding) => {
+      if (!binding.remoteId) {
+        return;
+      }
+      // 删除优先级最高：已删就不再补发编辑，避免远端出现“先改后删”的短暂噪声。
+      if (binding.dismissRequested) {
+        sendPendingDismiss(localId, binding.remoteId);
+        remoteBindingByLocalIdRef.current.delete(localId);
+        return;
+      }
+      if (binding.pendingUpdate) {
+        const pending = binding.pendingUpdate;
+        binding.pendingUpdate = undefined;
+        binding.priority = pending.priority;
+        sendPendingUpdate(localId, binding.remoteId, pending);
+      }
+    },
+    [sendPendingDismiss, sendPendingUpdate],
+  );
+
   useLayoutEffect(() => {
     // React root 正常工作时，显式写入“当前模式=react-root”。
     markFeedbackUiMode("react-root", {
@@ -538,23 +609,30 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         .createAnnotation(payload)
         .then((result) => {
           const remoteId = normalizeAnnotationId(result.id);
-          if (!remoteId) {
-            return;
-          }
           const binding = remoteBindingByLocalIdRef.current.get(localId);
           if (!binding) {
             return;
           }
+          if (!remoteId) {
+            props.logger?.("error", "agentation package create annotation returned empty remote id", {
+              localId,
+              result,
+            });
+            remoteBindingByLocalIdRef.current.delete(localId);
+            return;
+          }
           binding.remoteId = remoteId;
+          flushPendingMutationAfterCreate(localId, binding);
         })
         .catch((error) => {
+          remoteBindingByLocalIdRef.current.delete(localId);
           props.logger?.("error", "agentation package create annotation failed", {
             localId,
             error,
           });
         });
     },
-    [props.adapter, props.logger, props.win],
+    [flushPendingMutationAfterCreate, props.adapter, props.logger, props.win],
   );
 
   const handleAnnotationUpdate = useCallback(
@@ -569,7 +647,7 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         return;
       }
       const binding = remoteBindingByLocalIdRef.current.get(localId);
-      if (!binding?.remoteId) {
+      if (!binding) {
         return;
       }
 
@@ -578,10 +656,24 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         return;
       }
 
+      const priority = toFeedbackPriority(annotation);
+      binding.priority = priority;
+      if (binding.dismissRequested) {
+        return;
+      }
+
+      if (!binding.remoteId) {
+        binding.pendingUpdate = {
+          body,
+          priority,
+        };
+        return;
+      }
+
       const payload: AgentationShellUpdateAnnotationInput = {
         annotationId: binding.remoteId,
         body,
-        priority: binding.priority,
+        priority,
       };
       void updateAnnotation(payload).catch((error) => {
         props.logger?.("error", "agentation package update annotation failed", {
@@ -601,26 +693,26 @@ function AgentationPackageMountBridge(props: AgentationPackageMountBridgeProps) 
         return;
       }
       const binding = remoteBindingByLocalIdRef.current.get(localId);
-      remoteBindingByLocalIdRef.current.delete(localId);
-
-      const dismissAnnotation = props.adapter.dismissAnnotation;
-      if (!dismissAnnotation || !binding?.remoteId) {
+      if (!binding) {
         return;
       }
 
-      const payload: AgentationShellDismissAnnotationInput = {
-        annotationId: binding.remoteId,
-        dismissReason: AGENTATION_SHELL_DISMISS_REASON,
-      };
-      void dismissAnnotation(payload).catch((error) => {
-        props.logger?.("error", "agentation package dismiss annotation failed", {
-          localId,
-          remoteId: binding.remoteId,
-          error,
-        });
-      });
+      const dismissAnnotation = props.adapter.dismissAnnotation;
+      if (!dismissAnnotation) {
+        remoteBindingByLocalIdRef.current.delete(localId);
+        return;
+      }
+      if (!binding.remoteId) {
+        // create 未返回前先记账，等拿到 remoteId 后补发 dismiss。
+        binding.dismissRequested = true;
+        binding.pendingUpdate = undefined;
+        return;
+      }
+
+      remoteBindingByLocalIdRef.current.delete(localId);
+      sendPendingDismiss(localId, binding.remoteId);
     },
-    [props.adapter, props.logger],
+    [props.adapter.dismissAnnotation, sendPendingDismiss],
   );
 
   return (
