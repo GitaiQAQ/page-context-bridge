@@ -72,11 +72,35 @@ export interface ToolTreeBuiltins {
   kind: "builtins";
   totalTools: number;
   enabledTools: number;
+  namespaces: ToolTreeBuiltinNamespace[];
+  /**
+   * 兼容字段：保留平铺视图，避免旧调用方一次性断裂。
+   * 新逻辑应优先使用 namespaces 树结构。
+   */
+  tools: ToolTreeBuiltinTool[];
+}
+
+export interface ToolTreeBuiltinNamespace {
+  kind: "builtin-namespace";
+  namespace: string;
+  totalTools: number;
+  enabledTools: number;
+  instances: ToolTreeBuiltinInstance[];
+}
+
+export interface ToolTreeBuiltinInstance {
+  kind: "builtin-instance";
+  namespace: string;
+  instanceId: string;
+  totalTools: number;
+  enabledTools: number;
   tools: ToolTreeBuiltinTool[];
 }
 
 export interface ToolTreeBuiltinTool {
   kind: "builtin-tool";
+  namespace: string;
+  instanceId: string;
   toolName: string;
   label: string;
   description?: string;

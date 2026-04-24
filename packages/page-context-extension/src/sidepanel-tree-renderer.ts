@@ -153,7 +153,7 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
 function renderBuiltinToolNode(tool: ToolTreeBuiltinTool): TemplateResult {
   const bridgeControl = isBridgeControlBuiltinTool(tool);
   const subtitle = bridgeControl
-    ? `${tool.description ? tool.description : tool.toolName}（Bridge/MCP 控制工具，仅展示）`
+    ? `${tool.description ? tool.description : tool.toolName} (Bridge/MCP control tool, display only)`
     : (tool.description ? tool.description : tool.toolName);
   return renderTreeRow({
     level: "tool",

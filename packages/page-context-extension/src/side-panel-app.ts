@@ -69,7 +69,7 @@ const customRules = css`
 type FeedbackActionFormMode = "reply" | "resolve" | "dismiss" | null;
 type FeedbackActionInputField = "replyBody" | "resolveNote" | "dismissReason";
 
-// sidepanel 只维护交互态；业务真值依然来自 bridge snapshot。
+// Sidepanel only maintains interaction state; business truth still comes from bridge snapshot.
 interface FeedbackAnnotationActionState {
   mode: FeedbackActionFormMode;
   replyBody: string;
@@ -499,7 +499,7 @@ export class SidePanelApp extends LitElement {
   private async _submitFeedback(): Promise<void> {
     const body = this._feedbackBody.trim();
     if (!body) {
-      this._feedbackCreateStatus = "请输入反馈内容";
+      this._feedbackCreateStatus = "Please enter feedback content";
       this._feedbackCreateStatusClass = "text-xs font-semibold text-error";
       return;
     }
@@ -514,7 +514,7 @@ export class SidePanelApp extends LitElement {
         priority: this._feedbackPriority,
       } satisfies FeedbackCreateInput);
       this._feedbackBody = "";
-      this._feedbackCreateStatus = "已创建";
+      this._feedbackCreateStatus = "Created";
       this._feedbackCreateStatusClass = "text-xs font-semibold text-success";
       await this._loadFeedbackSnapshot();
     } catch (error) {
@@ -584,7 +584,7 @@ export class SidePanelApp extends LitElement {
   }
 
   private _reconcileFeedbackActionStates(annotations: FeedbackAnnotation[]): void {
-    // 仅保留当前快照里的 annotation 状态，避免轮询后残留无效本地状态。
+    // Only keep annotation states from current snapshot to avoid retaining invalid local states after polling.
     const next: Record<string, FeedbackAnnotationActionState> = {};
     for (const annotation of annotations) {
       next[annotation.id] = this._feedbackActionStateByAnnotationId[annotation.id] ?? this._createFeedbackActionState();
@@ -632,7 +632,7 @@ export class SidePanelApp extends LitElement {
     successMessage: string,
     onSuccess: (state: FeedbackAnnotationActionState) => FeedbackAnnotationActionState,
   ): Promise<void> {
-    // 统一 mutation 流程：先更新本地提交态，再走 RPC，成功后强制 reload snapshot。
+    // Unified mutation flow: first update local submission state, then make RPC call, force reload snapshot after success.
     this._updateFeedbackActionState(annotationId, (current) => ({
       ...current,
       submitting: true,
@@ -665,7 +665,7 @@ export class SidePanelApp extends LitElement {
       () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationClaim, {
         annotationId,
       } satisfies FeedbackAnnotationClaimParams),
-      "已认领",
+      "Claimed",
       (state) => ({ ...state, mode: null }),
     );
   }
@@ -676,7 +676,7 @@ export class SidePanelApp extends LitElement {
     if (!body) {
       this._updateFeedbackActionState(annotationId, (current) => ({
         ...current,
-        error: "回复内容不能为空",
+        error: "Reply content cannot be empty",
       }));
       return;
     }
@@ -687,7 +687,7 @@ export class SidePanelApp extends LitElement {
         annotationId,
         body,
       } satisfies FeedbackAnnotationReplyParams),
-      "回复已提交",
+      "Reply submitted",
       (current) => ({ ...current, mode: null, replyBody: "" }),
     );
   }
@@ -700,7 +700,7 @@ export class SidePanelApp extends LitElement {
         annotationId,
         resolution: state.resolveNote.trim() || undefined,
       } satisfies FeedbackAnnotationResolveParams),
-      "已标记为 resolved",
+      "Marked as resolved",
       (current) => ({ ...current, mode: null, resolveNote: "" }),
     );
   }
@@ -713,13 +713,13 @@ export class SidePanelApp extends LitElement {
         annotationId,
         dismissReason: state.dismissReason.trim() || undefined,
       } satisfies FeedbackAnnotationDismissParams),
-      "已 dismiss",
+      "Dismissed",
       (current) => ({ ...current, mode: null, dismissReason: "" }),
     );
   }
 
   private _canClaimAnnotation(status: FeedbackAnnotationStatus): boolean {
-    // 与 bridge 侧状态机保持一致，避免前端发起必然失败的转移。
+    // Keep consistent with bridge-side state machine to avoid frontend initiating inevitably failed transitions.
     return status === "open" || status === "needs_info";
   }
 
@@ -737,13 +737,13 @@ export class SidePanelApp extends LitElement {
 
   private _formatFeedbackTime(timestamp: string): string {
     const date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString("zh-CN", { hour12: false });
+    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString("en-US", { hour12: false });
   }
 
   private _renderFeedbackThread(annotation: FeedbackAnnotation): TemplateResult {
-    // 线程详情直接展示 actor/kind/time，便于在 sidepanel 内完成最基本协作沟通。
+    // Thread details directly show actor/kind/time, facilitating basic collaborative communication within sidepanel.
     if (annotation.thread.length === 0) {
-      return html`<div class="text-xs opacity-50">暂无 thread 消息</div>`;
+      return html`<div class="text-xs opacity-50">No thread messages</div>`;
     }
 
     return html`
@@ -764,20 +764,20 @@ export class SidePanelApp extends LitElement {
   }
 
   private _renderFeedbackActionForm(annotation: FeedbackAnnotation, state: FeedbackAnnotationActionState): TemplateResult {
-    // 内联表单只负责采集输入，真正状态变化由 RPC 成功后的 snapshot 刷新决定。
+    // Inline forms are only responsible for collecting input; actual state changes are determined by snapshot refresh after successful RPC.
     if (state.mode === "reply") {
       return html`
         <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
           <textarea
             class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
-            placeholder="补充处理进展或追问信息"
+            placeholder="Add processing progress or follow-up questions"
             .value=${state.replyBody}
             @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "replyBody", event)}
           ></textarea>
           <div class="flex items-center gap-2">
-            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>取消</button>
+            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>Cancel</button>
             <button class="btn btn-xs btn-primary ml-auto" .disabled=${state.submitting} @click=${() => this._replyFeedbackAnnotation(annotation.id)}>
-              ${state.submitting ? "Submitting..." : "提交回复"}
+              ${state.submitting ? "Submitting..." : "Submit Reply"}
             </button>
           </div>
         </div>
@@ -789,14 +789,14 @@ export class SidePanelApp extends LitElement {
         <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
           <textarea
             class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
-            placeholder="可选：填写 resolution 说明"
+            placeholder="Optional: fill in resolution notes"
             .value=${state.resolveNote}
             @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "resolveNote", event)}
           ></textarea>
           <div class="flex items-center gap-2">
-            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>取消</button>
+            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>Cancel</button>
             <button class="btn btn-xs btn-success ml-auto" .disabled=${state.submitting} @click=${() => this._resolveFeedbackAnnotation(annotation.id)}>
-              ${state.submitting ? "Submitting..." : "确认 Resolve"}
+              ${state.submitting ? "Submitting..." : "Confirm Resolve"}
             </button>
           </div>
         </div>
@@ -808,14 +808,14 @@ export class SidePanelApp extends LitElement {
         <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
           <input
             class="input input-sm input-bordered"
-            placeholder="可选：填写 dismiss 原因"
+            placeholder="Optional: fill in dismiss reason"
             .value=${state.dismissReason}
             @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "dismissReason", event)}
           />
           <div class="flex items-center gap-2">
-            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>取消</button>
+            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>Cancel</button>
             <button class="btn btn-xs btn-warning ml-auto" .disabled=${state.submitting} @click=${() => this._dismissFeedbackAnnotation(annotation.id)}>
-              ${state.submitting ? "Submitting..." : "确认 Dismiss"}
+              ${state.submitting ? "Submitting..." : "Confirm Dismiss"}
             </button>
           </div>
         </div>
@@ -847,7 +847,7 @@ export class SidePanelApp extends LitElement {
           ? html`<button class="btn btn-xs btn-warning btn-outline" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "dismiss")}>Dismiss</button>`
           : nothing}
         ${(!canClaim && !canReply && !canResolve && !canDismiss)
-          ? html`<span class="text-xs opacity-50">当前状态无可执行动作</span>`
+          ? html`<span class="text-xs opacity-50">No actions available in current state</span>`
           : nothing}
       </div>
       ${state.error ? html`<div class="text-xs text-error">${state.error}</div>` : nothing}
@@ -1304,7 +1304,7 @@ export class SidePanelApp extends LitElement {
                 <span class="${this._feedbackPushAgentBadgeClass(feedbackPushAgentStatus)} ml-auto">${this._feedbackPushAgentBadgeText(feedbackPushAgentStatus)}</span>
               </div>
               ${!feedbackPushAgentStatus
-                ? html`<div class="text-xs opacity-60">当前快照未携带 push-agent 状态。</div>`
+                ? html`<div class="text-xs opacity-60">Current snapshot does not contain push-agent status.</div>`
                 : html`
                   <div class="text-xs opacity-70">
                     enabled: <span class="font-mono">${String(feedbackPushAgentStatus.enabled)}</span>
@@ -1322,7 +1322,7 @@ export class SidePanelApp extends LitElement {
                         ? html`<div class="text-xs text-error">failure: ${feedbackPushAgentStatus.lastLaunch.failureReason}</div>`
                         : nothing}
                     `
-                    : html`<div class="text-xs opacity-60">last launch: (暂无记录)</div>`}
+                    : html`<div class="text-xs opacity-60">last launch: (no records yet)</div>`}
                 `}
             </div>
           </div>
@@ -1332,7 +1332,7 @@ export class SidePanelApp extends LitElement {
               <div class="font-bold text-sm">Create Feedback</div>
               <textarea
                 class="textarea textarea-sm textarea-bordered min-h-[6rem]"
-                placeholder="描述问题、预期行为、复现信息"
+                placeholder="Describe the problem, expected behavior, reproduction steps"
                 .value=${this._feedbackBody}
                 @input=${this._handleFeedbackBodyInput}
               ></textarea>
@@ -1354,7 +1354,7 @@ export class SidePanelApp extends LitElement {
               <div class="text-xs opacity-70">
                 ${currentFeedbackSession
                   ? html`Active Tab: #${currentFeedbackSession.tabId} · ${currentFeedbackSession.title || currentFeedbackSession.url}`
-                  : html`Active Tab: (未创建 session)`}
+                  : html`Active Tab: (session not created)`}
               </div>
               ${feedbackAnnotations[0]?.target.textQuote
                 ? html`<div class="text-xs opacity-70">Selected Text: ${feedbackAnnotations[0].target.textQuote}</div>`
@@ -1375,14 +1375,14 @@ export class SidePanelApp extends LitElement {
                 ? html`<div class="text-xs text-error">${this._feedbackError}</div>`
                 : nothing}
               ${!currentFeedbackSession
-                ? html`<div class="text-xs opacity-60">当前页面还没有反馈记录。</div>`
+                ? html`<div class="text-xs opacity-60">No feedback records for current page yet.</div>`
                 : html`
                   <div class="text-xs opacity-70">
                     Session ${currentFeedbackSession.id} · seq ${currentFeedbackSession.lastEventSeq}
                   </div>
                   <div class="flex flex-col gap-2">
                     ${feedbackAnnotations.length === 0
-                      ? html`<div class="text-xs opacity-60">暂无 annotation。</div>`
+                      ? html`<div class="text-xs opacity-60">No annotations yet.</div>`
                       : html`${feedbackAnnotations.map((annotation) => html`
                         <div class="border border-base-300 rounded-lg p-2 bg-base-100 flex flex-col gap-1.5">
                           <div class="flex items-center gap-2">
@@ -1418,7 +1418,7 @@ export class SidePanelApp extends LitElement {
                                 ${annotation.linkedCapabilities.relatedSkillIds.map((skill) => html`<span class="badge badge-ghost badge-xs">skill:${skill}</span>`)}
                               </div>
                             `
-                            : html`<div class="text-xs opacity-50">无关联 capability</div>`}
+                            : html`<div class="text-xs opacity-50">No related capabilities</div>`}
                           ${this._renderFeedbackActions(annotation)}
                           ${this._renderFeedbackThread(annotation)}
                         </div>

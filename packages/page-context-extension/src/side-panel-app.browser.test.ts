@@ -250,7 +250,7 @@ describe("side-panel-app tools tree interactions", () => {
     await vi.waitFor(() => {
       // Builtin root should be unchecked
       expect(findCheckbox(element, { scope: "builtin" })?.checked).toBe(false);
-      // 普通 builtin 可关闭；bridge control builtin 保持只读可见，不参与开关。
+      // Regular builtin can be disabled; bridge control builtin remains read-only visible, not participating in toggle.
       expect(findCheckbox(element, { scope: "builtin", toolName: "builtin.get_page_info" })?.checked).toBe(false);
       expect(findCheckbox(element, { scope: "builtin", toolName: "builtin.navigate" })?.checked).toBe(false);
       expect(findCheckbox(element, { scope: "builtin", toolName: "extension.get_runtime_status" })?.checked).toBe(true);
