@@ -342,7 +342,7 @@ describe("mcp-registry extension tool control tools", () => {
     const payload = await handler?.({ tabId: 88 });
     const parsed = parseTextResponse(payload);
 
-    // After agent actively refreshes, it should immediately write the latest tools back to the current registry to avoid waiting for async notifications.
+    // agent 主动刷新后，应立即把最新工具写回当前 registry，避免等待异步通知。
     expect(refreshPageTools).toHaveBeenCalledTimes(1);
     expect(refreshPageTools).toHaveBeenCalledWith(88);
     expect(getContextManifest).toHaveBeenCalledTimes(1);
@@ -413,7 +413,7 @@ describe("mcp-registry extension tool control tools", () => {
     });
     const parsed = parseTextResponse(payload);
 
-    // Combined entry must reuse existing atomic actions and execute each step only once for easy failure stage identification.
+    // 组合入口必须复用既有原子动作，且每步只执行一次，便于定位失败阶段。
     expect(getRuntimeStatus).toHaveBeenCalledTimes(1);
     expect(ensureMainWorldHost).toHaveBeenCalledTimes(1);
     expect(ensureMainWorldHost).toHaveBeenCalledWith(88, 2);

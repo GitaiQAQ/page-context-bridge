@@ -478,13 +478,13 @@ export class McpRegistry {
   // ── Page tools ──
 
   async refreshPageToolsForTab(tabId: number): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
-    // Active refresh follows "discover + local registry overwrite" path to ensure agent sees new tools immediately in current session.
+    // 主动刷新走“discover + 本地 registry 覆盖”路径，保证 agent 当前会话立即看到新工具。
     const tools = await this.rpcCaller.refreshPageTools(tabId);
     this.unregisterPageToolsFromAllServers(tabId);
     this.setPageTools(tabId, tools);
     this.registerPageToolsOnAllServers(tabId, tools);
 
-    // Manifest sync failure doesn't affect tool refresh; downgrade to null to avoid rolling back the entire refresh operation.
+    // manifest 同步失败不影响 tools 刷新，降级为 null，避免整个刷新动作回滚。
     const manifest = await this.rpcCaller.getContextManifest(tabId).catch((error) => {
       log(`Refresh manifest failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
@@ -781,7 +781,7 @@ function expandBuiltinToolNameAliases(toolNames: string[]): Set<string> {
     if (legacyName) {
       expanded.add(legacyName);
     }
-    // Non-runtime builtin tools (like extension.* / feedback.*) keep their original names.
+    // 非 runtime builtin（如 extension.* / feedback.*）保持原名即可。
     if (canonicalName !== name) {
       expanded.add(name);
     }

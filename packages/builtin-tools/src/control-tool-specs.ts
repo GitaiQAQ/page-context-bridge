@@ -61,7 +61,7 @@ function addControlToolSpec(
   name: string,
   schema: { description: string; inputSchema: Record<string, unknown>; annotations?: Record<string, unknown> },
 ): void {
-  // Only include canonical namespace names to avoid duplicate legacy aliases in sidepanel/tool-tree.
+  // 仅收敛 canonical namespace 名称，避免 sidepanel/tool-tree 中出现 legacy alias 重复项。
   if (!name.includes(".")) {
     return;
   }
