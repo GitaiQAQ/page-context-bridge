@@ -1,11 +1,12 @@
 /**
  * Bridge-side provider for extension control tools.
  *
- * 这些工具在 bridge 侧本地执行，用于管理“工具树可见性/启用状态”和主动刷新页面工具。
- * 命名统一走 namespace 形式：`extension.*`。
+ * 这批工具在 bridge 侧本地执行，用于管理工具树启停状态并主动刷新 page tools。
+ * 命名统一走 `extension.*` namespace。
  */
 
 import { z } from "zod";
+import { toCanonicalBuiltinRuntimeToolName } from "./runtime-tool-names.js";
 
 function createTextResponse(text: string) {
   return { content: [{ type: "text" as const, text }] };
@@ -151,7 +152,7 @@ export class ExtensionControlBridgeProvider {
         alias,
         {
           ...config,
-          // 旧名只做兼容，不再作为首选入口。
+          // 旧名仅做兼容，不再作为首选入口。
           description: `${config.description} (Deprecated alias. Use '${primaryName}' instead.)`,
         },
         handler,
@@ -227,7 +228,7 @@ export class ExtensionControlBridgeProvider {
 
     const getRuntimeStatusHandler = async () => {
       try {
-        // 状态查询保持“纯透传”，避免 bridge 侧自造字段导致调试口径漂移。
+        // 状态查询保持透传，避免 bridge 侧拼装字段导致调试口径漂移。
         const status = await rpc.getRuntimeStatus();
         return createTextResponse(JSON.stringify(status, null, 2));
       } catch (error) {
@@ -240,7 +241,7 @@ export class ExtensionControlBridgeProvider {
 
     const reconnectHandler = async () => {
       try {
-        // 重连行为仍由 extension 控制，bridge 只触发并返回执行结果。
+        // 重连行为仍由 extension 决定，bridge 只负责触发并返回结果。
         const result = await rpc.reconnectExtension();
         return createTextResponse(JSON.stringify({
           ok: true,
@@ -263,7 +264,7 @@ export class ExtensionControlBridgeProvider {
         }, null, 2));
       }
       try {
-        // manifest debug 直接复用 extension 现有返回结构，避免重复拼装调试信息。
+        // manifest debug 直接复用 extension 现有结构，避免重复拼装。
         const payload = await rpc.getContextManifestDebug(tabId);
         return createTextResponse(JSON.stringify(payload, null, 2));
       } catch (error) {
@@ -279,7 +280,7 @@ export class ExtensionControlBridgeProvider {
       const updates = Array.isArray(args.updates)
         ? (args.updates as PageToolEnableUpdate[])
         : [];
-      // 明确拒绝“page scope 缺 tabId”的输入，避免进入 extension 后变成静默 no-op。
+      // 明确拒绝 page scope 缺 tabId 的输入，避免进入 extension 后静默 no-op。
       for (let index = 0; index < updates.length; index += 1) {
         assertValidPageToolEnableUpdate(updates[index]!, index);
       }
@@ -355,7 +356,7 @@ export class ExtensionControlBridgeProvider {
         error: error instanceof Error ? error.message : String(error),
       }, null, 2));
 
-      // 运行时状态只用于诊断，拉取失败不阻断准备流程。
+      // runtime status 仅用于诊断，拉取失败不阻断准备流程。
       const runtimeStatus = await rpc.getRuntimeStatus().catch((error) => ({
         ok: false,
         error: error instanceof Error ? error.message : String(error),
@@ -391,7 +392,7 @@ export class ExtensionControlBridgeProvider {
 
       const pageToolsEnabled = enableReadOnlyPageTools ?? true;
       const builtinToolsEnabled = enableReadOnlyBuiltins ?? false;
-      // 仅收集“只读 + 未启用”的候选，避免误打开高风险变更型工具。
+      // 仅收集“只读 + 未启用”候选，避免误开高风险变更型工具。
       const updates = collectReadOnlyEnableUpdatesForPrepare(tree, {
         tabId,
         enableReadOnlyPageTools: pageToolsEnabled,
@@ -454,7 +455,7 @@ export class ExtensionControlBridgeProvider {
       }
 
       try {
-        // 安全入口必须先看工具树：只允许“启用 + 只读”工具进入 extension.tool.debug.call。
+        // 安全入口必须先看工具树，只允许“已启用 + 只读”工具进入 extension.tool.debug.call。
         const tree = await rpc.getPageToolsTree();
         const target = pickDebugTargetFromToolTree(tree, toolName, tabId);
         if (!target) {
@@ -592,7 +593,7 @@ export class ExtensionControlBridgeProvider {
 
 function assertValidPageToolEnableUpdate(update: PageToolEnableUpdate, index: number): void {
   const root = update.root ?? "page";
-  // extension 侧 root=page 且缺 tabId 时会直接 no-op，这里提前拦截，避免 agent 误以为切换成功。
+  // extension 侧 root=page 且缺 tabId 时会直接 no-op，这里提前拦截避免误判为切换成功。
   if (root === "page" && update.tabId == null) {
     throw new Error(`updates[${index}] requires tabId when root is "page"`);
   }
@@ -719,7 +720,8 @@ function pickDebugTargetFromToolTree(
   toolName: string,
   preferredTabId?: number,
 ): DebugToolTreeCandidate | null {
-  const builtinMatches = collectBuiltinToolMatches(tree, toolName);
+  const canonicalToolName = toCanonicalBuiltinRuntimeToolName(toolName);
+  const builtinMatches = collectBuiltinToolMatches(tree, canonicalToolName);
   const pageMatches = collectPageToolMatches(tree, toolName, preferredTabId);
 
   if (preferredTabId != null) {

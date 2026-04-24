@@ -6,6 +6,7 @@
  */
 
 import type { ContentScriptToolEnv } from "@page-context/shared-protocol";
+import { toCanonicalBuiltinRuntimeToolName } from "./runtime-tool-names.js";
 
 export { createConsoleCapture } from "./console-capture.js";
 
@@ -18,12 +19,13 @@ export function executeContentScriptTool(
   args: Record<string, unknown>,
   env: ContentScriptToolEnv,
 ): unknown {
+  const normalizedTool = toCanonicalBuiltinRuntimeToolName(tool);
   const win = env.win as Window;
   const doc = env.doc as Document;
   const { consoleEntries } = env;
 
-  switch (tool) {
-    case "get_page_info":
+  switch (normalizedTool) {
+    case "builtin.get_page_info":
       return {
         url: win.location.href,
         title: doc.title,
@@ -34,11 +36,11 @@ export function executeContentScriptTool(
             content: element.getAttribute("content") || "",
           })),
       };
-    case "get_selected_text": {
+    case "builtin.get_selected_text": {
       const selection = win.getSelection();
       return { text: selection ? selection.toString() : "" };
     }
-    case "click_element": {
+    case "builtin.click_element": {
       const selector = String(args.selector ?? "");
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -47,7 +49,7 @@ export function executeContentScriptTool(
       element.click();
       return { clicked: true, selector };
     }
-    case "get_element_text": {
+    case "builtin.get_element_text": {
       const selector = String(args.selector ?? "");
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -55,7 +57,7 @@ export function executeContentScriptTool(
       }
       return { text: element.textContent, selector };
     }
-    case "get_element_html": {
+    case "builtin.get_element_html": {
       const selector = String(args.selector ?? "");
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -67,7 +69,7 @@ export function executeContentScriptTool(
       }
       return { html, selector };
     }
-    case "query_elements": {
+    case "builtin.query_elements": {
       const selector = String(args.selector ?? "");
       const limit = Number(args.limit ?? 20);
       const matches = Array.from(doc.querySelectorAll<HTMLElement>(selector));
@@ -87,7 +89,7 @@ export function executeContentScriptTool(
         })),
       };
     }
-    case "fill_input": {
+    case "builtin.fill_input": {
       const selector = String(args.selector ?? "");
       const value = String(args.value ?? "");
       const element = doc.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
@@ -106,7 +108,7 @@ export function executeContentScriptTool(
       element.dispatchEvent(new Event("change", { bubbles: true }));
       return { filled: true, selector, value };
     }
-    case "execute_js": {
+    case "builtin.execute_js": {
       // SECURITY: This eval executes arbitrary JavaScript in the page context.
       // This is intentional — the execute_js MCP tool allows deep page inspection.
       // The MCP bridge server runs locally and relies on local network isolation.
@@ -126,7 +128,7 @@ export function executeContentScriptTool(
         };
       }
     }
-    case "get_console_logs": {
+    case "builtin.get_console_logs": {
       const limit = Number(args.limit ?? 50);
       const level = String(args.level ?? "all");
       const filtered = level === "all" ? consoleEntries : consoleEntries.filter((entry: any) => entry.level === level);

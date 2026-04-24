@@ -1,4 +1,5 @@
 import type { PageToolEntry, PageToolSpec } from "./page-tool-registry";
+import { listBuiltinRuntimeToolPreferenceKeys, toCanonicalBuiltinRuntimeToolName } from "@page-context/builtin-tools";
 
 export interface PageToolPreferences {
   builtins?: BuiltinPreference;
@@ -83,6 +84,11 @@ export interface ToolScopeInput {
   toolName?: string;
 }
 
+export interface ToolScopeEntriesInput {
+  builtinTools?: PageToolSpec[];
+  pageEntries?: PageToolEntry[];
+}
+
 export interface ToolTreeBuiltins {
   kind: "builtins";
   totalTools: number;
@@ -98,6 +104,7 @@ export interface ToolTreeBuiltinTool {
   inputSchema?: Record<string, unknown>;
   enabled: boolean;
   readOnly: boolean;
+  bridgeControl: boolean;
 }
 
 interface TabLike {
@@ -119,18 +126,22 @@ export function getEnabledToolsForTab(entries: PageToolEntry[] | undefined, pref
 }
 
 export function getEnabledBuiltinTools(tools: PageToolSpec[], preferences: PageToolPreferences): PageToolSpec[] {
-  return tools.filter((tool) => isToolEnabled(preferences, { root: "builtin", toolName: tool.name }));
+  return tools.filter((tool) => isBridgeControlBuiltinTool(tool) || isToolEnabled(preferences, { root: "builtin", toolName: tool.name }));
 }
 
 export function isToolEnabled(preferences: PageToolPreferences, scope: ToolScopeInput): boolean {
   if (scope.root === "builtin") {
+    if (scope.toolName && isBridgeControlBuiltinToolName(scope.toolName)) {
+      return true;
+    }
     if (preferences.builtins?.enabled === false) {
       return false;
     }
     if (!scope.toolName) {
       return true;
     }
-    return preferences.builtins?.tools?.[scope.toolName] !== false;
+    const toolOverrides = preferences.builtins?.tools ?? {};
+    return listBuiltinRuntimeToolPreferenceKeys(scope.toolName).every((name) => toolOverrides[name] !== false);
   }
 
   if (scope.tabId == null) {
@@ -167,7 +178,12 @@ export function isToolEnabled(preferences: PageToolPreferences, scope: ToolScope
   return instancePreference?.tools?.[scope.toolName] !== false;
 }
 
-export function setScopeEnabled(preferences: PageToolPreferences, scope: ToolScopeInput, enabled: boolean): PageToolPreferences {
+export function setScopeEnabled(
+  preferences: PageToolPreferences,
+  scope: ToolScopeInput,
+  enabled: boolean,
+  entries?: ToolScopeEntriesInput,
+): PageToolPreferences {
   if (scope.root === "builtin") {
     const next: PageToolPreferences = {
       ...preferences,
@@ -180,10 +196,25 @@ export function setScopeEnabled(preferences: PageToolPreferences, scope: ToolSco
 
     if (!scope.toolName) {
       next.builtins!.enabled = enabled;
+      next.builtins!.tools = enabled ? {} : buildBuiltinToolOverrides(entries?.builtinTools);
       return next;
     }
 
-    next.builtins!.tools![scope.toolName] = enabled;
+    if (isBridgeControlBuiltinToolName(scope.toolName)) {
+      // bridge 控制类 builtin 不提供本地开关，避免 sidepanel 误导用户以为可在 extension 侧关闭。
+      return next;
+    }
+
+    const preferenceKeys = listBuiltinRuntimeToolPreferenceKeys(scope.toolName);
+    const canonicalName = toCanonicalBuiltinRuntimeToolName(scope.toolName);
+
+    if (enabled) {
+      for (const name of preferenceKeys) {
+        delete next.builtins!.tools![name];
+      }
+    } else {
+      next.builtins!.tools![canonicalName] = false;
+    }
     return next;
   }
 
@@ -204,6 +235,7 @@ export function setScopeEnabled(preferences: PageToolPreferences, scope: ToolSco
 
   if (!scope.namespace) {
     tabPreference.enabled = enabled;
+    tabPreference.namespaces = enabled ? {} : buildTabNamespaceOverrides(entries?.pageEntries);
     return next;
   }
 
@@ -215,6 +247,7 @@ export function setScopeEnabled(preferences: PageToolPreferences, scope: ToolSco
 
   if (!scope.instanceId) {
     namespacePreference.enabled = enabled;
+    namespacePreference.instances = enabled ? {} : buildNamespaceInstanceOverrides(entries?.pageEntries);
     return next;
   }
 
@@ -226,11 +259,58 @@ export function setScopeEnabled(preferences: PageToolPreferences, scope: ToolSco
 
   if (!scope.toolName) {
     instancePreference.enabled = enabled;
+    instancePreference.tools = enabled ? {} : buildInstanceToolOverrides(entries?.pageEntries?.[0]);
     return next;
   }
 
-  instancePreference.tools![scope.toolName] = enabled;
+  if (enabled) {
+    delete instancePreference.tools![scope.toolName];
+  } else {
+    instancePreference.tools![scope.toolName] = false;
+  }
   return next;
+}
+
+function buildBuiltinToolOverrides(tools: PageToolSpec[] | undefined): Record<string, boolean> {
+  return Object.fromEntries(
+    (tools ?? [])
+      .filter((tool) => !isBridgeControlBuiltinTool(tool))
+      .map((tool) => [toCanonicalBuiltinRuntimeToolName(tool.name), false]),
+  );
+}
+
+function buildTabNamespaceOverrides(entries: PageToolEntry[] | undefined): Record<string, NamespacePreference> {
+  const overrides: Record<string, NamespacePreference> = {};
+  const entriesByNamespace = new Map<string, PageToolEntry[]>();
+
+  for (const entry of entries ?? []) {
+    entriesByNamespace.set(entry.namespace, [...(entriesByNamespace.get(entry.namespace) ?? []), entry]);
+  }
+
+  for (const [namespace, namespaceEntries] of entriesByNamespace.entries()) {
+    overrides[namespace] = {
+      enabled: false,
+      instances: buildNamespaceInstanceOverrides(namespaceEntries),
+    };
+  }
+
+  return overrides;
+}
+
+function buildNamespaceInstanceOverrides(entries: PageToolEntry[] | undefined): Record<string, InstancePreference> {
+  return Object.fromEntries(
+    (entries ?? []).map((entry) => [
+      entry.instanceId,
+      {
+        enabled: false,
+        tools: buildInstanceToolOverrides(entry),
+      } satisfies InstancePreference,
+    ]),
+  );
+}
+
+function buildInstanceToolOverrides(entry: PageToolEntry | undefined): Record<string, boolean> {
+  return Object.fromEntries((entry?.tools ?? []).map((tool) => [tool.name, false]));
 }
 
 export function buildToolTree(
@@ -265,6 +345,8 @@ function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreference
       inputSchema: tool.inputSchema,
       enabled: isToolEnabled(preferences, { root: "builtin", toolName: tool.name }),
       readOnly: isReadOnlyTool(tool),
+      // bridge 控制类工具只在 sidepanel 做可见化提示，不走 extension 本地执行链路。
+      bridgeControl: isBridgeControlBuiltinTool(tool),
     }))
     .sort((left, right) => left.label.localeCompare(right.label));
 
@@ -353,4 +435,16 @@ function getDisplayName(tool: PageToolSpec, namespace: string, instanceId: strin
 
 function isReadOnlyTool(tool: PageToolSpec): boolean {
   return Boolean((tool.annotations as { readOnlyHint?: boolean } | undefined)?.readOnlyHint || (tool._meta as { readOnly?: boolean } | undefined)?.readOnly);
+}
+
+function isBridgeControlBuiltinTool(tool: PageToolSpec): boolean {
+  if ((tool as { _bridgeControlTool?: boolean })._bridgeControlTool === true) {
+    return true;
+  }
+  // 兜底按命名空间识别，确保历史数据结构里没有标记字段时仍可展示 bridge 语义。
+  return isBridgeControlBuiltinToolName(tool.name);
+}
+
+function isBridgeControlBuiltinToolName(name: string): boolean {
+  return name.startsWith("extension.") || name.startsWith("feedback.");
 }

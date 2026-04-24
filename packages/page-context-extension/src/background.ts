@@ -17,6 +17,7 @@ import {
   RpcProtocolError,
   RPC_ERROR_CODES,
 } from "@page-context/shared-protocol";
+import { collectBridgeControlToolSpecs, listBuiltinRuntimeToolPreferenceKeys } from "@page-context/builtin-tools";
 
 import { connectWebSocket, forceReconnect, getWsReady, getSessionId, initDefaultWsUrl, log, queueNotification, requestBridge } from "./bg-ws-connection";
 import { captureActiveTabFeedbackContext, type ActiveTabFeedbackContext } from "./bg-feedback-context";
@@ -69,12 +70,28 @@ async function persistPageToolPreferences(): Promise<void> {
 // ── Tool publishing ──
 
 function getBuiltinTools(): PageToolSpec[] {
-  return getBuiltinToolDefinitions().map((def) => ({
+  const runtimeBuiltins = getBuiltinToolDefinitions().map((def) => ({
     name: def.name,
     description: def.description,
     inputSchema: def.inputSchema,
     annotations: def.annotations,
   }));
+  const bridgeControlBuiltins = collectBridgeControlToolSpecs().map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
+    _bridgeControlTool: true,
+  }));
+
+  // runtime + control 工具统一进入 builtin 模型；同名去重时优先保留 runtime 定义。
+  const deduped = new Map<string, PageToolSpec>();
+  for (const tool of [...runtimeBuiltins, ...bridgeControlBuiltins]) {
+    if (!deduped.has(tool.name)) {
+      deduped.set(tool.name, tool);
+    }
+  }
+  return Array.from(deduped.values());
 }
 
 function getAllTools(): PageToolSpec[] {
@@ -111,7 +128,10 @@ async function buildPageToolsTreeResponse() {
 
 function filterManifestByPreferences(tabId: number, manifest: PageContextManifest): PageContextManifest {
   const enabledPageToolNames = new Set(getEnabledToolsForTab(pageToolsByTab.get(tabId), pageToolPreferences, tabId).map((tool) => tool.name));
-  const enabledBuiltinToolNames = new Set(getEnabledBuiltinTools(getBuiltinTools(), pageToolPreferences).map((tool) => tool.name));
+  const enabledBuiltinToolNames = new Set(
+    getEnabledBuiltinTools(getBuiltinTools(), pageToolPreferences)
+      .flatMap((tool) => listBuiltinRuntimeToolPreferenceKeys(tool.name)),
+  );
   const enabledNamespaces = new Set(
     manifest.namespaces
       .filter((entry: PageContextManifest["namespaces"][number]) => isToolEnabled(pageToolPreferences, { root: "page", tabId, namespace: entry.namespace }))
@@ -183,8 +203,8 @@ async function discoverPageToolsForTab(tabId: number, force = false): Promise<Pa
 }
 
 function clearPageTools(tabId: number): void {
-  // 清理动作保持幂等：即使本地没有缓存，也主动通知 bridge 删除 tab 工具。
-  // 这样可避免 service worker 重启后本地状态丢失、但 bridge 侧残留旧工具的问题。
+  // Cleanup action remains idempotent: even if local cache is missing, actively notify bridge to delete tab tools.
+  // This avoids the issue where service worker restart causes local state loss but bridge retains old tools.
   pageToolsByTab.delete(tabId);
   queueNotification(BRIDGE_METHODS.bridgePageToolsUnregistered, { tabId });
 }

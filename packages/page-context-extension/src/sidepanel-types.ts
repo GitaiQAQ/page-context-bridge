@@ -83,6 +83,7 @@ export interface ToolTreeBuiltinTool {
   inputSchema?: Record<string, unknown>;
   enabled: boolean;
   readOnly: boolean;
+  bridgeControl?: boolean;
 }
 
 export interface ToolDebugResponse {

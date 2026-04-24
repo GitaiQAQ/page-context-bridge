@@ -151,21 +151,31 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
 }
 
 function renderBuiltinToolNode(tool: ToolTreeBuiltinTool): TemplateResult {
+  const bridgeControl = isBridgeControlBuiltinTool(tool);
+  const subtitle = bridgeControl
+    ? `${tool.description ? tool.description : tool.toolName}（Bridge/MCP 控制工具，仅展示）`
+    : (tool.description ? tool.description : tool.toolName);
   return renderTreeRow({
     level: "tool",
     checked: tool.enabled,
     indeterminate: false,
+    toggleDisabled: bridgeControl,
     data: { scope: "builtin", tabId: "builtin-root", toolName: tool.toolName },
     label: tool.label,
-    subtitle: tool.description ? tool.description : tool.toolName,
+    subtitle,
     meta: tool.toolName,
-    badges: [tool.readOnly ? html`<span class="badge badge-xs badge-success">readonly</span>` : nothing],
-    actions: renderTestButton({
-      root: "builtin",
-      toolName: tool.toolName,
-      label: tool.label,
-      inputSchema: tool.inputSchema,
-    }),
+    badges: [
+      bridgeControl ? html`<span class="badge badge-xs badge-info">bridge</span>` : nothing,
+      tool.readOnly ? html`<span class="badge badge-xs badge-success">readonly</span>` : nothing,
+    ],
+    actions: bridgeControl
+      ? undefined
+      : renderTestButton({
+        root: "builtin",
+        toolName: tool.toolName,
+        label: tool.label,
+        inputSchema: tool.inputSchema,
+      }),
   });
 }
 
@@ -206,6 +216,7 @@ function renderTreeRow(input: {
   level: "tab" | "namespace" | "instance" | "tool";
   checked: boolean;
   indeterminate: boolean;
+  toggleDisabled?: boolean;
   data: Record<string, string>;
   label: string;
   subtitle: string;
@@ -215,24 +226,19 @@ function renderTreeRow(input: {
 }): TemplateResult {
   const indent = INDENT_CLASS[input.level];
 
-  // Build data attributes using object spread for lit-html
-  const dataAttrs = Object.entries(input.data).reduce(
-    (attrs, [key, value]) => {
-      const dataKey = key.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
-      attrs[`data-${dataKey}`] = value;
-      return attrs;
-    },
-    {} as Record<string, string>
-  );
-
   return html`
     <div class="flex items-start gap-2 px-3 py-2 border-b border-base-200 bg-base-100 hover:bg-base-200/50 ${indent}">
       <input
         type="checkbox"
         class="checkbox checkbox-xs checkbox-primary mt-0.5 shrink-0"
         .checked=${input.checked}
+        .disabled=${Boolean(input.toggleDisabled)}
         data-indeterminate=${input.indeterminate ? "true" : "false"}
-        ...=${dataAttrs}
+        data-scope=${input.data.scope ?? nothing}
+        data-tab-id=${input.data.tabId ?? nothing}
+        data-namespace=${input.data.namespace ?? nothing}
+        data-instance-id=${input.data.instanceId ?? nothing}
+        data-tool-name=${input.data.toolName ?? nothing}
       />
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5 flex-wrap text-xs font-semibold">
@@ -243,6 +249,13 @@ function renderTreeRow(input: {
       ${input.actions ? html`<div class="flex items-center gap-1.5 ml-auto shrink-0">${input.actions}</div>` : nothing}
     </div>
   `;
+}
+
+function isBridgeControlBuiltinTool(tool: ToolTreeBuiltinTool): boolean {
+  if (tool.bridgeControl === true) {
+    return true;
+  }
+  return tool.toolName.startsWith("extension.") || tool.toolName.startsWith("feedback.");
 }
 
 function renderTestButton(input: { root: "builtin" | "page"; toolName: string; label: string; tabId?: number; inputSchema?: Record<string, unknown> }): TemplateResult {

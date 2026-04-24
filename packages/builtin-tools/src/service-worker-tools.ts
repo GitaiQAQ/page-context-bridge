@@ -6,6 +6,7 @@
  */
 
 import type { ServiceWorkerToolContext } from "@page-context/shared-protocol";
+import { toCanonicalBuiltinRuntimeToolName } from "./runtime-tool-names.js";
 
 /**
  * Execute a builtin tool in the service worker context.
@@ -16,12 +17,14 @@ export async function executeServiceWorkerTool(
   args: Record<string, unknown>,
   ctx: ServiceWorkerToolContext,
 ): Promise<unknown> {
-  switch (tool) {
-    case "list_tabs": {
+  const normalizedTool = toCanonicalBuiltinRuntimeToolName(tool);
+
+  switch (normalizedTool) {
+    case "builtin.list_tabs": {
       const tabs = await ctx.listTabs();
       return { tabs };
     }
-    case "screenshot_tab": {
+    case "builtin.screenshot_tab": {
       const format = (args.format as "png" | "jpeg" | undefined) ?? "png";
       const quality = Number(args.quality ?? 80);
       const dataUrl = await ctx.captureVisibleTab(format, format === "jpeg" ? Math.round(quality) : undefined);
@@ -31,7 +34,7 @@ export async function executeServiceWorkerTool(
         sizeHint: dataUrl.length,
       };
     }
-    case "navigate": {
+    case "builtin.navigate": {
       const targetTabId = Number(args.tabId ?? 0) || (await ctx.getActiveTabId());
       if (!targetTabId) {
         throw new Error("No active tab available");

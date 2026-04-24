@@ -2,7 +2,7 @@
  * Bridge-side provider for feedback control tools.
  *
  * 这批工具只做“参数适配 + 能力编排”，状态真值仍由 bridge 的 feedback-store 维护。
- * 命名统一走 namespace 形式：`feedback.*`。
+ * 命名统一走 `feedback.*` namespace。
  */
 
 import type {
@@ -219,7 +219,7 @@ export class FeedbackControlBridgeProvider {
         alias,
         {
           ...config,
-          // 旧名只保兼容，降低历史 prompt/tool-list 的迁移成本。
+          // 旧名仅保兼容，降低历史 prompt/tool-list 迁移成本。
           description: `${config.description} (Deprecated alias. Use '${primaryName}' instead.)`,
         },
         handler,
@@ -332,7 +332,7 @@ export class FeedbackControlBridgeProvider {
 
     const watchEventsHandler = async (args: Record<string, unknown>) => {
       const parsed = feedbackWatchEventsSchema.parse(args);
-      // 事件模型由 feedback-store 维护；provider 只做轻量入口和参数适配。
+      // 事件模型由 feedback-store 维护；provider 只做轻量入口与参数适配。
       const delta = rpc.getFeedbackDelta({
         afterSeq: parsed.afterSeq,
         sessionId: parsed.sessionId,

@@ -28,6 +28,8 @@ import {
   BuiltinBridgeProvider,
   ExtensionControlBridgeProvider,
   FeedbackControlBridgeProvider,
+  toCanonicalBuiltinRuntimeToolName,
+  toLegacyBuiltinRuntimeToolName,
   type PageToolEnableUpdate,
 } from "@page-context/builtin-tools";
 import { z } from "zod";
@@ -112,7 +114,7 @@ export class McpRegistry {
   private readonly feedbackControlProvider = new FeedbackControlBridgeProvider();
 
   constructor(private readonly rpcCaller: ExtensionRpcCaller, tenantId = "default", options: McpRegistryOptions = {}) {
-    this.enabledBuiltinToolNames = new Set(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
+    this.enabledBuiltinToolNames = expandBuiltinToolNameAliases(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
     this.feedbackStore = new FeedbackStore(tenantId);
     const runtimeEnv = options.env ?? getRuntimeEnv();
     // 允许测试注入 adapter；未注入时才按环境变量自动创建。
@@ -162,7 +164,7 @@ export class McpRegistry {
   }
 
   private readFeedbackAgentPushStatus(): FeedbackPushAgentStatus {
-    // adapter 可能是测试注入或未来扩展实现，优先走能力探测，保证可插拔。
+    // Adapter may be test-injected or future extension implementation; prioritize capability detection to ensure pluggability.
     if (isFeedbackAgentPushStatusReader(this.feedbackAgentPushAdapter)) {
       return this.feedbackAgentPushAdapter.getPushAgentStatus();
     }
@@ -184,7 +186,7 @@ export class McpRegistry {
       url: params.url,
       title: params.title,
       selectedText: params.selectedText,
-      // 透传 uiAnchor，保持 bridge 只做编排，不重复实现锚点清洗逻辑。
+      // Pass through uiAnchor to keep bridge focused on orchestration without duplicating anchor cleaning logic.
       uiAnchor: params.uiAnchor,
       pageInfoExtra: {
         app: derived.manifest?.app,
@@ -314,13 +316,13 @@ export class McpRegistry {
   }
 
   syncBuiltinToolsOnAllServers(toolSpecs: ToolSpec[]): void {
-    this.enabledBuiltinToolNames = new Set(toolSpecs.map((tool) => tool.name));
+    this.enabledBuiltinToolNames = expandBuiltinToolNameAliases(toolSpecs.map((tool) => tool.name));
     for (const server of this.mcpServers) {
       this.syncBuiltinToolsOnServer(server);
     }
   }
 
-  // 反馈 MCP 工具在每个 server 上统一注册一次，底层都走同一个租户内存仓库。
+  // Feedback MCP tools are registered once per server, all using the same tenant memory store.
   registerFeedbackToolsOnServer(mcpServer: McpServer): void {
     let handles = this.feedbackToolHandlesByServer.get(mcpServer);
     if (!handles) {
@@ -345,7 +347,7 @@ export class McpRegistry {
       handles!.set(name, handle);
     };
 
-    // 反馈控制新入口收敛到 provider：统一 namespace 命名，并保留旧别名兼容。
+    // Feedback control new entries are consolidated in provider: unified namespace naming with backward compatibility for old aliases.
     const feedbackControlHandles = this.feedbackControlProvider.registerOnBridge(
       (name, schema, handler) => mcpServer.registerTool(
         name,
@@ -448,7 +450,7 @@ export class McpRegistry {
       return;
     }
 
-    // extension 工具树控制类能力集中到 builtin provider，registry 只负责注入依赖和存储句柄。
+    // Extension tool tree control capabilities are centralized in builtin provider; registry only handles dependency injection and handle storage.
     const providerHandles = this.extensionToolControlProvider.registerOnBridge(
       (name, schema, handler) => mcpServer.registerTool(
         name,
@@ -476,13 +478,13 @@ export class McpRegistry {
   // ── Page tools ──
 
   async refreshPageToolsForTab(tabId: number): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
-    // 主动刷新走“discover + 本地 registry 覆盖”路径，保证 agent 当前会话立即看到新工具。
+    // Active refresh follows "discover + local registry overwrite" path to ensure agent sees new tools immediately in current session.
     const tools = await this.rpcCaller.refreshPageTools(tabId);
     this.unregisterPageToolsFromAllServers(tabId);
     this.setPageTools(tabId, tools);
     this.registerPageToolsOnAllServers(tabId, tools);
 
-    // manifest 同步失败不影响 tools 刷新，降级为 null，避免整个刷新动作回滚。
+    // Manifest sync failure doesn't affect tool refresh; downgrade to null to avoid rolling back the entire refresh operation.
     const manifest = await this.rpcCaller.getContextManifest(tabId).catch((error) => {
       log(`Refresh manifest failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
@@ -768,6 +770,23 @@ function createFeedbackActor(input: FeedbackActor): FeedbackActor {
 
 function createTextResponse(text: string) {
   return { content: [{ type: "text" as const, text }] };
+}
+
+function expandBuiltinToolNameAliases(toolNames: string[]): Set<string> {
+  const expanded = new Set<string>();
+  for (const name of toolNames) {
+    const canonicalName = toCanonicalBuiltinRuntimeToolName(name);
+    expanded.add(canonicalName);
+    const legacyName = toLegacyBuiltinRuntimeToolName(canonicalName);
+    if (legacyName) {
+      expanded.add(legacyName);
+    }
+    // Non-runtime builtin tools (like extension.* / feedback.*) keep their original names.
+    if (canonicalName !== name) {
+      expanded.add(name);
+    }
+  }
+  return expanded;
 }
 
 function isFeedbackAgentPushStatusReader(

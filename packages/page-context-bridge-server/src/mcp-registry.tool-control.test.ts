@@ -89,9 +89,9 @@ function createRegistry() {
       totalTools: 3,
       enabledTools: 2,
       tools: [
-        { kind: "builtin-tool", toolName: "list_tabs", enabled: true, readOnly: true },
-        { kind: "builtin-tool", toolName: "execute_js", enabled: true, readOnly: false },
-        { kind: "builtin-tool", toolName: "get_console_logs", enabled: false, readOnly: true },
+          { kind: "builtin-tool", toolName: "builtin.list_tabs", enabled: true, readOnly: true },
+          { kind: "builtin-tool", toolName: "builtin.execute_js", enabled: true, readOnly: false },
+          { kind: "builtin-tool", toolName: "builtin.get_console_logs", enabled: false, readOnly: true },
       ],
     },
     tabs: [],
@@ -251,16 +251,16 @@ describe("mcp-registry extension tool control tools", () => {
 
     const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
     const payload = await handler?.({
-      toolName: "list_tabs",
+      toolName: "builtin.list_tabs",
       args: { limit: 5 },
     });
     const parsed = parseTextResponse(payload);
 
     expect(getPageToolsTree).toHaveBeenCalledTimes(1);
     expect(debugToolCall).toHaveBeenCalledTimes(1);
-    expect(debugToolCall).toHaveBeenCalledWith("list_tabs", { limit: 5 }, undefined);
+    expect(debugToolCall).toHaveBeenCalledWith("builtin.list_tabs", { limit: 5 }, undefined);
     expect(parsed.ok).toBe(true);
-    expect(parsed.toolName).toBe("list_tabs");
+    expect(parsed.toolName).toBe("builtin.list_tabs");
   });
 
   it("blocks non-readonly tools in namespaced tool_debug_call", async () => {
@@ -270,7 +270,7 @@ describe("mcp-registry extension tool control tools", () => {
 
     const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
     const payload = await handler?.({
-      toolName: "execute_js",
+      toolName: "builtin.execute_js",
       args: { expression: "window.location.href" },
     });
     const parsed = parseTextResponse(payload);
@@ -287,7 +287,7 @@ describe("mcp-registry extension tool control tools", () => {
 
     const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
     const payload = await handler?.({
-      toolName: "get_console_logs",
+      toolName: "builtin.get_console_logs",
     });
     const parsed = parseTextResponse(payload);
 
@@ -304,16 +304,16 @@ describe("mcp-registry extension tool control tools", () => {
     const handler = fakeServer.tools.get(TOOL_NAMES.setToolsEnabled);
     const payload = await handler?.({
       updates: [
-        { root: "builtin", toolName: "list_tabs", enabled: false },
+        { root: "builtin", toolName: "builtin.list_tabs", enabled: false },
         { root: "page", tabId: 88, namespace: "crm", toolName: "crm.inspect", enabled: true },
       ],
     });
     const parsed = parseTextResponse(payload);
 
-    // 批量切换应只下发一次批处理调用，避免 agent 端手写循环。
+    // Batch switching should only issue one batch call to avoid agent side writing manual loops.
     expect(setPageToolsEnabledBatch).toHaveBeenCalledTimes(1);
     expect(setPageToolsEnabledBatch).toHaveBeenCalledWith([
-      { root: "builtin", toolName: "list_tabs", enabled: false },
+      { root: "builtin", toolName: "builtin.list_tabs", enabled: false },
       { root: "page", tabId: 88, namespace: "crm", toolName: "crm.inspect", enabled: true },
     ]);
     expect(parsed.applied).toBe(2);
@@ -342,7 +342,7 @@ describe("mcp-registry extension tool control tools", () => {
     const payload = await handler?.({ tabId: 88 });
     const parsed = parseTextResponse(payload);
 
-    // agent 主动刷新后，应立即把最新工具写回当前 registry，避免等待异步通知。
+    // After agent actively refreshes, it should immediately write the latest tools back to the current registry to avoid waiting for async notifications.
     expect(refreshPageTools).toHaveBeenCalledTimes(1);
     expect(refreshPageTools).toHaveBeenCalledWith(88);
     expect(getContextManifest).toHaveBeenCalledTimes(1);
@@ -374,9 +374,9 @@ describe("mcp-registry extension tool control tools", () => {
         totalTools: 3,
         enabledTools: 2,
         tools: [
-          { kind: "builtin-tool", toolName: "list_tabs", enabled: true, readOnly: true },
-          { kind: "builtin-tool", toolName: "execute_js", enabled: true, readOnly: false },
-          { kind: "builtin-tool", toolName: "get_console_logs", enabled: false, readOnly: true },
+          { kind: "builtin-tool", toolName: "builtin.list_tabs", enabled: true, readOnly: true },
+          { kind: "builtin-tool", toolName: "builtin.execute_js", enabled: true, readOnly: false },
+          { kind: "builtin-tool", toolName: "builtin.get_console_logs", enabled: false, readOnly: true },
         ],
       },
       tabs: [
@@ -413,7 +413,7 @@ describe("mcp-registry extension tool control tools", () => {
     });
     const parsed = parseTextResponse(payload);
 
-    // 组合入口必须复用既有原子动作，且每步只执行一次，便于定位失败阶段。
+    // Combined entry must reuse existing atomic actions and execute each step only once for easy failure stage identification.
     expect(getRuntimeStatus).toHaveBeenCalledTimes(1);
     expect(ensureMainWorldHost).toHaveBeenCalledTimes(1);
     expect(ensureMainWorldHost).toHaveBeenCalledWith(88, 2);
@@ -426,7 +426,7 @@ describe("mcp-registry extension tool control tools", () => {
     expect(getPageToolsTree).toHaveBeenCalledTimes(1);
     expect(setPageToolsEnabledBatch).toHaveBeenCalledTimes(1);
     expect(setPageToolsEnabledBatch).toHaveBeenCalledWith([
-      { root: "builtin", toolName: "get_console_logs", enabled: true },
+      { root: "builtin", toolName: "builtin.get_console_logs", enabled: true },
       { root: "page", tabId: 88, namespace: "crm", instanceId: "default", toolName: "crm.inspect", enabled: true },
     ]);
     expect(parsed.ok).toBe(true);

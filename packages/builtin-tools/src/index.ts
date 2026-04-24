@@ -23,6 +23,16 @@ export {
   type FeedbackControlBridgeRpc,
   type FeedbackControlBridgeProviderOptions,
 } from "./feedback-control-bridge-provider.js";
+export { collectBridgeControlToolSpecs, type BridgeControlToolSpec } from "./control-tool-specs.js";
+export {
+  BUILTIN_RUNTIME_NAMESPACE,
+  BUILTIN_RUNTIME_LEGACY_TO_CANONICAL,
+  type BuiltinRuntimeLegacyToolName,
+  type BuiltinRuntimeCanonicalToolName,
+  toCanonicalBuiltinRuntimeToolName,
+  toLegacyBuiltinRuntimeToolName,
+  listBuiltinRuntimeToolPreferenceKeys,
+} from "./runtime-tool-names.js";
 export { executeContentScriptTool } from "./content-script-tools.js";
 export { executeServiceWorkerTool } from "./service-worker-tools.js";
 export { createConsoleCapture, type ConsoleEntry } from "./console-capture.js";

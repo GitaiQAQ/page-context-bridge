@@ -5,6 +5,7 @@ export interface PageToolSpec extends Record<string, unknown> {
   _pageTool?: boolean;
   _namespace?: string;
   _instanceId?: string;
+  _bridgeControlTool?: boolean;
 }
 
 export interface PageToolEntry {
