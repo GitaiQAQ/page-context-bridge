@@ -205,6 +205,74 @@ Using OpenCode as an example:
 }
 ```
 
+### 6.4 Agent-Facing Control Runbook (Current `extension.*` + `feedback.*`)
+
+This section is the current operational contract for agents. Prefer namespaced tools and treat legacy underscore names as compatibility aliases only.
+
+#### Preferred tool entrypoints
+
+- `extension.get_runtime_status`
+- `extension.get_tool_tree`
+- `extension.get_context_manifest_debug`
+- `extension.refresh_page_tools`
+- `extension.set_tools_enabled`
+- `extension.ensure_main_world_host`
+- `extension.ensure_agentation_main`
+- `extension.tool_debug_call` (read-only + enabled tools only)
+- `feedback.get_snapshot`
+- `feedback.watch_events`
+- `feedback.create_annotation`
+- `feedback.update_annotation`
+- `feedback.claim`
+- `feedback.reply`
+- `feedback.resolve`
+- `feedback.dismiss`
+
+#### Recommended call order (control plane convergence)
+
+Use this order when an agent starts or takes over a tab/session:
+
+1. `extension.get_runtime_status` to confirm bridge-extension runtime is ready.
+2. `extension.get_tool_tree` to read current tool visibility/enabled state.
+3. If page tools are stale/missing, call `extension.refresh_page_tools({ "tabId": <tabId> })`.
+4. Re-read `extension.get_tool_tree` and only then call `extension.set_tools_enabled` for explicit enable/disable changes.
+5. Use `extension.get_context_manifest_debug({ "tabId": <tabId> })` when namespace/resource/skill filtering needs evidence.
+6. If page host injection is suspect, call `extension.ensure_main_world_host` and `extension.ensure_agentation_main`, then run step 3 again.
+7. For low-risk direct probing only, call `extension.tool_debug_call` after step 2/4 confirms the target tool is unique, enabled, and read-only.
+
+#### Typical troubleshooting flow
+
+When "tool not found", "tool disabled", or "context mismatch" occurs:
+
+1. `extension.get_runtime_status`
+2. `extension.get_tool_tree`
+3. Branch by symptom:
+- Missing expected page tool: `extension.refresh_page_tools(tabId)` -> `extension.get_tool_tree`
+- Tool exists but `enabled=false`: `extension.set_tools_enabled({ "updates": [...] })` -> `extension.get_tool_tree`
+- Manifest/filter looks wrong: `extension.get_context_manifest_debug(tabId)` and inspect `manifest/rawManifest/debug`
+- Suspected MAIN world injection issue: `extension.ensure_main_world_host` + `extension.ensure_agentation_main` -> `extension.refresh_page_tools(tabId)`
+4. Retry target tool call only after the above evidence is consistent.
+
+#### When to use `feedback.get_snapshot` vs `feedback.watch_events`
+
+- Use `feedback.get_snapshot` for baseline reads:
+  - first read in a new agent session
+  - tab/session switch
+  - after reconnect or uncertain cursor state
+- Use `feedback.watch_events` for incremental polling:
+  - pass `afterSeq` from previous `snapshot.lastSeq` or `watch_events.lastSeq`
+  - optionally pass `sessionId` to narrow scope
+- `feedback.watch_events` is cursor-based pull, not a long-lived streaming subscription.
+
+#### When to use `extension.refresh_page_tools` vs `extension.set_tools_enabled`
+
+- Use `extension.refresh_page_tools` when registry contents may be stale:
+  - page navigation/reload
+  - userscript/bridge host newly injected
+  - expected namespace/tool absent in tree
+- Use `extension.set_tools_enabled` when the tool already exists in tree and only state changes are needed.
+- For `root: "page"` updates, `tabId` is required; missing `tabId` is a hard error (not silent no-op).
+
 ## 7. Future Separation Plan
 
 ### 7.1 Separable Components
