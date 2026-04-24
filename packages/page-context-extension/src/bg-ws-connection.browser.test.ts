@@ -73,6 +73,7 @@ const BRIDGE_METHODS = {
   extensionPageToolsDiscover: "extension.pageTools.discover",
   extensionPageToolsRefresh: "extension.pageTools.refresh",
   extensionPageToolsSetEnabled: "extension.pageTools.setEnabled",
+  extensionToolDebugCall: "extension.tool.debug.call",
   extensionMainWorldHostEnsure: "extension.mainWorld.host.ensure",
   extensionAgentationMainEnsure: "extension.agentation.main.ensure",
   extensionContextManifestGet: "extension.context.manifest.get",
@@ -156,6 +157,8 @@ describe("connectWebSocket", () => {
     // 确保 bridge 可直接通过 WS 调起 MAIN world 自愈入口。
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionMainWorldHostEnsure);
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionAgentationMainEnsure);
+    // 安全 debug 入口依赖该转发方法，缺失会导致 bridge 调用时报 method not found。
+    expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionToolDebugCall);
   });
 });
 

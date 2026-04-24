@@ -38,6 +38,7 @@ const WS_FORWARD_EXTENSION_METHODS = [
   BRIDGE_METHODS.extensionPageToolsDiscover,
   BRIDGE_METHODS.extensionPageToolsRefresh,
   BRIDGE_METHODS.extensionPageToolsSetEnabled,
+  BRIDGE_METHODS.extensionToolDebugCall,
   BRIDGE_METHODS.extensionMainWorldHostEnsure,
   BRIDGE_METHODS.extensionAgentationMainEnsure,
   BRIDGE_METHODS.extensionContextManifestGet,

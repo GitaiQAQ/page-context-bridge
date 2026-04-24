@@ -726,6 +726,24 @@ async function handleExtensionPageToolsSetEnabled(params: unknown) {
   return await buildPageToolsTreeResponse();
 }
 
+async function handleExtensionToolDebugCall(params: unknown) {
+  const payload = params as { toolName?: string; args?: JsonRecord; tabId?: number };
+  if (!payload.toolName) {
+    throw new Error("No toolName provided");
+  }
+
+  try {
+    // 这里保留 raw debug 能力；是否允许调用由 bridge provider 侧做“只读/启用”门禁。
+    const result = await executeToolCall(payload.toolName, payload.args ?? {}, payload.tabId);
+    return { ok: true, result };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function onBridgeWsExtensionRequest(method: string, params: unknown): Promise<unknown> {
   // 这条入口只处理 bridge 通过 WS 主动 request 的 extension 控制方法。
   // 统一复用 runtime 分支里的同名 handler，确保 WS 与 runtime 行为一致。
@@ -759,6 +777,8 @@ async function onBridgeWsExtensionRequest(method: string, params: unknown): Prom
       return await handleExtensionContextResourceRead(params);
     case BRIDGE_METHODS.extensionContextSkillGet:
       return await handleExtensionContextSkillGet(params);
+    case BRIDGE_METHODS.extensionToolDebugCall:
+      return await handleExtensionToolDebugCall(params);
     default:
       throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled WS method: ${method}`);
   }
@@ -883,22 +903,8 @@ chrome.runtime.onMessage.addListener(
       }
       case BRIDGE_METHODS.extensionPageToolsSetEnabled:
         return await handleExtensionPageToolsSetEnabled(message.params);
-      case BRIDGE_METHODS.extensionToolDebugCall: {
-        const payload = message.params as { toolName?: string; args?: JsonRecord; tabId?: number };
-        if (!payload.toolName) {
-          throw new Error("No toolName provided");
-        }
-
-        try {
-          const result = await executeToolCall(payload.toolName, payload.args ?? {}, payload.tabId);
-          return { ok: true, result };
-        } catch (error) {
-          return {
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
-      }
+      case BRIDGE_METHODS.extensionToolDebugCall:
+        return await handleExtensionToolDebugCall(message.params);
       case BRIDGE_METHODS.extensionMainWorldHostEnsure:
         return await ensureMainWorldBridgeHostOnSenderTab(sender);
       case BRIDGE_METHODS.extensionAgentationMainEnsure:

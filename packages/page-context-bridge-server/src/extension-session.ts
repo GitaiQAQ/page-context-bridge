@@ -133,6 +133,22 @@ export async function reconnectExtensionFromBridge(
   return await current.peer.request<unknown>(BRIDGE_METHODS.extensionReconnect, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
 }
 
+export async function debugToolCallOnExtension(
+  tenantId: string,
+  manager: TenantManager,
+  toolName: string,
+  args: Record<string, unknown>,
+  tabId?: number,
+): Promise<unknown> {
+  const current = assertExtensionReady(tenantId, manager);
+  // 保持透传：安全校验在 provider 层完成，这里只负责稳定路由到 extension 既有 debug 入口。
+  return await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionToolDebugCall,
+    { toolName, args, tabId },
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
+}
+
 export async function ensureMainWorldHostFromBridge(
   tenantId: string,
   manager: TenantManager,

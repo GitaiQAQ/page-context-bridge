@@ -42,6 +42,7 @@ const TOOL_NAMES = {
   getToolTree: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
   setToolsEnabled: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
   refreshPageTools: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
+  toolDebugCall: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.toolDebugCall}`,
   ensureMainWorldHost: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureMainWorldHost}`,
   ensureAgentationMain: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureAgentationMain}`,
 } as const;
@@ -82,8 +83,25 @@ function createRegistry() {
     },
   }));
   const getPageToolsTree = vi.fn(async () => ({
+    builtins: {
+      kind: "builtins",
+      totalTools: 3,
+      enabledTools: 2,
+      tools: [
+        { kind: "builtin-tool", toolName: "list_tabs", enabled: true, readOnly: true },
+        { kind: "builtin-tool", toolName: "execute_js", enabled: true, readOnly: false },
+        { kind: "builtin-tool", toolName: "get_console_logs", enabled: false, readOnly: true },
+      ],
+    },
+    tabs: [],
     totalTools: 3,
     enabledTools: 2,
+  }));
+  const debugToolCall = vi.fn(async (toolName: string, args: Record<string, unknown>, tabId?: number) => ({
+    ok: true,
+    toolName,
+    args,
+    tabId: tabId ?? null,
   }));
   const getContextManifest = vi.fn(async () => null);
   const refreshPageTools = vi.fn(async () => ([
@@ -98,6 +116,7 @@ function createRegistry() {
     sendToolCall: async () => ({}),
     getRuntimeStatus,
     reconnectExtension,
+    debugToolCall,
     ensureMainWorldHost,
     ensureAgentationMain,
     getContextManifest,
@@ -113,6 +132,7 @@ function createRegistry() {
     registry,
     getRuntimeStatus,
     reconnectExtension,
+    debugToolCall,
     ensureMainWorldHost,
     ensureAgentationMain,
     getContextManifestDebug,
@@ -135,6 +155,7 @@ describe("mcp-registry extension tool control tools", () => {
     expect(fakeServer.tools.has(TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.toolDebugCall)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.ensureMainWorldHost)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.ensureAgentationMain)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getRuntimeStatus)).toBe(true);
@@ -143,6 +164,7 @@ describe("mcp-registry extension tool control tools", () => {
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.toolDebugCall)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureAgentationMain)).toBe(true);
   });
@@ -217,6 +239,58 @@ describe("mcp-registry extension tool control tools", () => {
     expect(getPageToolsTree).toHaveBeenCalledTimes(1);
     expect(parsed.totalTools).toBe(3);
     expect(parsed.enabledTools).toBe(2);
+  });
+
+  it("allows namespaced tool_debug_call for enabled read-only tools", async () => {
+    const { registry, debugToolCall, getPageToolsTree } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
+    const payload = await handler?.({
+      toolName: "list_tabs",
+      args: { limit: 5 },
+    });
+    const parsed = parseTextResponse(payload);
+
+    expect(getPageToolsTree).toHaveBeenCalledTimes(1);
+    expect(debugToolCall).toHaveBeenCalledTimes(1);
+    expect(debugToolCall).toHaveBeenCalledWith("list_tabs", { limit: 5 }, undefined);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.toolName).toBe("list_tabs");
+  });
+
+  it("blocks non-readonly tools in namespaced tool_debug_call", async () => {
+    const { registry, debugToolCall } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
+    const payload = await handler?.({
+      toolName: "execute_js",
+      args: { expression: "window.location.href" },
+    });
+    const parsed = parseTextResponse(payload);
+
+    expect(debugToolCall).not.toHaveBeenCalled();
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("not read-only");
+  });
+
+  it("blocks disabled tools in namespaced tool_debug_call", async () => {
+    const { registry, debugToolCall } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
+    const payload = await handler?.({
+      toolName: "get_console_logs",
+    });
+    const parsed = parseTextResponse(payload);
+
+    expect(debugToolCall).not.toHaveBeenCalled();
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("disabled");
   });
 
   it("applies batch updates through namespaced set_tools_enabled", async () => {

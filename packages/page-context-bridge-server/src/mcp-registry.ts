@@ -74,6 +74,7 @@ export interface ExtensionRpcCaller {
   sendToolCall<TResult = unknown>(tool: string, args: Record<string, unknown>, tabId?: number): Promise<TResult>;
   getRuntimeStatus(): Promise<unknown>;
   reconnectExtension(): Promise<unknown>;
+  debugToolCall(toolName: string, args: Record<string, unknown>, tabId?: number): Promise<unknown>;
   ensureMainWorldHost(tabId: number, frameId?: number): Promise<unknown>;
   ensureAgentationMain(tabId: number, frameId?: number): Promise<unknown>;
   getContextManifest(tabId: number): Promise<PageContextManifest | null>;
@@ -457,6 +458,7 @@ export class McpRegistry {
       {
         getRuntimeStatus: () => this.rpcCaller.getRuntimeStatus(),
         reconnectExtension: () => this.rpcCaller.reconnectExtension(),
+        debugToolCall: (toolName, args, tabId) => this.rpcCaller.debugToolCall(toolName, args, tabId),
         ensureMainWorldHost: (tabId, frameId) => this.rpcCaller.ensureMainWorldHost(tabId, frameId),
         ensureAgentationMain: (tabId, frameId) => this.rpcCaller.ensureAgentationMain(tabId, frameId),
         getContextManifestDebug: (tabId) => this.rpcCaller.getContextManifestDebug(tabId),

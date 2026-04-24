@@ -37,6 +37,7 @@ export interface ExtensionControlBridgeRpc {
   getPageToolsTree(): Promise<unknown>;
   setPageToolsEnabledBatch(updates: PageToolEnableUpdate[]): Promise<unknown>;
   refreshPageToolsForTab(tabId: number): Promise<ExtensionControlRefreshResult>;
+  debugToolCall(toolName: string, args: Record<string, unknown>, tabId?: number): Promise<unknown>;
   ensureMainWorldHost(tabId: number, frameId?: number): Promise<unknown>;
   ensureAgentationMain(tabId: number, frameId?: number): Promise<unknown>;
   normalizePageToolName?(tool: ExtensionControlTool): string;
@@ -54,6 +55,7 @@ export const EXTENSION_CONTROL_TOOL_SUFFIXES = {
   getToolTree: "get_tool_tree",
   setToolsEnabled: "set_tools_enabled",
   refreshPageTools: "refresh_page_tools",
+  toolDebugCall: "tool_debug_call",
   ensureMainWorldHost: "ensure_main_world_host",
   ensureAgentationMain: "ensure_agentation_main",
 } as const;
@@ -65,6 +67,7 @@ export const EXTENSION_CONTROL_LEGACY_TOOL_NAMES = {
   getToolTree: "extension_get_tool_tree",
   setToolsEnabled: "extension_set_tools_enabled",
   refreshPageTools: "extension_refresh_page_tools",
+  toolDebugCall: "extension_tool_debug_call",
   ensureMainWorldHost: "extension_ensure_main_world_host",
   ensureAgentationMain: "extension_ensure_agentation_main",
 } as const;
@@ -95,6 +98,7 @@ export class ExtensionControlBridgeProvider {
     getToolTree: string;
     setToolsEnabled: string;
     refreshPageTools: string;
+    toolDebugCall: string;
     ensureMainWorldHost: string;
     ensureAgentationMain: string;
   } {
@@ -105,6 +109,7 @@ export class ExtensionControlBridgeProvider {
       getToolTree: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
       setToolsEnabled: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
       refreshPageTools: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
+      toolDebugCall: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.toolDebugCall}`,
       ensureMainWorldHost: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureMainWorldHost}`,
       ensureAgentationMain: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureAgentationMain}`,
     };
@@ -184,6 +189,14 @@ export class ExtensionControlBridgeProvider {
       inputSchema: {
         tabId: z.number().int().positive(),
         frameId: z.number().int().nonnegative().optional(),
+      },
+    };
+    const toolDebugCallConfig = {
+      description: "Safely call extension.tool.debug.call for enabled read-only tools only (blocks mutation/high-risk tools).",
+      inputSchema: {
+        toolName: z.string().trim().min(1),
+        args: z.record(z.string(), z.unknown()).optional(),
+        tabId: z.number().int().positive().optional(),
       },
     };
     const ensureAgentationMainConfig = {
@@ -291,6 +304,65 @@ export class ExtensionControlBridgeProvider {
       }
     };
 
+    const toolDebugCallHandler = async (args: Record<string, unknown>) => {
+      const toolName = typeof args.toolName === "string" ? args.toolName.trim() : "";
+      const tabId = parseOptionalTabId(args.tabId);
+      if (!toolName) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "toolName is required",
+        }, null, 2));
+      }
+      if (args.tabId != null && tabId == null) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "tabId must be a positive integer",
+        }, null, 2));
+      }
+      if (args.args != null && !isRecord(args.args)) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "args must be an object when provided",
+        }, null, 2));
+      }
+
+      try {
+        // 安全入口必须先看工具树：只允许“启用 + 只读”工具进入 extension.tool.debug.call。
+        const tree = await rpc.getPageToolsTree();
+        const target = pickDebugTargetFromToolTree(tree, toolName, tabId);
+        if (!target) {
+          return createTextResponse(JSON.stringify({
+            ok: false,
+            error: `Tool '${toolName}' is not found in current extension tool tree`,
+          }, null, 2));
+        }
+        if (!target.enabled) {
+          return createTextResponse(JSON.stringify({
+            ok: false,
+            error: `Tool '${toolName}' is disabled and cannot be called via debug entry`,
+          }, null, 2));
+        }
+        if (!target.readOnly) {
+          return createTextResponse(JSON.stringify({
+            ok: false,
+            error: `Tool '${toolName}' is not read-only; extension.tool_debug_call only allows low-risk read-only tools`,
+          }, null, 2));
+        }
+
+        const callResult = await rpc.debugToolCall(
+          toolName,
+          (args.args as Record<string, unknown> | undefined) ?? {},
+          target.root === "page" ? target.tabId : tabId,
+        );
+        return createTextResponse(JSON.stringify(callResult, null, 2));
+      } catch (error) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      }
+    };
+
     const ensureMainWorldHostHandler = async (args: Record<string, unknown>) => {
       const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
       const frameId = parseOptionalFrameId(args.frameId);
@@ -375,6 +447,9 @@ export class ExtensionControlBridgeProvider {
     register(names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools, names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
 
+    register(names.toolDebugCall, toolDebugCallConfig, toolDebugCallHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.toolDebugCall, names.toolDebugCall, toolDebugCallConfig, toolDebugCallHandler);
+
     register(names.ensureMainWorldHost, ensureMainWorldHostConfig, ensureMainWorldHostHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost, names.ensureMainWorldHost, ensureMainWorldHostConfig, ensureMainWorldHostHandler);
 
@@ -400,4 +475,113 @@ function parseOptionalFrameId(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0
     ? value
     : undefined;
+}
+
+function parseOptionalTabId(value: unknown): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
+interface DebugToolTreeCandidate {
+  root: "builtin" | "page";
+  tabId?: number;
+  enabled: boolean;
+  readOnly: boolean;
+}
+
+function pickDebugTargetFromToolTree(
+  tree: unknown,
+  toolName: string,
+  preferredTabId?: number,
+): DebugToolTreeCandidate | null {
+  const builtinMatches = collectBuiltinToolMatches(tree, toolName);
+  const pageMatches = collectPageToolMatches(tree, toolName, preferredTabId);
+
+  if (preferredTabId != null) {
+    if (pageMatches.length > 1) {
+      throw new Error(`Tool '${toolName}' has multiple matches on tab ${preferredTabId}; please narrow by namespace/instance`);
+    }
+    if (pageMatches.length === 1) {
+      return pageMatches[0]!;
+    }
+    if (builtinMatches.length === 1) {
+      return builtinMatches[0]!;
+    }
+    if (builtinMatches.length > 1) {
+      throw new Error(`Tool '${toolName}' has duplicated builtin matches in tool tree`);
+    }
+    return null;
+  }
+
+  const allMatches = [...builtinMatches, ...pageMatches];
+  if (allMatches.length === 0) {
+    return null;
+  }
+  if (allMatches.length > 1) {
+    throw new Error(`Tool '${toolName}' matches multiple targets; provide tabId to disambiguate`);
+  }
+  return allMatches[0]!;
+}
+
+function collectBuiltinToolMatches(tree: unknown, toolName: string): DebugToolTreeCandidate[] {
+  if (!isRecord(tree)) {
+    return [];
+  }
+  const builtins = isRecord(tree.builtins) ? tree.builtins : null;
+  const tools = builtins && Array.isArray(builtins.tools) ? builtins.tools : [];
+  return tools
+    .filter((item): item is Record<string, unknown> => isRecord(item) && item.toolName === toolName)
+    .map((item) => ({
+      root: "builtin" as const,
+      enabled: Boolean(item.enabled),
+      readOnly: Boolean(item.readOnly),
+    }));
+}
+
+function collectPageToolMatches(tree: unknown, toolName: string, preferredTabId?: number): DebugToolTreeCandidate[] {
+  if (!isRecord(tree) || !Array.isArray(tree.tabs)) {
+    return [];
+  }
+  const matches: DebugToolTreeCandidate[] = [];
+  for (const tab of tree.tabs) {
+    if (!isRecord(tab) || typeof tab.tabId !== "number") {
+      continue;
+    }
+    if (preferredTabId != null && tab.tabId !== preferredTabId) {
+      continue;
+    }
+    const namespaces = Array.isArray(tab.namespaces) ? tab.namespaces : [];
+    for (const namespace of namespaces) {
+      if (!isRecord(namespace)) {
+        continue;
+      }
+      const instances = Array.isArray(namespace.instances) ? namespace.instances : [];
+      for (const instance of instances) {
+        if (!isRecord(instance)) {
+          continue;
+        }
+        const tools = Array.isArray(instance.tools) ? instance.tools : [];
+        for (const tool of tools) {
+          if (!isRecord(tool) || tool.toolName !== toolName) {
+            continue;
+          }
+          matches.push({
+            root: "page",
+            tabId: tab.tabId,
+            enabled: Boolean(tool.enabled),
+            readOnly: Boolean(tool.readOnly),
+          });
+        }
+      }
+    }
+  }
+  return matches;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value != null && !Array.isArray(value);
 }

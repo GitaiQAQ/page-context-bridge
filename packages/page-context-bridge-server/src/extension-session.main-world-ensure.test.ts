@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
 
-import { ensureAgentationMainFromBridge, ensureMainWorldHostFromBridge } from "./extension-session.js";
+import { debugToolCallOnExtension, ensureAgentationMainFromBridge, ensureMainWorldHostFromBridge } from "./extension-session.js";
 import type { TenantManager } from "./tenant-manager.js";
 
 function createManagerWithRequestMock(requestMock: ReturnType<typeof vi.fn>): TenantManager {
@@ -22,6 +22,19 @@ function createManagerWithRequestMock(requestMock: ReturnType<typeof vi.fn>): Te
 }
 
 describe("extension-session main world ensure rpc", () => {
+  it("calls extension.tool.debug.call with tool/args/tabId", async () => {
+    const requestMock = vi.fn(async () => ({ ok: true, result: { rows: [] } }));
+    const manager = createManagerWithRequestMock(requestMock);
+
+    const result = await debugToolCallOnExtension("tenant-a", manager, "list_tabs", { limit: 3 }, 18);
+
+    expect(result).toEqual({ ok: true, result: { rows: [] } });
+    expect(requestMock).toHaveBeenCalledTimes(1);
+    // debug 调用必须保持原始参数形态，避免中间层偷偷改写 tool 名或 args。
+    expect(requestMock.mock.calls[0]?.[0]).toBe(BRIDGE_METHODS.extensionToolDebugCall);
+    expect(requestMock.mock.calls[0]?.[1]).toEqual({ toolName: "list_tabs", args: { limit: 3 }, tabId: 18 });
+  });
+
   it("calls extension.mainWorld.host.ensure with tabId/frameId", async () => {
     const requestMock = vi.fn(async () => ({ ok: true }));
     const manager = createManagerWithRequestMock(requestMock);
