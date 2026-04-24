@@ -93,11 +93,31 @@ export interface ToolTreeBuiltins {
   kind: "builtins";
   totalTools: number;
   enabledTools: number;
+  namespaces: ToolTreeBuiltinNamespace[];
+  tools: ToolTreeBuiltinTool[];
+}
+
+export interface ToolTreeBuiltinNamespace {
+  kind: "builtin-namespace";
+  namespace: string;
+  totalTools: number;
+  enabledTools: number;
+  instances: ToolTreeBuiltinInstance[];
+}
+
+export interface ToolTreeBuiltinInstance {
+  kind: "builtin-instance";
+  namespace: string;
+  instanceId: string;
+  totalTools: number;
+  enabledTools: number;
   tools: ToolTreeBuiltinTool[];
 }
 
 export interface ToolTreeBuiltinTool {
   kind: "builtin-tool";
+  namespace: string;
+  instanceId: string;
   toolName: string;
   label: string;
   description?: string;
@@ -195,8 +215,12 @@ export function setScopeEnabled(
     };
 
     if (!scope.toolName) {
-      next.builtins!.enabled = enabled;
-      next.builtins!.tools = enabled ? {} : buildBuiltinToolOverrides(entries?.builtinTools);
+      if (!scope.namespace) {
+        next.builtins!.enabled = enabled;
+        next.builtins!.tools = enabled ? {} : buildBuiltinToolOverrides(entries?.builtinTools);
+        return next;
+      }
+      applyBuiltinScopeOverrides(next.builtins!.tools!, entries?.builtinTools, scope, enabled);
       return next;
     }
 
@@ -205,16 +229,7 @@ export function setScopeEnabled(
       return next;
     }
 
-    const preferenceKeys = listBuiltinRuntimeToolPreferenceKeys(scope.toolName);
-    const canonicalName = toCanonicalBuiltinRuntimeToolName(scope.toolName);
-
-    if (enabled) {
-      for (const name of preferenceKeys) {
-        delete next.builtins!.tools![name];
-      }
-    } else {
-      next.builtins!.tools![canonicalName] = false;
-    }
+    applyBuiltinToolOverride(next.builtins!.tools!, scope.toolName, enabled);
     return next;
   }
 
@@ -279,6 +294,39 @@ function buildBuiltinToolOverrides(tools: PageToolSpec[] | undefined): Record<st
   );
 }
 
+function applyBuiltinScopeOverrides(
+  overrides: Record<string, boolean>,
+  tools: PageToolSpec[] | undefined,
+  scope: ToolScopeInput,
+  enabled: boolean,
+): void {
+  for (const tool of tools ?? []) {
+    if (isBridgeControlBuiltinTool(tool)) {
+      continue;
+    }
+    const path = parseBuiltinToolPath(tool.name);
+    if (scope.namespace && path.namespace !== scope.namespace) {
+      continue;
+    }
+    if (scope.instanceId && path.instanceId !== scope.instanceId) {
+      continue;
+    }
+    applyBuiltinToolOverride(overrides, tool.name, enabled);
+  }
+}
+
+function applyBuiltinToolOverride(overrides: Record<string, boolean>, toolName: string, enabled: boolean): void {
+  const preferenceKeys = listBuiltinRuntimeToolPreferenceKeys(toolName);
+  const canonicalName = toCanonicalBuiltinRuntimeToolName(toolName);
+  if (enabled) {
+    for (const name of preferenceKeys) {
+      delete overrides[name];
+    }
+    return;
+  }
+  overrides[canonicalName] = false;
+}
+
 function buildTabNamespaceOverrides(entries: PageToolEntry[] | undefined): Record<string, NamespacePreference> {
   const overrides: Record<string, NamespacePreference> = {};
   const entriesByNamespace = new Map<string, PageToolEntry[]>();
@@ -337,24 +385,76 @@ export function buildToolTree(
 
 function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreferences): ToolTreeBuiltins {
   const builtinTools = tools
-    .map((tool) => ({
-      kind: "builtin-tool" as const,
-      toolName: tool.name,
-      label: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-      enabled: isToolEnabled(preferences, { root: "builtin", toolName: tool.name }),
-      readOnly: isReadOnlyTool(tool),
-      // bridge 控制类工具只在 sidepanel 做可见化提示，不走 extension 本地执行链路。
-      bridgeControl: isBridgeControlBuiltinTool(tool),
-    }))
-    .sort((left, right) => left.label.localeCompare(right.label));
+    .map((tool) => {
+      const path = parseBuiltinToolPath(tool.name);
+      return {
+        kind: "builtin-tool" as const,
+        namespace: path.namespace,
+        instanceId: path.instanceId,
+        toolName: tool.name,
+        label: path.label,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        enabled: isToolEnabled(preferences, { root: "builtin", toolName: tool.name }),
+        readOnly: isReadOnlyTool(tool),
+        // bridge 控制类工具只在 sidepanel 做可见化提示，不走 extension 本地执行链路。
+        bridgeControl: isBridgeControlBuiltinTool(tool),
+      };
+    })
+    .sort((left, right) => left.namespace.localeCompare(right.namespace) || left.label.localeCompare(right.label));
+
+  const namespacesMap = new Map<string, Map<string, ToolTreeBuiltinTool[]>>();
+  for (const tool of builtinTools) {
+    const byInstance = namespacesMap.get(tool.namespace) ?? new Map<string, ToolTreeBuiltinTool[]>();
+    byInstance.set(tool.instanceId, [...(byInstance.get(tool.instanceId) ?? []), tool]);
+    namespacesMap.set(tool.namespace, byInstance);
+  }
+
+  const namespaces = Array.from(namespacesMap.entries())
+    .map(([namespace, byInstance]) => {
+      const instances = Array.from(byInstance.entries())
+        .map(([instanceId, instanceTools]) => ({
+          kind: "builtin-instance" as const,
+          namespace,
+          instanceId,
+          totalTools: instanceTools.length,
+          enabledTools: instanceTools.filter((tool) => tool.enabled).length,
+          tools: [...instanceTools].sort((left, right) => left.label.localeCompare(right.label)),
+        }))
+        .sort((left, right) => left.instanceId.localeCompare(right.instanceId));
+
+      return {
+        kind: "builtin-namespace" as const,
+        namespace,
+        totalTools: instances.reduce((sum, instance) => sum + instance.totalTools, 0),
+        enabledTools: instances.reduce((sum, instance) => sum + instance.enabledTools, 0),
+        instances,
+      };
+    })
+    .sort((left, right) => left.namespace.localeCompare(right.namespace));
 
   return {
     kind: "builtins",
-    totalTools: builtinTools.length,
-    enabledTools: builtinTools.filter((tool) => tool.enabled).length,
+    totalTools: namespaces.reduce((sum, namespace) => sum + namespace.totalTools, 0),
+    enabledTools: namespaces.reduce((sum, namespace) => sum + namespace.enabledTools, 0),
+    namespaces,
+    // 兼容旧字段，避免 bridge/control 链路一次性断裂。
     tools: builtinTools,
+  };
+}
+
+function parseBuiltinToolPath(toolName: string): { namespace: string; instanceId: string; label: string } {
+  const firstDot = toolName.indexOf(".");
+  if (firstDot < 0) {
+    return { namespace: "builtin", instanceId: "default", label: toolName };
+  }
+  const namespace = toolName.slice(0, firstDot) || "builtin";
+  const suffix = toolName.slice(firstDot + 1);
+  return {
+    namespace,
+    // 当前 builtin 体系默认单实例；保留 instance 字段，后续可平滑扩展多实例。
+    instanceId: "default",
+    label: suffix || toolName,
   };
 }
 
@@ -441,7 +541,7 @@ function isBridgeControlBuiltinTool(tool: PageToolSpec): boolean {
   if ((tool as { _bridgeControlTool?: boolean })._bridgeControlTool === true) {
     return true;
   }
-  // 兜底按命名空间识别，确保历史数据结构里没有标记字段时仍可展示 bridge 语义。
+  // Fallback to namespace-based identification to ensure bridge semantics can still be displayed when marker fields are missing in historical data structures.
   return isBridgeControlBuiltinToolName(tool.name);
 }
 

@@ -28,8 +28,8 @@ interface BridgeWsHandlers {
   onExtensionRequest: (method: string, params: unknown) => Promise<unknown>;
 }
 
-// 这些方法由 bridge 主动 request 到 extension，用于 MCP 控制工具与上下文读取。
-// 必须显式注册到 WS RpcPeer，否则 bridge 侧会收到 method not found（假接口风险）。
+// These methods are actively requested by bridge to extension for MCP control tools and context reading.
+// Must be explicitly registered to WS RpcPeer, otherwise bridge side will receive method not found (fake interface risk).
 const WS_FORWARD_EXTENSION_METHODS = [
   BRIDGE_METHODS.extensionStatusGet,
   BRIDGE_METHODS.extensionReconnect,
@@ -87,7 +87,7 @@ async function defaultOnExtensionRequest(method: string): Promise<never> {
   throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled WS extension method: ${method}`);
 }
 
-// 统一桥接请求入口：background 其它模块不需要直接操作 RpcPeer。
+// Unified bridge request entry: other background modules do not need to operate RpcPeer directly.
 export async function requestBridge<TResult = unknown>(
   method: string,
   params?: unknown,
@@ -229,8 +229,8 @@ export async function connectWebSocket(
     registerForwardedExtensionMethods(rpcPeer, onExtensionRequest);
 
     await new Promise<void>((resolve, reject) => {
-      // 连接握手必须“只结算一次”：成功走 resolve，失败走 reject。
-      // 否则 CONNECTING 阶段先报错/关闭会让 connectPromise 永远悬挂。
+      // Connection handshake must "settle only once": resolve on success, reject on failure.
+      // Otherwise, an error or close during the CONNECTING phase would leave connectPromise hanging forever.
       let settled = false;
       let opened = false;
       const resolveOnce = () => {
@@ -265,10 +265,10 @@ export async function connectWebSocket(
           return;
         }
         log("WebSocket error", error);
-        // 握手尚未完成时，主动结束本次握手，避免 connectPromise 卡死。
+        // End the handshake proactively if it's not completed to avoid hanging connectPromise.
         if (!opened) {
           rejectOnce(new Error("WebSocket errored before open"));
-          // 统一复用 onclose 的清理和重连逻辑，避免分叉处理。
+          // Re-use onclose cleanup and reconnection logic to avoid duplicate handling.
           socket.close();
         }
       };

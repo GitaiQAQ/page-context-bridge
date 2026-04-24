@@ -7,8 +7,8 @@ import type {
 } from "@page-context/shared-protocol";
 
 /**
- * 多选模式下，每个被聚合元素的最小快照。
- * 只保留提交和排障必需字段，避免把 DOM 引用塞进协议 meta。
+ * Minimal snapshot of each aggregated element in multi-select mode.
+ * Only retain fields necessary for submission and troubleshooting, avoid putting DOM references into protocol meta.
  */
 export interface AgentationShellMultiSelectItem {
   elementName: string;
@@ -17,8 +17,8 @@ export interface AgentationShellMultiSelectItem {
 }
 
 /**
- * 多选提交时写入 uiAnchor.meta 的结构化明细。
- * count + items 用于还原选择集合，unionRect 用于快速定位整体区域。
+ * Structured details written to uiAnchor.meta during multi-select submission.
+ * count + items are used to restore the selection set, unionRect is used for quick positioning of the overall area.
  */
 export interface AgentationShellMultiSelectMeta {
   count: number;
@@ -27,14 +27,14 @@ export interface AgentationShellMultiSelectMeta {
 }
 
 /**
- * UI 壳对 bridge 的最小输入结构。
- * 当前只要求 create 主链路，其他操作后续按需扩展。
+ * Minimal input structure from UI shell to bridge.
+ * Currently only requires the main create flow, other operations will be extended as needed.
  */
 export interface AgentationShellCreateAnnotationInput {
   body: string;
   priority: FeedbackPriority;
   selectedText?: string;
-  // 与 shared-protocol 对齐的锚点，供 content-script 直接透传给 background。
+  // Anchor aligned with shared-protocol, directly passed through by content-script to background.
   uiAnchor?: FeedbackUiAnchor;
   target: {
     elementName: string;
@@ -44,8 +44,8 @@ export interface AgentationShellCreateAnnotationInput {
 }
 
 /**
- * create 结果只约束可选 id。
- * bridge 返回结构可能在并行开发中变化，因此这里保持宽松。
+ * create result only constrains optional id.
+ * bridge return structure may change during parallel development, so keep it loose here.
  */
 export interface AgentationShellCreateAnnotationResult {
   id?: string;
@@ -53,8 +53,8 @@ export interface AgentationShellCreateAnnotationResult {
 }
 
 /**
- * 编辑 marker 时写回远端 annotation 的最小输入。
- * 只同步当前需求中的 body/priority，避免引入额外耦合。
+ * Minimal input for writing back to remote annotation when editing marker.
+ * Only sync body/priority from current requirements to avoid introducing extra coupling.
  */
 export interface AgentationShellUpdateAnnotationInput {
   annotationId: string;
@@ -63,8 +63,8 @@ export interface AgentationShellUpdateAnnotationInput {
 }
 
 /**
- * 删除 marker 时在远端做可识别移除。
- * 当前走 dismiss 语义，保留历史痕迹，满足“可识别移除”。
+ * Perform identifiable removal remotely when deleting marker.
+ * Currently uses dismiss semantics to preserve historical traces and satisfy "identifiable removal".
  */
 export interface AgentationShellDismissAnnotationInput {
   annotationId: string;
@@ -72,20 +72,20 @@ export interface AgentationShellDismissAnnotationInput {
 }
 
 /**
- * shell 拉取反馈快照时使用 shared-protocol 原生结构，
- * 避免额外中间类型造成协议漂移。
+ * shell uses shared-protocol native structure when fetching feedback snapshots,
+ * avoid protocol drift caused by extra intermediate types.
  */
 export type AgentationShellFeedbackSnapshot = FeedbackStateSnapshotResult;
 
 /**
- * 壳体增量同步直接复用 shared-protocol 结构。
- * 由 content-script 负责维护 afterSeq，壳体只关心事件语义。
+ * Shell incremental sync directly reuses shared-protocol structure.
+ * content-script is responsible for maintaining afterSeq, shell only cares about event semantics.
  */
 export type AgentationShellFeedbackDelta = FeedbackStateDeltaResult;
 
 /**
- * 壳体与 bridge 的注入边界。
- * UI 只依赖接口，不感知 runtime/network/store 实现。
+ * Injection boundary between shell and bridge.
+ * UI only depends on interfaces, not aware of runtime/network/store implementation.
  */
 export interface AgentationShellBridgeAdapter {
   createAnnotation(input: AgentationShellCreateAnnotationInput): Promise<AgentationShellCreateAnnotationResult>;
@@ -103,16 +103,16 @@ export interface AgentationShellDeps {
 }
 
 /**
- * 可复用挂载 API 的输入。
- * host 可选：不传时沿用默认 body host；传入时复用外部容器。
+ * Input for reusable mount API.
+ * host is optional: when not provided, use default body host; when provided, reuse external container.
  */
 export interface AgentationShellMountDeps extends AgentationShellDeps {
   host?: HTMLDivElement;
 }
 
 /**
- * 挂载句柄只暴露最小清理能力。
- * 调用方通过 unmount 回收事件和 UI，避免内存/监听器泄漏。
+ * Mount handle only exposes minimal cleanup capability.
+ * Caller recycles events and UI through unmount to avoid memory/listener leaks.
  */
 export interface AgentationShellMountHandle {
   host: HTMLDivElement;

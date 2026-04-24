@@ -68,7 +68,7 @@ describe("background feedback runtime route", () => {
     runtimeMessageListener = null;
     installChromeMock();
 
-    // 避免 background 顶层常驻 interval 影响测试生命周期。
+    // Avoid background top-level persistent interval affecting test lifecycle.
     vi.spyOn(globalThis, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
 
     captureActiveTabFeedbackContextMock.mockResolvedValue({
@@ -100,9 +100,9 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
         {
-          body: "  需要修复按钮点击态  ",
+          body: "  Need to fix button click state  ",
           priority: "high",
-          selectedText: "  用户选区  ",
+          selectedText: "  User selection  ",
           uiAnchor: {
             cssSelector: " .cta ",
             meta: {},
@@ -129,12 +129,12 @@ describe("background feedback runtime route", () => {
     expect(requestBridgeMock).toHaveBeenCalledWith(
       BRIDGE_METHODS.feedbackAnnotationCreate,
       expect.objectContaining({
-        body: "需要修复按钮点击态",
+        body: "Need to fix button click state",
         priority: "high",
         tabId: 12,
         url: "https://sender.example/path",
         title: "sender-tab",
-        selectedText: "用户选区",
+        selectedText: "User selection",
         uiAnchor: expect.objectContaining({
           cssSelector: ".cta-enriched",
           meta: {
@@ -211,7 +211,7 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
         {
-          body: "补充兜底选区",
+          body: "Add fallback selection",
           priority: "normal",
           selectedText: "   ",
           anchor: {
@@ -231,12 +231,12 @@ describe("background feedback runtime route", () => {
     );
     await flushMicrotasks();
 
-    // 兼容字段 anchor 不走 enrich，直接进入统一归一化路径。
+    // Compatible field anchor does not go through enrich, directly enters unified normalization path.
     expect(enrichUiAnchorReactMetaInMainWorldMock).not.toHaveBeenCalled();
     expect(requestBridgeMock).toHaveBeenCalledWith(
       BRIDGE_METHODS.feedbackAnnotationCreate,
       expect.objectContaining({
-        body: "补充兜底选区",
+        body: "Add fallback selection",
         selectedText: "from context selection",
         uiAnchor: expect.objectContaining({
           xpath: "//button[1]",
@@ -361,7 +361,7 @@ describe("background feedback runtime route", () => {
     );
     await flushMicrotasks();
 
-    // 输入校验失败时不应进入 bridge 请求。
+    // When input validation fails, it should not enter bridge request.
     expect(requestBridgeMock).not.toHaveBeenCalled();
     const response = sendResponse.mock.calls[0]?.[0] as { id?: string; error?: { message?: string } } | undefined;
     expect(response?.id).toBe("req-feedback-6");

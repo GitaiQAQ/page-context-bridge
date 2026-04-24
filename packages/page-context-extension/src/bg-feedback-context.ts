@@ -1,6 +1,6 @@
 /**
- * 反馈创建时的轻量上下文采集。
- * 只读取稳定且低成本的信息，避免引入脆弱的 DOM 锚点逻辑。
+ * Lightweight context collection during feedback creation.
+ * Only reads stable and low-cost information to avoid introducing fragile DOM anchor logic.
  */
 
 export interface ActiveTabFeedbackContext {
@@ -28,15 +28,15 @@ async function resolveFeedbackTab(sender?: chrome.runtime.MessageSender): Promis
   const senderTab = sender?.tab;
   const senderTabId = senderTab?.id;
   if (typeof senderTabId === "number") {
-    // content-script 发来的消息必须绑定原始 tab，避免误用当前活动 tab。
+    // Messages from content-script must bind to original tab to avoid misusing current active tab.
     if (senderTab?.url) {
       return senderTab;
     }
-    // 某些场景 sender 只带 tabId，不带 url/title；补一次 tabs.get 保持数据完整。
+    // Some scenarios sender only provides tabId, not url/title; supplement with tabs.get to maintain data integrity.
     return await chrome.tabs.get(senderTabId);
   }
 
-  // sidepanel 等旧调用路径没有 sender.tab，保持历史行为回退到当前活动 tab。
+  // Old call paths like sidepanel don't have sender.tab, maintain historical behavior by falling back to current active tab.
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return activeTab;
 }
@@ -70,7 +70,7 @@ async function readSelectedText(tabId: number): Promise<string | undefined> {
     const text = String(results[0]?.result ?? "").trim();
     return text || undefined;
   } catch {
-    // 某些页面（如 chrome://）无法注入脚本，这里静默降级为无选中文本。
+    // Some pages (like chrome://) cannot inject scripts, silently degrade to no selected text here.
     return undefined;
   }
 }

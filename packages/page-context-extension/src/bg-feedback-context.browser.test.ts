@@ -117,6 +117,6 @@ function restoreChromeGlobal(originalChrome: typeof chrome | undefined): void {
     return;
   }
 
-  // 测试运行时通常没有浏览器原生 chrome 对象；这里清理我们注入的 mock。
+    // Test runtime usually doesn't have native browser chrome object; clean up our injected mock here.
   Reflect.deleteProperty(globalThis, "chrome");
 }

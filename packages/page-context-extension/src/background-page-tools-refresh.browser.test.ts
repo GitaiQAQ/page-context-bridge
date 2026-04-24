@@ -74,7 +74,7 @@ describe("background page tools refresh lifecycle", () => {
     runtimeMessageListener = null;
     installChromeMock();
 
-    // 避免 background 顶层常驻 interval 影响测试生命周期。
+    // Avoid background top-level persistent interval affecting test lifecycle.
     vi.spyOn(globalThis, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
   });
 
@@ -115,13 +115,13 @@ describe("background page tools refresh lifecycle", () => {
     const listener = await importBackgroundAndGetTabUpdatedListener();
     const tool = { name: "demo.refreshed", description: "after refresh" };
 
-    // 第一轮 discover（4 次轮询）都拿不到工具，模拟页面 bridge 迟到。
+    // First round of discovery (4 polling attempts) cannot get tools, simulating page bridge delay.
     discoverPageToolsInTabMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
-      // 补偿轮次再发现到工具，应该自动发布，不需要手动 refresh。
+      // Compensation round discovers tools again, should auto-publish without manual refresh.
       .mockResolvedValueOnce([
         {
           namespace: "page",

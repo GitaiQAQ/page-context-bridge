@@ -1,5 +1,5 @@
 /**
- * 为 Vite 的 `?url` 资源导入补充 TypeScript 类型声明。
+ * Add TypeScript type declarations for Vite's `?url` resource imports.
  */
 declare module "*.css?url" {
   const url: string;

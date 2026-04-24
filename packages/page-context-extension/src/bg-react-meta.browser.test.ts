@@ -26,7 +26,7 @@ describe("enrichUiAnchorReactMetaInMainWorld", () => {
       meta: {
         reactPath: ["AppShell", "SubmitButton"],
         reactLeaf: "SubmitButton",
-        source: "agentation-shell",
+        source: "agentation-main-world",
       },
     };
 
@@ -52,7 +52,7 @@ describe("enrichUiAnchorReactMetaInMainWorld", () => {
     const enriched = await enrichUiAnchorReactMetaInMainWorld(9, {
       cssSelector: "#target",
       meta: {
-        source: "agentation-shell",
+        source: "agentation-main-world",
       },
     });
 
@@ -63,7 +63,7 @@ describe("enrichUiAnchorReactMetaInMainWorld", () => {
       }),
     );
     expect(enriched?.meta).toEqual({
-      source: "agentation-shell",
+      source: "agentation-main-world",
       reactPath: ["AppShell", "SubmitButton"],
       reactLeaf: "SubmitButton",
     });
@@ -107,7 +107,7 @@ describe("enrichUiAnchorReactMetaInMainWorld", () => {
     const uiAnchor = {
       cssSelector: "#target",
       meta: {
-        source: "agentation-shell",
+        source: "agentation-main-world",
       },
     };
 
@@ -144,7 +144,7 @@ function attachReactFiber(element: Element, leafToRootNames: string[]): void {
     return;
   }
 
-  // 模拟 React DOM 在真实元素上挂载的 fiber expando 键。
+    // Simulate React DOM mounting fiber expando key on real element.
   (element as unknown as Record<string, unknown>).__reactFiber$test = leafFiber;
 }
 

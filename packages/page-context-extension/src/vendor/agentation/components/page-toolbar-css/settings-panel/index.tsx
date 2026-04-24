@@ -7,7 +7,7 @@ import { CheckboxField } from "./checkbox-field";
 import styles from "./styles.module.scss";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected";
-// 在测试环境里 __VERSION__ 可能未被 bundler define 注入，这里做安全兜底避免运行时崩溃。
+// In test environments, __VERSION__ may not be injected by bundler define, provide safe fallback to avoid runtime crashes.
 const AGENTATION_VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "dev";
 
 export type SettingsPanelProps = {

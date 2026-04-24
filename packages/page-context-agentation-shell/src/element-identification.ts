@@ -1,7 +1,7 @@
 /**
- * 这组函数从 agentation 裁剪而来，只保留 UI 标注主链路需要的能力：
- * 1) 跨 shadow root 向上查找祖先
- * 2) 生成人可读的元素名与路径
+ * This set of functions is extracted from agentation, retaining only the capabilities needed for the main UI annotation flow:
+ * 1) Cross-shadow root upward ancestor lookup
+ * 2) Generation of human-readable element names and paths
  */
 
 function getParentElement(element: Element): Element | null {
@@ -16,8 +16,8 @@ function getParentElement(element: Element): Element | null {
 }
 
 /**
- * 支持穿透 shadow 边界的 closest。
- * 某些组件把真实节点包在 shadow 中，标准 closest 会提前停止。
+ * closest implementation that crosses shadow boundaries.
+ * Some components wrap real nodes in shadow DOM, where standard closest would stop early.
  */
 export function closestCrossingShadow(element: Element, selector: string): Element | null {
   let current: Element | null = element;
@@ -65,8 +65,8 @@ export function getElementPath(target: HTMLElement, maxDepth = 4): string {
 }
 
 /**
- * 为 popup 生成简短、可读、可落日志的元素描述。
- * 不追求“完全准确”，优先稳定和可理解。
+ * Generate short, readable, loggable element descriptions for popups.
+ * Prioritizes stability and understandability over "complete accuracy".
  */
 export function identifyElement(target: HTMLElement): { name: string; path: string } {
   const path = getElementPath(target);
@@ -172,8 +172,8 @@ const ELEMENT_CONTEXT_MAX_TEXT_LENGTH = 120;
 const ELEMENT_CONTEXT_REFERENCE_LIMIT = 4;
 
 /**
- * 轻量提取 UI 锚点上下文，给 uiAnchor.meta 提供更可读、更稳健的定位线索。
- * 只保留低成本字段，避免引入高噪声与高开销采集。
+ * Lightweight extraction of UI anchor context to provide more readable and robust positioning cues for uiAnchor.meta.
+ * Only retains low-cost fields to avoid introducing high noise and high overhead collection.
  */
 export function extractElementContextMeta(target: HTMLElement): ElementContextMeta {
   const tagName = target.tagName.toLowerCase();
@@ -215,7 +215,7 @@ function getContextClasses(target: HTMLElement): string[] | undefined {
     return undefined;
   }
 
-  // 先用“可读类名”降噪；如果全被过滤，再回退到原始类名，避免丢信息。
+  // First use "readable class names" for noise reduction; if all are filtered, fall back to original class names to avoid information loss.
   const meaningful = classTokens.filter((token) => isMeaningfulClassToken(token));
   const candidates = (meaningful.length > 0 ? meaningful : classTokens).slice(0, ELEMENT_CONTEXT_MAX_CLASS_COUNT);
   if (candidates.length === 0) {
@@ -364,8 +364,8 @@ const REACT_DOM_WALK_MAX_DEPTH = 12;
 const REACT_FIBER_KEY_PREFIXES = ["__reactFiber$", "__reactInternalInstance$"] as const;
 
 /**
- * 尝试从目标元素及其祖先里找到 React fiber。
- * 只做轻量探测，不依赖 React 运行时对象。
+ * Attempt to find React fiber from the target element and its ancestors.
+ * Only performs lightweight detection, no dependency on React runtime objects.
  */
 function getReactFiberFromElementOrAncestors(target: HTMLElement): ReactFiberNode | null {
   let current: Element | null = target;
@@ -388,7 +388,7 @@ function getReactFiberFromElement(target: Element): ReactFiberNode | null {
   try {
     keys = Object.keys(target);
   } catch {
-    // 某些宿主对象可能拦截属性读取，失败时直接降级。
+    // Some host objects may intercept property reads; fall back directly on failure.
     return null;
   }
 
@@ -405,7 +405,7 @@ function getReactFiberFromElement(target: Element): ReactFiberNode | null {
 }
 
 function getComponentNameFromFiber(fiber: ReactFiberNode): string | null {
-  // React HostComponent 的 type 是字符串（如 "div"），这不是组件名。
+  // React HostComponent type is a string (e.g., "div"), which is not a component name.
   if (typeof fiber.type === "string") {
     return null;
   }
@@ -444,7 +444,7 @@ function readComponentNameFromType(type: unknown, depth: number): string | null 
     return directName;
   }
 
-  // 兼容 ForwardRef / Memo / Lazy 等包装类型。
+  // Compatible with wrapper types like ForwardRef / Memo / Lazy.
   const nameFromRender = readComponentNameFromType(record.render, depth + 1);
   if (nameFromRender) {
     return nameFromRender;
@@ -460,7 +460,7 @@ function readComponentNameFromType(type: unknown, depth: number): string | null 
     return nameFromLazyResult;
   }
 
-  // ContextProvider 在 _context.displayName 上常能取到可读名字。
+  // ContextProvider often has a readable name on _context.displayName.
   const contextRecord = record._context;
   if (contextRecord && typeof contextRecord === "object") {
     const contextName = normalizeComponentName((contextRecord as Record<string, unknown>).displayName);
@@ -494,8 +494,8 @@ function isLikelyMinifiedComponentName(name: string): boolean {
 }
 
 /**
- * 从 DOM 可见的 fiber 链路提取 React 组件路径。
- * 结果用于写入 uiAnchor.meta，取不到时返回 null。
+ * Extract React component path from DOM-visible fiber chain.
+ * Result is used for writing to uiAnchor.meta, returns null when not found.
  */
 export function extractReactAnchorMeta(target: HTMLElement): ReactAnchorMeta | null {
   const fiber = getReactFiberFromElementOrAncestors(target);
@@ -522,7 +522,7 @@ export function extractReactAnchorMeta(target: HTMLElement): ReactAnchorMeta | n
       const name = getComponentNameFromFiber(current);
       if (name && !isLikelyMinifiedComponentName(name)) {
         const prev = components[components.length - 1];
-        // 同名包装层连续出现时折叠，保留路径可读性。
+        // Collapse consecutive identical wrapper layers to preserve path readability.
         if (prev !== name) {
           components.push(name);
         }

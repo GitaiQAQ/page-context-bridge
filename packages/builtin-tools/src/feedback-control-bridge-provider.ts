@@ -1,8 +1,9 @@
 /**
  * Bridge-side provider for feedback control tools.
  *
- * 这批工具只做“参数适配 + 能力编排”，状态真值仍由 bridge 的 feedback-store 维护。
- * 命名统一走 `feedback.*` namespace。
+ * These tools only handle "parameter adaptation + capability orchestration", 
+ * actual state values are still maintained by bridge's feedback-store.
+ * Names follow the `feedback.*` namespace pattern.
  */
 
 import type {
@@ -64,7 +65,7 @@ export const FEEDBACK_CONTROL_LEGACY_TOOL_NAMES = {
 const feedbackPrioritySchema = z.enum(["low", "normal", "high", "critical"]);
 const feedbackActorSourceSchema = z.enum(["user", "agent", "bridge", "extension"]);
 
-// uiAnchor 只做结构校验；详细清洗继续下沉到 feedback-store，避免重复实现规则。
+// uiAnchor only performs structural validation; detailed cleaning continues to feedback-store to avoid duplicate rule implementation.
 const feedbackUiRectSchema = z.object({
   x: z.number(),
   y: z.number(),
@@ -219,7 +220,7 @@ export class FeedbackControlBridgeProvider {
         alias,
         {
           ...config,
-          // 旧名仅保兼容，降低历史 prompt/tool-list 迁移成本。
+          // Legacy names maintain compatibility to reduce historical prompt/tool-list migration costs.
           description: `${config.description} (Deprecated alias. Use '${primaryName}' instead.)`,
         },
         handler,
@@ -332,7 +333,7 @@ export class FeedbackControlBridgeProvider {
 
     const watchEventsHandler = async (args: Record<string, unknown>) => {
       const parsed = feedbackWatchEventsSchema.parse(args);
-      // 事件模型由 feedback-store 维护；provider 只做轻量入口与参数适配。
+      // Event model is maintained by feedback-store; provider only handles lightweight entry and parameter adaptation.
       const delta = rpc.getFeedbackDelta({
         afterSeq: parsed.afterSeq,
         sessionId: parsed.sessionId,
@@ -403,7 +404,7 @@ export class FeedbackControlBridgeProvider {
     register(names.updateAnnotation, updateAnnotationConfig, updateAnnotationHandler);
     registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation, names.updateAnnotation, updateAnnotationConfig, updateAnnotationHandler);
 
-    // 动作类入口统一走 feedback.*，别名仅用于兼容历史调用。
+    // Action-type entries uniformly use feedback.*, aliases are only for compatibility with legacy calls.
     register(names.claim, claimConfig, claimHandler);
     registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.claim, names.claim, claimConfig, claimHandler);
 

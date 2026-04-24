@@ -37,7 +37,7 @@ const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
 const PRIORITY_ORDER: FeedbackPriority[] = ["low", "normal", "high", "critical"];
 const DRAG_SELECTION_THRESHOLD_PX = 6;
 const AREA_SELECTION_MIN_SIZE_PX = 20;
-const DEFAULT_ANNOTATING_HINT = "点击页面元素打开标注弹窗，Cmd/Ctrl+Shift+Click 可多选，Esc 可退出。";
+const DEFAULT_ANNOTATING_HINT = "Click page elements to open annotation popup, Cmd/Ctrl+Shift+Click for multi-select, Esc to exit.";
 const MARKER_DISMISS_REASON = "marker deleted from agentation shell";
 const POPUP_ENTER_DURATION_MS = 120;
 const POPUP_EXIT_DURATION_MS = 140;
@@ -93,12 +93,12 @@ interface MarkerRecord {
   selectedText?: string;
   elementName: string;
   targetInput: AgentationShellCreateAnnotationInput["target"];
-  // 聚合语义只在 shell 本地渲染层使用，不回写协议结构。
+  // Aggregation semantics are only used in the shell's local rendering layer and not written back to the protocol structure.
   multiSelectMeta?: AgentationShellMultiSelectMeta;
-  // 兼容当前逻辑的像素坐标缓存，便于 tooltip/popup 直接复用。
+  // Pixel coordinate cache for compatibility with current logic, for direct reuse by tooltip/popup.
   x: number;
   y: number;
-  // 以 viewport 为基准的归一化坐标；resize 后据此重算位置。
+  // Normalized coordinates based on viewport; recalculate position after resize.
   normalizedX: number;
   normalizedY: number;
 }
@@ -188,8 +188,8 @@ interface MarkerAnchor {
 }
 
 /**
- * content-script 调用入口。
- * 成功挂载返回 true；若页面不适合注入则返回 false。
+ * content-script entry point.
+ * Returns true if mounted successfully; returns false if the page is not suitable for injection.
  */
 export function installAgentationShell(deps: AgentationShellDeps): boolean {
   const doc = deps.doc ?? document;
@@ -197,7 +197,7 @@ export function installAgentationShell(deps: AgentationShellDeps): boolean {
   if (!shouldInstallShell(doc, win)) {
     return false;
   }
-  // 保持历史兼容：只要默认 host id 已存在，就视为已安装。
+  // Maintain historical compatibility: if the default host id already exists, it is considered installed.
   if (doc.getElementById(AGENTATION_SHELL_HOST_ID)) {
     return true;
   }
@@ -210,9 +210,9 @@ export function installAgentationShell(deps: AgentationShellDeps): boolean {
 }
 
 /**
- * 可复用挂载 API：
- * - 支持外部 host（如 React 组件内嵌 div）；
- * - 返回幂等 unmount 句柄，便于严格模式重复挂载时正确清理。
+ * Reusable mount API:
+ * - Supports external host (e.g., React component embedded div);
+ * - Returns idempotent unmount handle for proper cleanup during strict mode re-mounting.
  */
 export function mountAgentationShell(deps: AgentationShellMountDeps): AgentationShellMountHandle | null {
   const doc = deps.doc ?? document;
@@ -222,7 +222,7 @@ export function mountAgentationShell(deps: AgentationShellMountDeps): Agentation
   }
 
   const { host, removeHostOnUnmount } = resolveMountHost(doc, deps.host);
-  // 同一个 host 重复挂载时先回收旧 runtime，避免监听器叠加。
+  // When re-mounting on the same host, first reclaim the old runtime to avoid listener duplication.
   const previousRuntime = runtimeByHost.get(host);
   if (previousRuntime) {
     previousRuntime.unmount();
@@ -248,7 +248,7 @@ export function mountAgentationShell(deps: AgentationShellMountDeps): Agentation
         return;
       }
       disposed = true;
-      // 旧句柄不能误删新实例：只清理当前仍活跃的 runtime。
+      // Old handle must not delete new instance: only clean up the currently active runtime.
       if (runtimeByHost.get(host) !== runtime) {
         return;
       }
@@ -412,7 +412,7 @@ class AgentationShellRuntime {
     }
     this.mounted = true;
 
-    // 外部 host 可能尚未插入 DOM，统一兜底到 document 根节点。
+    // External host may not have been inserted into DOM yet, fallback to document root.
     if (!this.host.isConnected) {
       const parent = this.doc.body ?? this.doc.documentElement;
       if (!parent) {
@@ -449,7 +449,7 @@ class AgentationShellRuntime {
     }
     this.mounted = false;
 
-    // 先撤掉运行时监听，再做 DOM 清理，避免清理过程中触发回调。
+    // Remove runtime listeners first before DOM cleanup to avoid callbacks during cleanup.
     this.stopAnnotating();
     this.stopToolbarDrag();
     this.closeMarkerContextMenu();
@@ -471,7 +471,7 @@ class AgentationShellRuntime {
     this.popupPrioritySelect.removeEventListener("change", this.onPriorityChange);
     this.markerContextMenuDeleteButton.removeEventListener("click", this.onMarkerContextMenuDeleteClick);
 
-    // 复用外部 host 时不能直接 remove 节点，只清空 shadow 内容。
+    // When reusing external host, do not directly remove the node, only clear shadow content.
     this.shadow.replaceChildren();
     if (this.removeHostOnUnmount) {
       this.host.remove();
@@ -479,7 +479,7 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 初始化后主动拉一次 snapshot，把历史 annotation 回放成 marker。
+   * Actively fetch snapshot once after initialization to replay historical annotations as markers.
    */
   private bootstrapFeedbackReplay(): void {
     if (!this.mounted) {
@@ -488,12 +488,12 @@ class AgentationShellRuntime {
     if (!this.adapter.getFeedbackSnapshot) {
       return;
     }
-    // 先回放全量，再补一轮增量，兜住 snapshot 拉取窗口内的事件竞态。
+    // First replay full snapshot, then supplement with delta to cover event races within the snapshot fetch window.
     void this.syncMarkersFromFeedbackSnapshot().then(() => this.syncMarkersFromFeedbackDelta());
   }
 
   /**
-   * snapshot 是壳体状态的权威来源：刷新后的回放统一走这里。
+   * Snapshot is the authoritative source of shell state: replay after refresh goes through here.
    */
   private async syncMarkersFromFeedbackSnapshot(): Promise<void> {
     if (!this.adapter.getFeedbackSnapshot) {
@@ -525,9 +525,9 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 最小 delta fallback：
-   * - dismissed 且有 annotationId：直接删 marker
-   * - 其他 annotation 事件：回退触发一次 snapshot reload
+   * Minimal delta fallback:
+   * - dismissed with annotationId: directly delete marker
+   * - other annotation events: fall back to triggering a snapshot reload
    */
   private async syncMarkersFromFeedbackDelta(): Promise<void> {
     if (!this.adapter.getFeedbackStateDelta) {
@@ -573,7 +573,7 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 只覆盖远端 marker；本地临时 marker（无 remote id）继续保留，避免打断当前操作。
+   * Only overwrite remote markers; local temporary markers (without remote id) are retained to avoid interrupting current operations.
    */
   private reconcileMarkersFromFeedbackSnapshot(snapshot: AgentationShellFeedbackSnapshot): void {
     const replayedByRemoteId = new Map<string, MarkerRecord>();
@@ -628,8 +628,8 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 回放目标优先用 uiAnchor 里可结构化字段；
-   * 缺失时回退到 selector 现场定位，保证最小可用。
+   * Replay target prioritizes structured fields in uiAnchor;
+   * When missing, fall back to selector on-site positioning to ensure minimal usability.
    */
   private buildMarkerFromFeedbackAnnotation(annotation: FeedbackAnnotation): MarkerRecord | null {
     const replayTarget = resolveReplayMarkerTarget(annotation, this.doc, this.host, this.win.innerWidth, this.win.innerHeight);
@@ -671,7 +671,7 @@ class AgentationShellRuntime {
     event.preventDefault();
     this.closeMarkerContextMenu();
 
-    // 隐藏时先退出标注态，避免页面继续被透明层接管却没有可见入口。
+    // Exit annotation mode before hiding to avoid the page remaining under transparent layer without a visible entry.
     if (this.annotating) {
       this.stopAnnotating();
     }
@@ -779,7 +779,7 @@ class AgentationShellRuntime {
 
   private readonly onWindowResize = (): void => {
     this.closeMarkerContextMenu();
-    // marker 按归一化坐标重算像素位置，减少窗口尺寸变化后的漂移。
+    // Recalculate marker pixel positions based on normalized coordinates to reduce drift after window size changes.
     this.renderMarkers();
     this.syncToolbarVisibility();
     this.persistToolbarState();
@@ -789,7 +789,7 @@ class AgentationShellRuntime {
     this.annotating = true;
     this.toolbar.dataset.annotating = "true";
     this.toolbarToggle.dataset.active = "true";
-    this.toolbarToggle.textContent = "标注中";
+    this.toolbarToggle.textContent = "Annotating";
     this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
     this.doc.addEventListener("pointermove", this.onDocumentPointerMove, true);
     this.doc.addEventListener("mousedown", this.onDocumentMouseDown, true);
@@ -806,8 +806,8 @@ class AgentationShellRuntime {
     this.annotating = false;
     this.toolbar.dataset.annotating = "false";
     this.toolbarToggle.dataset.active = "false";
-    this.toolbarToggle.textContent = "UI 标注";
-    this.toolbarHint.textContent = "开启后，点击页面元素创建反馈。";
+    this.toolbarToggle.textContent = "UI Annotation";
+    this.toolbarHint.textContent = "After enabling, click page elements to create feedback.";
     this.doc.removeEventListener("pointermove", this.onDocumentPointerMove, true);
     this.doc.removeEventListener("mousedown", this.onDocumentMouseDown, true);
     this.doc.removeEventListener("mousemove", this.onDocumentMouseMove, true);
@@ -839,7 +839,7 @@ class AgentationShellRuntime {
   }
 
   private restoreToolbarStateFromStorage(): void {
-    // 刷新后优先恢复上次状态；无有效数据再走布局兜底。
+    // Prioritize restoring last state after refresh; fall back to layout if no valid data.
     const state = readToolbarPersistedState(this.win);
     if (!state) {
       return;
@@ -852,7 +852,7 @@ class AgentationShellRuntime {
   }
 
   private persistToolbarState(): void {
-    // 仅在已有定位坐标时写盘，避免写入半状态数据。
+    // Only write to storage when positioning coordinates exist to avoid writing partial state data.
     if (!this.toolbarPosition) {
       return;
     }
@@ -870,7 +870,7 @@ class AgentationShellRuntime {
     const width = rect.width || 96;
     const height = rect.height || 40;
 
-    // 始终给页面留出一点边距，避免拖到视口外后用户无法再点回来。
+    // Always leave a small margin on the page to avoid users being unable to click back after dragging outside the viewport.
     this.toolbarPosition = {
       left: clamp(left, 12, Math.max(12, this.win.innerWidth - width - 12)),
       top: clamp(top, 12, Math.max(12, this.win.innerHeight - height - 12)),
@@ -921,7 +921,7 @@ class AgentationShellRuntime {
       }
     }
 
-    // dock 上拖动结束后，屏蔽紧随其后的 click，避免“刚挪完就自动打开”。
+    // After dragging on the dock, block the subsequent click to avoid "auto-open immediately after moving".
     if (dragState?.source === "dock" && dragState.moved) {
       this.toolbarDockClickBlocked = true;
     }
@@ -944,7 +944,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 进入拖框候选态后先阻止默认行为，避免页面文本被误选中。
+    // Prevent default behavior after entering drag selection candidate state to avoid accidental text selection.
     event.preventDefault();
     this.dragSelectionMouseDownPoint = {
       x: event.clientX,
@@ -976,13 +976,13 @@ class AgentationShellRuntime {
         y: this.dragSelectionMouseDownPoint.y,
       };
 
-      // 拖框是独立选择模式，开始时清理其他临时态，避免状态重叠。
+      // Drag selection is an independent selection mode, clear other temporary states at the start to avoid state overlap.
       this.hideHoverBox();
       this.clearMultiSelectTargets();
       if (!this.popupForm.hidden) {
         this.closePopup();
       }
-      this.toolbarHint.textContent = "拖框中，松开鼠标后创建统一反馈。";
+      this.toolbarHint.textContent = "Dragging selection box, release mouse to create unified feedback.";
     }
 
     if (!this.dragSelectionStartPoint) {
@@ -1019,7 +1019,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 拖框完成后吞掉本次 mouseup/click，避免被单击链路误处理。
+    // Consume this mouseup/click after drag selection completes to avoid mishandling by the single-click chain.
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -1048,7 +1048,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 失焦时统一回收临时态，避免“按键已松开但内部状态还挂着”。
+    // Unified recovery of temporary states on blur to avoid "keys released but internal states still hanging".
     this.resetDragSelectionState();
     this.clearMultiSelectTargets();
   };
@@ -1077,14 +1077,14 @@ class AgentationShellRuntime {
       return;
     }
     if (this.submitting) {
-      // 提交期间冻结页面点击，避免重复提交和页面误操作并发发生。
+      // Freeze page clicks during submission to avoid concurrent duplicate submissions and page misoperations.
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
       return;
     }
     if (this.suppressClickOnceAfterDrag) {
-      // 对齐参考实现：拖框收尾会跟一发 click，这里只消费一次。
+      // Align with reference implementation: drag selection end is followed by a click, consume only once here.
       this.suppressClickOnceAfterDrag = false;
       event.preventDefault();
       event.stopPropagation();
@@ -1096,7 +1096,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 标注模式下接管点击，避免触发页面真实交互（跳转、提交等）。
+    // Take over clicks in annotation mode to avoid triggering real page interactions (navigation, submission, etc.).
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -1106,7 +1106,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 非组合键点击仍保持单选行为，先把残留聚合态清掉，避免后续 Esc 逻辑混乱。
+    // Non-modifier key clicks still maintain single-selection behavior, clear residual aggregation state first to avoid subsequent Esc logic confusion.
     this.clearMultiSelectTargets();
     this.openPopupForTarget(target, event.clientX, event.clientY);
   };
@@ -1124,20 +1124,20 @@ class AgentationShellRuntime {
       event.stopPropagation();
       this.resetDragSelectionState();
       this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
-      this.setPopupStatus("已取消拖框选择", "info");
+      this.setPopupStatus("Drag selection cancelled", "info");
       return;
     }
 
-    // Esc 优先清理多选聚合，避免误触发关闭流程。
+    // Esc prioritizes clearing multi-select aggregation to avoid accidentally triggering the close flow.
     if (this.multiSelectTargets.size > 0) {
       event.preventDefault();
       event.stopPropagation();
       this.clearMultiSelectTargets();
-      this.setPopupStatus("已清空多选聚合", "info");
+      this.setPopupStatus("Multi-select aggregation cleared", "info");
       return;
     }
 
-    // 无聚合时沿用原逻辑：先关弹窗，再退出标注模式。
+    // When no aggregation, follow original logic: close popup first, then exit annotation mode.
     if (!this.popupForm.hidden && !this.popupClosing) {
       event.preventDefault();
       event.stopPropagation();
@@ -1160,7 +1160,7 @@ class AgentationShellRuntime {
   };
 
   private readonly onWindowScroll = (): void => {
-    // hover 框跟随目标元素滚动，避免视觉错位。
+    // Hover box follows target element scrolling to avoid visual misalignment.
     if (this.hoveredElement && this.annotating && !this.dragSelectionMouseDownPoint) {
       this.syncHoverBox(this.hoveredElement, this.hoveredElementLabel);
     }
@@ -1173,7 +1173,7 @@ class AgentationShellRuntime {
   };
 
   private readonly onPopupKeyDown = (event: KeyboardEvent): void => {
-    // 逻辑关闭态（含 exit 过渡）不再消费按键，避免焦点链路被旧弹窗截断。
+    // Logical closed state (including exit transition) no longer consumes keys to avoid focus chain being interrupted by old popups.
     if (this.popupForm.hidden || this.popupClosing || !this.popupState) {
       return;
     }
@@ -1188,7 +1188,7 @@ class AgentationShellRuntime {
       const nextIndex = event.shiftKey
         ? (activeIndex <= 0 ? focusableElements.length - 1 : activeIndex - 1)
         : (activeIndex < 0 || activeIndex >= focusableElements.length - 1 ? 0 : activeIndex + 1);
-      // popup 内部循环焦点，避免 Tab 跳回页面导致键盘链路中断。
+      // Cycle focus inside popup to avoid Tab jumping back to page and breaking keyboard chain.
       event.preventDefault();
       event.stopPropagation();
       focusableElements[nextIndex].focus();
@@ -1196,7 +1196,7 @@ class AgentationShellRuntime {
     }
 
     if (event.key === "Escape") {
-      // 编辑弹窗内的 Esc 永远先收口弹窗，不让事件冒泡到页面。
+      // Esc inside edit popup always closes the popup first, preventing event bubbling to page.
       event.preventDefault();
       event.stopPropagation();
       if (!this.submitting) {
@@ -1209,7 +1209,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 只在 textarea 内接管 Enter：Shift+Enter 继续换行，普通 Enter 提交。
+    // Only take over Enter inside textarea: Shift+Enter continues new line, regular Enter submits.
     if (
       event.target instanceof HTMLTextAreaElement
       && !event.isComposing
@@ -1235,24 +1235,24 @@ class AgentationShellRuntime {
 
     const markerId = this.popupState.editMarkerId;
     if (!markerId) {
-      this.setPopupStatus("删除失败：找不到标注", "error");
+      this.setPopupStatus("Deletion failed: annotation not found", "error");
       return;
     }
 
     const marker = this.findMarkerById(markerId);
     if (!marker) {
-      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
       return;
     }
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("正在删除...", "info");
+    this.setPopupStatus("Deleting...", "info");
     try {
       await this.dismissRemoteAnnotationIfNeeded(marker);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setPopupStatus(`删除失败: ${message}`, "error");
+      this.setPopupStatus(`Deletion failed: ${message}`, "error");
       this.log("error", "Agentation shell dismiss annotation failed", error);
       return;
     } finally {
@@ -1261,10 +1261,10 @@ class AgentationShellRuntime {
     }
 
     if (!this.deleteMarkerById(markerId)) {
-      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
       return;
     }
-    this.setPopupStatus("反馈已删除", "success");
+    this.setPopupStatus("Feedback deleted", "success");
     this.closePopup();
     this.triggerFeedbackDeltaSync();
   };
@@ -1280,18 +1280,18 @@ class AgentationShellRuntime {
 
     const marker = this.findMarkerById(markerId);
     if (!marker) {
-      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
       return;
     }
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("正在删除...", "info");
+    this.setPopupStatus("Deleting...", "info");
     try {
       await this.dismissRemoteAnnotationIfNeeded(marker);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setPopupStatus(`删除失败: ${message}`, "error");
+      this.setPopupStatus(`Deletion failed: ${message}`, "error");
       this.log("error", "Agentation shell dismiss annotation failed from marker context menu", error);
       return;
     } finally {
@@ -1300,13 +1300,13 @@ class AgentationShellRuntime {
     }
 
     if (!this.deleteMarkerById(markerId)) {
-      this.setPopupStatus("删除失败：标注可能已被移除", "error");
+      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
       return;
     }
     if (this.popupState?.mode === "edit" && this.popupState.editMarkerId === markerId) {
       this.closePopup();
     }
-    this.setPopupStatus("反馈已删除", "success");
+    this.setPopupStatus("Feedback deleted", "success");
     this.triggerFeedbackDeltaSync();
   };
 
@@ -1331,7 +1331,7 @@ class AgentationShellRuntime {
       return;
     }
     if (event.key === "Tab") {
-      // 菜单只有一个动作，Tab 不应把焦点送回页面。
+      // Menu has only one action, Tab should not send focus back to page.
       event.preventDefault();
       event.stopPropagation();
       this.markerContextMenuDeleteButton.focus();
@@ -1342,7 +1342,7 @@ class AgentationShellRuntime {
     if (this.markerContextMenu.hidden) {
       return;
     }
-    // 视口变化时直接收起，避免菜单位置悬空。
+    // Directly collapse when viewport changes to avoid menu position hanging.
     this.closeMarkerContextMenu();
   };
 
@@ -1353,7 +1353,7 @@ class AgentationShellRuntime {
   };
 
   private readonly onPopupBodyInput = (): void => {
-    // 用户开始输入后立即撤销空内容强调，避免错误态残留干扰下一步编辑。
+    // Immediately revoke empty content emphasis after user starts input to avoid error state residue interfering with next edits.
     if (this.popupBodyInput.value.trim().length > 0) {
       this.clearPopupValidationFeedback();
     }
@@ -1377,24 +1377,24 @@ class AgentationShellRuntime {
     if (popupState.mode === "edit") {
       const markerId = popupState.editMarkerId;
       if (!markerId) {
-        this.setPopupStatus("更新失败：找不到标注", "error");
+        this.setPopupStatus("Update failed: annotation not found", "error");
         return;
       }
 
       const marker = this.findMarkerById(markerId);
       if (!marker) {
-        this.setPopupStatus("更新失败：标注可能已被移除", "error");
+        this.setPopupStatus("Update failed: annotation may have been removed", "error");
         return;
       }
 
       this.submitting = true;
       this.syncPopupSubmittingState();
-      this.setPopupStatus("正在更新...", "info");
+      this.setPopupStatus("Updating...", "info");
       try {
         await this.updateRemoteAnnotationIfNeeded(marker, body, priority);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.setPopupStatus(`更新失败: ${message}`, "error");
+        this.setPopupStatus(`Update failed: ${message}`, "error");
         this.log("error", "Agentation shell update annotation failed", error);
         return;
       } finally {
@@ -1403,10 +1403,10 @@ class AgentationShellRuntime {
       }
 
       if (!this.updateMarkerById(markerId, body, priority)) {
-        this.setPopupStatus("更新失败：标注可能已被移除", "error");
+        this.setPopupStatus("Update failed: annotation may have been removed", "error");
         return;
       }
-      this.setPopupStatus("反馈已更新", "success");
+      this.setPopupStatus("Feedback updated", "success");
       this.closePopup();
       this.triggerFeedbackDeltaSync();
       return;
@@ -1430,18 +1430,18 @@ class AgentationShellRuntime {
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("正在提交...", "info");
+    this.setPopupStatus("Submitting...", "info");
 
     try {
       const result = await this.adapter.createAnnotation(payload);
       this.applyAnnotationSuccess(result, payload, popupState);
-      this.setPopupStatus("反馈已创建", "success");
+      this.setPopupStatus("Feedback created", "success");
       this.popupBodyInput.value = "";
       this.closePopup();
       this.triggerFeedbackDeltaSync();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setPopupStatus(`提交失败: ${message}`, "error");
+      this.setPopupStatus(`Submission failed: ${message}`, "error");
       this.log("error", "Agentation shell create annotation failed", error);
     } finally {
       this.submitting = false;
@@ -1458,7 +1458,7 @@ class AgentationShellRuntime {
     body: string,
     priority: FeedbackPriority,
   ): Promise<void> {
-    // 仅对有远端 ID 且 adapter 支持 update 的 marker 做同步，其余场景保持本地可用。
+    // Only sync markers with remote ID and adapter support for update; keep local availability for other scenarios.
     if (!marker.remoteAnnotationId || !this.adapter.updateAnnotation) {
       return;
     }
@@ -1471,7 +1471,7 @@ class AgentationShellRuntime {
   }
 
   private async dismissRemoteAnnotationIfNeeded(marker: MarkerRecord): Promise<void> {
-    // 删除优先走远端 dismiss，保证 bridge/server 能识别“已移除”。
+    // Deletion prioritizes remote dismiss to ensure bridge/server can recognize "removed" status.
     if (!marker.remoteAnnotationId || !this.adapter.dismissAnnotation) {
       return;
     }
@@ -1568,7 +1568,7 @@ class AgentationShellRuntime {
     this.closeMarkerContextMenu();
     this.markerLayer.innerHTML = "";
     this.markers.forEach((marker, index) => {
-      // 每次渲染都按当前 viewport 投影，避免 resize 后 marker 停留在旧坐标。
+      // Project based on current viewport for each render to avoid markers staying at old coordinates after resize.
       const markerAnchor = denormalizeMarkerAnchor(marker.normalizedX, marker.normalizedY, this.win.innerWidth, this.win.innerHeight);
       marker.x = markerAnchor.x;
       marker.y = markerAnchor.y;
@@ -1580,7 +1580,7 @@ class AgentationShellRuntime {
       button.style.top = `${markerAnchor.y}px`;
       button.style.background = markerColor(marker.priority);
       const semantic = resolveMarkerVisualSemantic(marker, index);
-      // 把聚合语义显式下发到 DOM，便于样式和调试工具快速识别。
+      // Explicitly pass aggregation semantics to DOM for quick recognition by styles and debugging tools.
       button.dataset.markerKind = semantic.kind;
       button.dataset.markerAggregate = semantic.isAggregate ? "true" : "false";
       button.dataset.markerAggregateCount = String(semantic.aggregateCount);
@@ -1591,10 +1591,10 @@ class AgentationShellRuntime {
         this.win.innerWidth,
         this.win.innerHeight,
       );
-      // 只在 marker 维度打标签，交给 CSS 控制 tooltip 摆位，避免引入额外动画状态。
+      // Only tag at marker dimension, let CSS control tooltip positioning to avoid introducing extra animation states.
       button.dataset.tooltipX = tooltipPlacement.horizontal;
       button.dataset.tooltipY = tooltipPlacement.vertical;
-      // title 文案也带上语义，悬停时能立即区分“普通标注”与“聚合标注”。
+      // Title text also carries semantics to immediately distinguish between "regular annotation" and "aggregate annotation" on hover.
       button.title = semantic.title;
 
       const mainLabel = this.doc.createElement("span");
@@ -1611,14 +1611,14 @@ class AgentationShellRuntime {
       }
 
       button.addEventListener("click", (event) => {
-        // marker 点击只用于编辑，不应触发页面层点击逻辑。
+        // Marker clicks are only for editing, should not trigger page-level click logic.
         event.preventDefault();
         event.stopPropagation();
         this.closeMarkerContextMenu();
         this.openPopupForMarker(marker.id);
       });
       button.addEventListener("contextmenu", (event) => {
-        // 右键提供快速删除入口；这里只弹上下文菜单，不直接删除。
+        // Right-click provides quick delete entry; only show context menu here, not direct deletion.
         event.preventDefault();
         event.stopPropagation();
         const anchorX = event.clientX || marker.x;
@@ -1657,7 +1657,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    // 进入编辑态时统一清掉临时选择态，避免键盘事件误触发旧上下文。
+    // Clear temporary selection state when entering edit mode to avoid keyboard events accidentally triggering old context.
     this.resetDragSelectionState();
     this.clearMultiSelectTargets();
     this.hideHoverBox();
@@ -1675,9 +1675,9 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 组合键点击时维护聚合集合：
-   * - 第一次点击加入
-   * - 再点同元素则移除
+   * Maintain aggregation set on modifier key click:
+   * - First click adds
+   * - Clicking the same element again removes
    */
   private toggleMultiSelectTarget(target: HTMLElement, clientX: number, clientY: number): void {
     this.multiSelectLastAnchorX = clientX;
@@ -1701,15 +1701,15 @@ class AgentationShellRuntime {
     const count = this.multiSelectTargets.size;
     if (count === 0) {
       this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
-      this.setPopupStatus("多选聚合为空", "info");
+      this.setPopupStatus("Multi-select aggregation is empty", "info");
       return;
     }
-    this.toolbarHint.textContent = `已聚合 ${count} 个元素，松开 Cmd/Ctrl+Shift 后弹出统一反馈框。`;
-    this.setPopupStatus(`多选聚合中（${count}）`, "info");
+    this.toolbarHint.textContent = `Aggregated ${count} elements, release Cmd/Ctrl+Shift to open unified feedback box.`;
+    this.setPopupStatus(`Multi-select aggregating (${count})`, "info");
   }
 
   /**
-   * Esc 和模式切换都会走这里，保证多选状态被一次性清空。
+   * Both Esc and mode switching go through here to ensure multi-select state is cleared at once.
    */
   private clearMultiSelectTargets(): void {
     this.multiSelectTargets.clear();
@@ -1721,7 +1721,7 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 组合键松开后，将聚合元素合并成一次提交弹窗。
+   * After releasing modifier keys, merge aggregated elements into a single submission popup.
    */
   private flushMultiSelectToPopup(): void {
     if (this.multiSelectTargets.size === 0) {
@@ -1780,9 +1780,9 @@ class AgentationShellRuntime {
   }
 
   /**
-   * 拖框完成后统一走这里：
-   * 1) 命中元素 -> 多选聚合提交
-   * 2) 未命中元素 -> 区域标注提交
+   * After drag selection completes, go through here:
+   * 1) Hit elements -> multi-select aggregation submission
+   * 2) No hit elements -> area annotation submission
    */
   private openPopupForAreaSelection(selectionRect: DOMRectReadOnly, clientX: number, clientY: number): void {
     const snapshots = collectAreaSelectionTargets(
@@ -1838,8 +1838,8 @@ class AgentationShellRuntime {
           items,
         },
       });
-      this.toolbarHint.textContent = `框选命中 ${items.length} 个元素，已打开统一反馈框。`;
-      this.setPopupStatus(`框选命中 ${items.length} 个元素`, "info");
+      this.toolbarHint.textContent = `Box selection hit ${items.length} elements, unified feedback box opened.`;
+      this.setPopupStatus(`Box selection hit ${items.length} elements`, "info");
       return;
     }
 
@@ -1871,8 +1871,8 @@ class AgentationShellRuntime {
         items: [],
       },
     });
-    this.toolbarHint.textContent = "已选择区域，填写反馈后可提交。";
-    this.setPopupStatus("未命中可聚合元素，已按区域创建标注。", "info");
+    this.toolbarHint.textContent = "Area selected, fill feedback to submit.";
+    this.setPopupStatus("No aggregatable elements hit, area annotation created.", "info");
   }
 
   private openPopupForTarget(target: HTMLElement, clientX: number, clientY: number): void {
@@ -1894,7 +1894,7 @@ class AgentationShellRuntime {
 
   private openPopupWithState(state: PopupState): void {
     this.closeMarkerContextMenu();
-    // 若上一次在做 exit 过渡，先中止收尾定时器，避免新弹窗被旧任务误隐藏。
+    // If the previous exit transition is in progress, cancel the cleanup timer first to avoid new popup being mistakenly hidden by old task.
     this.cancelPopupExitIfNeeded();
     this.clearPopupValidationFeedback();
     this.popupState = state;
@@ -1904,30 +1904,30 @@ class AgentationShellRuntime {
     this.popupForm.style.top = `${nextTop}px`;
     this.popupForm.style.left = `${nextLeft}px`;
     if (state.mode === "edit") {
-      this.popupTitleView.textContent = "编辑标注";
-      this.popupSubmitButton.textContent = "保存修改";
+      this.popupTitleView.textContent = "Edit Annotation";
+      this.popupSubmitButton.textContent = "Save Changes";
       this.popupDeleteButton.hidden = false;
     } else {
-      this.popupTitleView.textContent = "新建标注";
-      this.popupSubmitButton.textContent = "提交标注";
+      this.popupTitleView.textContent = "New Annotation";
+      this.popupSubmitButton.textContent = "Submit Annotation";
       this.popupDeleteButton.hidden = true;
     }
     this.popupTargetView.textContent = `${state.targetInput.elementName} · ${state.targetInput.elementPath || "unknown path"}`;
     if (state.selectedText) {
-      this.popupSelectionLabel.textContent = "当前选中文本";
+      this.popupSelectionLabel.textContent = "Current Selected Text";
       this.popupSelectionView.textContent = state.selectedText;
     } else if (state.multiSelectMeta) {
       if (state.multiSelectMeta.count > 0) {
-        // 聚合与区域场景共用一个展示区，只切换标签名，减少模板分叉。
-        this.popupSelectionLabel.textContent = "聚合范围说明";
-        this.popupSelectionView.textContent = `已聚合 ${state.multiSelectMeta.count} 个元素，提交后会写入一条合并标注。`;
+        // Aggregation and area scenarios share one display area, only switch label names to reduce template branching.
+        this.popupSelectionLabel.textContent = "Aggregation Range Description";
+        this.popupSelectionView.textContent = `Aggregated ${state.multiSelectMeta.count} elements, a merged annotation will be written after submission.`;
       } else {
-        this.popupSelectionLabel.textContent = "区域说明";
-        this.popupSelectionView.textContent = "已选择一个区域，提交后会写入一条区域标注。";
+        this.popupSelectionLabel.textContent = "Area Description";
+        this.popupSelectionView.textContent = "An area has been selected, an area annotation will be written after submission.";
       }
     } else {
-      this.popupSelectionLabel.textContent = "当前选中文本";
-      this.popupSelectionView.textContent = "未检测到页面选中内容";
+      this.popupSelectionLabel.textContent = "Current Selected Text";
+      this.popupSelectionView.textContent = "No page selection detected";
     }
     this.popupBodyInput.value = state.initialBody ?? "";
     this.popupPrioritySelect.value = normalizePriority(state.initialPriority ?? "normal");
@@ -1936,7 +1936,7 @@ class AgentationShellRuntime {
     delete this.popupForm.dataset.closing;
     this.playPopupMotion("enter");
     this.syncPopupSubmittingState();
-    this.setPopupStatus("等待操作", "info");
+    this.setPopupStatus("Waiting for operation", "info");
     this.win.setTimeout(() => {
       if (!this.popupForm.hidden && !this.popupClosing && this.popupState) {
         this.popupBodyInput.focus();
@@ -1962,7 +1962,7 @@ class AgentationShellRuntime {
         this.finalizePopupClose();
       }, POPUP_EXIT_DURATION_MS);
     }
-    // 弹窗关闭后回收焦点，保证键盘用户可继续无鼠标操作。
+    // Recover focus after popup closes to ensure keyboard users can continue without mouse.
     if (returnFocusTarget && returnFocusTarget.isConnected) {
       returnFocusTarget.focus();
     }
@@ -1991,13 +1991,13 @@ class AgentationShellRuntime {
 
   private resetPopupToDefaultView(): void {
     this.popupDeleteButton.hidden = true;
-    this.popupTitleView.textContent = "新建标注";
-    this.popupSubmitButton.textContent = "提交标注";
-    this.popupSelectionLabel.textContent = "当前选中文本";
+    this.popupTitleView.textContent = "New Annotation";
+    this.popupSubmitButton.textContent = "Submit Annotation";
+    this.popupSelectionLabel.textContent = "Current Selected Text";
     this.popupBodyInput.value = "";
     this.popupPrioritySelect.value = "normal";
     this.clearPopupValidationFeedback();
-    this.setPopupStatus("等待操作", "info");
+    this.setPopupStatus("Waiting for operation", "info");
   }
 
   private playPopupMotion(motion: "enter" | "exit"): void {
@@ -2018,11 +2018,11 @@ class AgentationShellRuntime {
   }
 
   private raisePopupBodyRequiredFeedback(): void {
-    this.setPopupStatus("请输入反馈内容", "error");
+    this.setPopupStatus("Please enter feedback content", "error");
     this.popupBodyInput.dataset.invalid = "true";
     this.popupBodyInput.setAttribute("aria-invalid", "true");
     this.popupForm.classList.remove("pc-agent-popup-shake");
-    // 先强制回流再重新加类，保证连续两次校验失败也能触发抖动。
+    // Force reflow before re-adding class to ensure shake triggers even on consecutive validation failures.
     void this.popupForm.offsetWidth;
     this.popupForm.classList.add("pc-agent-popup-shake");
     if (this.popupShakeTimerId !== null) {
@@ -2146,7 +2146,7 @@ class AgentationShellRuntime {
     ) {
       return state.returnFocusElement;
     }
-    // 找不到可靠来源时，退回到工具栏主按钮，确保焦点不丢失。
+    // When no reliable source is found, fall back to the toolbar main button to ensure focus is not lost.
     if (!this.toolbarToggle.hidden && this.toolbarToggle.isConnected) {
       return this.toolbarToggle;
     }
@@ -2268,7 +2268,7 @@ function shouldSkipDragSelectionStart(target: HTMLElement): boolean {
 }
 
 /**
- * 拖框坐标统一夹在视口内，避免越界后出现负尺寸。
+ * Drag selection coordinates are uniformly clamped within the viewport to avoid negative dimensions after out-of-bounds.
  */
 function buildSelectionRect(
   start: Point,
@@ -2318,7 +2318,7 @@ function collectAreaSelectionTargets(
     matched.push({ element: candidate, rect });
   });
 
-  // 跟参考实现保持一致：命中集合里优先保留更具体的叶子节点。
+  // Align with reference implementation: prioritize keeping more specific leaf nodes in the hit set.
   const leafMatched = matched.filter(
     ({ element }) =>
       !matched.some(
@@ -2346,7 +2346,7 @@ function readToolbarPersistedState(win: Window): ToolbarPersistedState | null {
   if (!storage) {
     return null;
   }
-  // 解析失败时返回 null，上层自动退回默认显示逻辑。
+  // Return null on parsing failure, upper layer automatically falls back to default display logic.
   return parseToolbarPersistedState(storage.getItem(TOOLBAR_STATE_STORAGE_KEY));
 }
 
@@ -2358,7 +2358,7 @@ function writeToolbarPersistedState(win: Window, state: ToolbarPersistedState): 
   try {
     storage.setItem(TOOLBAR_STATE_STORAGE_KEY, JSON.stringify(state));
   } catch {
-    // 某些受限环境可能禁写 localStorage；这里静默降级，不阻塞主功能。
+    // Some restricted environments may block localStorage writes; silently degrade here without blocking main functionality.
   }
 }
 
@@ -2398,7 +2398,7 @@ function getSafeLocalStorage(win: Window): Storage | null {
   try {
     return win.localStorage;
   } catch {
-    // Safari 隐私模式、沙箱 iframe 等场景都可能抛异常。
+    // Safari private mode, sandboxed iframes, etc. may throw exceptions.
     return null;
   }
 }
@@ -2420,7 +2420,7 @@ function snapshotRect(rect: DOMRectReadOnly): DOMRectReadOnly {
 }
 
 /**
- * 将多个元素框合成一个包络框，作为统一提交的定位 rect。
+ * Combine multiple elements into a bounding box as the positioning rect for unified submission.
  */
 function unionRects(rects: readonly DOMRectReadOnly[]): DOMRectReadOnly | null {
   if (rects.length === 0) {
@@ -2472,8 +2472,8 @@ function normalizeSelectionText(value: string): string {
 }
 
 /**
- * 将 UI 壳内部的 target 结构映射成 shared-protocol 的 uiAnchor。
- * 这里坚持“保守可用”策略：能稳定提供的字段先给出，复杂 selector 引擎留到后续迭代。
+ * Map the internal target structure of the UI shell to the shared-protocol uiAnchor.
+ * Adhere to a "conservatively usable" strategy: provide stable fields first, leave complex selector engine for future iterations.
  */
 function buildUiAnchorFromTarget(
   target: AgentationShellCreateAnnotationInput["target"],
@@ -2489,12 +2489,12 @@ function buildUiAnchorFromTarget(
     elementPath: target.elementPath,
   };
 
-  // DOM/a11y/邻近文本上下文只做轻量快照，帮助后续回放和定位。
+  // DOM/a11y/nearby text context only takes lightweight snapshots to aid subsequent replay and positioning.
   if (options?.targetElement) {
     meta.elementContext = extractElementContextMeta(options.targetElement);
   }
 
-  // React 线索可选注入，拿不到时保持静默，不影响普通页面。
+  // React clues are optionally injected, remain silent when unavailable, and do not affect regular pages.
   if (options?.targetElement) {
     const reactMeta = extractReactAnchorMeta(options.targetElement);
     if (reactMeta) {
@@ -2503,7 +2503,7 @@ function buildUiAnchorFromTarget(
     }
   }
 
-  // 多选提交仍只创建单条 annotation，这里把聚合明细挂进 meta 便于回放定位。
+  // Multi-select submission still creates only a single annotation; attach aggregation details to meta for easier replay and positioning.
   if (options?.multiSelectMeta) {
     meta.multiSelect = options.multiSelectMeta;
   }
@@ -2545,7 +2545,7 @@ function toCssSelectorCandidate(elementPath: string): string | undefined {
     return undefined;
   }
 
-  // shadow 边界路径是给人看的，不保证符合 CSS 语法，直接降级更稳。
+  // Shadow boundary paths are for human reading, not guaranteed to follow CSS syntax, direct degradation is more stable.
   if (normalizedPath.includes("⟨shadow⟩")) {
     return undefined;
   }
@@ -2558,7 +2558,7 @@ function toCssSelectorCandidate(elementPath: string): string | undefined {
     return undefined;
   }
 
-  // 只接受“单标签 / 单类名 / 单 id”这三类简单片段，避免把脏路径塞进协议字段。
+  // Only accept three types of simple fragments: "single tag / single class / single id" to avoid putting dirty paths into protocol fields.
   const simpleSelectorSegmentPattern = /^(?:[a-z][a-z0-9-]*|#[^\s>]+|\.[^\s>.#]+)$/i;
   if (!segments.every((segment) => simpleSelectorSegmentPattern.test(segment))) {
     return undefined;
@@ -2568,7 +2568,7 @@ function toCssSelectorCandidate(elementPath: string): string | undefined {
 }
 
 /**
- * 终态 annotation 不再可编辑，回放时跳过，避免用户在壳体里改到“已结束”记录。
+ * Final-state annotations are no longer editable, skip during replay to avoid users modifying "completed" records in the shell.
  */
 function isReplayableFeedbackAnnotation(annotation: FeedbackAnnotation): boolean {
   if (!annotation.id.trim()) {
@@ -2594,16 +2594,16 @@ function buildFeedbackDeltaPlan(delta: AgentationShellFeedbackDelta): FeedbackDe
     if (eventType === "annotation.dismissed") {
       const annotationId = event.annotationId?.trim() ?? "";
       if (annotationId) {
-        // dismiss 事件直接删 marker，避免每次都回放全量 snapshot。
+        // Dismiss events directly delete markers to avoid replaying full snapshot every time.
         plan.dismissedAnnotationIds.add(annotationId);
         continue;
       }
-      // delta payload 不完整时保守回退到 snapshot，确保状态最终一致。
+      // Conservatively fall back to snapshot when delta payload is incomplete to ensure final state consistency.
       plan.shouldReloadSnapshot = true;
       continue;
     }
 
-    // created/updated/claimed/replied/resolved 等统一走一次 snapshot reload。
+    // created/updated/claimed/replied/resolved all go through a snapshot reload.
     plan.shouldReloadSnapshot = true;
   }
 
@@ -2654,7 +2654,7 @@ function queryReplayElementBySelector(doc: Document, shellHost: HTMLElement, sel
     }
     return node;
   } catch {
-    // selector 可能来自历史数据，语法异常时直接降级。
+    // Selector may come from historical data, directly degrade on syntax exceptions.
     return null;
   }
 }
@@ -2724,7 +2724,7 @@ function readMultiSelectMetaFromMetaRecord(meta: Record<string, unknown> | null)
     return undefined;
   }
   const normalizedCount = Number(count);
-  // 只做“可用于渲染”的最小校验：count 与 items 长度不强耦合，兼容历史脏数据。
+  // Only perform minimal "renderable" validation: count and items length are not strongly coupled to be compatible with historical dirty data.
   return {
     count: normalizedCount,
     unionRect,
@@ -2794,10 +2794,10 @@ function resolveMarkerVisualSemantic(marker: MarkerRecord, index: number): Marke
       kind: "area-select",
       isAggregate: true,
       aggregateCount: 0,
-      mainLabel: "区",
-      title: "区域聚合标注：点击编辑；弹窗内可删除",
+      mainLabel: "Area",
+      title: "Area aggregation annotation: click to edit; can delete in popup",
       ariaLabel: `annotation-area-marker-${index + 1}`,
-      affordanceLabel: "区域编辑 / 删除",
+      affordanceLabel: "Area edit / delete",
     };
   }
   if (multiSelectMeta && multiSelectMeta.count > 1) {
@@ -2807,9 +2807,9 @@ function resolveMarkerVisualSemantic(marker: MarkerRecord, index: number): Marke
       aggregateCount: multiSelectMeta.count,
       mainLabel: "Σ",
       badgeLabel: multiSelectMeta.count > 99 ? "99+" : String(multiSelectMeta.count),
-      title: `聚合标注（${multiSelectMeta.count} 个元素）：点击编辑；弹窗内可删除`,
+      title: `Aggregation annotation (${multiSelectMeta.count} elements): click to edit; can delete in popup`,
       ariaLabel: `annotation-multi-marker-${index + 1}-${multiSelectMeta.count}-items`,
-      affordanceLabel: "聚合编辑 / 删除",
+      affordanceLabel: "Aggregation edit / delete",
     };
   }
   return {
@@ -2817,9 +2817,9 @@ function resolveMarkerVisualSemantic(marker: MarkerRecord, index: number): Marke
     isAggregate: false,
     aggregateCount: 1,
     mainLabel: String(index + 1),
-    title: "点击编辑；弹窗内可删除",
+    title: "Click to edit; can delete in popup",
     ariaLabel: `annotation-marker-${index + 1}`,
-    affordanceLabel: "编辑 / 删除",
+    affordanceLabel: "Edit / delete",
   };
 }
 
@@ -2843,13 +2843,13 @@ function isFocusableInPopup(element: HTMLElement): boolean {
 
 function buildMarkerTooltipQuote(marker: MarkerRecord, semantic: MarkerVisualSemantic): string {
   if (semantic.kind === "multi-select") {
-    return `聚合标注 · 命中 ${semantic.aggregateCount} 个元素`;
+    return `Aggregation annotation · hit ${semantic.aggregateCount} elements`;
   }
   if (semantic.kind === "area-select") {
-    return "区域聚合标注 · 未命中可聚合元素";
+    return "Area aggregation annotation · no aggregatable elements hit";
   }
   if (!marker.selectedText) {
-    return "无选中文本";
+    return "No selected text";
   }
   return `“${marker.selectedText.slice(0, 40)}”`;
 }
@@ -2860,9 +2860,9 @@ function buildMarkerTooltipNote(marker: MarkerRecord, semantic: MarkerVisualSema
     return content;
   }
   if (semantic.kind === "area-select") {
-    return `区域范围 · ${content}`;
+    return `Area range · ${content}`;
   }
-  return `聚合范围(${semantic.aggregateCount}) · ${content}`;
+  return `Aggregation range(${semantic.aggregateCount}) · ${content}`;
 }
 
 function resolveMarkerTooltipPlacement(
@@ -2906,7 +2906,7 @@ function computeMarkerContextMenuTop(clientY: number, viewportHeight: number): n
 }
 
 function computePopupLeft(clientX: number, viewportWidth: number): number {
-  // 与当前样式宽度保持一致，避免靠边时出现过度保守的留白。
+  // Keep consistent with current style width to avoid overly conservative margins when near the edge.
   const width = 280;
   const min = 12;
   const max = Math.max(min, viewportWidth - width - 12);
@@ -3485,7 +3485,7 @@ const SHELL_TEMPLATE = `
       gap: 0.375rem;
     }
 
-    /* 主操作单独分层，后续可直接承接成品的主按钮布局规则。 */
+    /* Main actions are layered separately, can directly inherit main button layout rules from finished products later. */
     .pc-agent-popup-actions-primary {
       display: flex;
       align-items: center;
@@ -3585,42 +3585,42 @@ const SHELL_TEMPLATE = `
     <div class="pc-agent-hover-box" data-hover-box hidden></div>
     <div class="pc-agent-drag-selection" data-drag-selection hidden></div>
     <div class="pc-agent-marker-context-menu" data-marker-context-menu hidden>
-      <button type="button" class="pc-agent-marker-context-menu-item danger" data-marker-context-menu-delete>删除标注</button>
+      <button type="button" class="pc-agent-marker-context-menu-item danger" data-marker-context-menu-delete>Delete Annotation</button>
     </div>
 
     <div class="pc-agent-toolbar" data-toolbar data-annotating="false">
-      <button type="button" class="pc-agent-toolbar-toggle" data-active="false" data-toolbar-toggle>UI 标注</button>
-      <span class="pc-agent-toolbar-hint" data-toolbar-hint>开启后，点击页面元素创建反馈。</span>
+      <button type="button" class="pc-agent-toolbar-toggle" data-active="false" data-toolbar-toggle>UI Annotation</button>
+      <span class="pc-agent-toolbar-hint" data-toolbar-hint>After enabling, click page elements to create feedback.</span>
       <div class="pc-agent-toolbar-actions">
         <button
           type="button"
           class="pc-agent-toolbar-icon pc-agent-toolbar-drag"
           data-toolbar-drag
-          aria-label="拖动 UI 标注浮窗"
-          title="拖动浮窗"
+          aria-label="Drag UI annotation floating window"
+          title="Drag floating window"
         >⋮⋮</button>
         <button
           type="button"
           class="pc-agent-toolbar-icon"
           data-toolbar-hide
-          aria-label="隐藏 UI 标注浮窗"
-          title="隐藏浮窗"
+          aria-label="Hide UI annotation floating window"
+          title="Hide floating window"
         >×</button>
       </div>
     </div>
-    <button type="button" class="pc-agent-toolbar-dock" data-toolbar-dock hidden>标注</button>
+    <button type="button" class="pc-agent-toolbar-dock" data-toolbar-dock hidden>Annotation</button>
 
     <form class="pc-agent-popup" data-popup hidden>
-      <p class="pc-agent-popup-title" data-popup-title>新建标注</p>
+      <p class="pc-agent-popup-title" data-popup-title>New Annotation</p>
       <p class="pc-agent-popup-target" data-popup-target>unknown target</p>
 
-      <label class="pc-agent-popup-label" data-popup-selection-label>当前选中文本</label>
-      <p class="pc-agent-popup-selection" data-popup-selection>未检测到页面选中内容</p>
+      <label class="pc-agent-popup-label" data-popup-selection-label>Current Selected Text</label>
+      <p class="pc-agent-popup-selection" data-popup-selection>No page selection detected</p>
 
-      <label class="pc-agent-popup-label" for="pc-agent-popup-body">反馈内容</label>
-      <textarea id="pc-agent-popup-body" class="pc-agent-popup-body" data-popup-body maxlength="2000" placeholder="描述问题或建议"></textarea>
+      <label class="pc-agent-popup-label" for="pc-agent-popup-body">Feedback Content</label>
+      <textarea id="pc-agent-popup-body" class="pc-agent-popup-body" data-popup-body maxlength="2000" placeholder="Describe the issue or suggestion"></textarea>
 
-      <label class="pc-agent-popup-label" for="pc-agent-popup-priority">优先级</label>
+      <label class="pc-agent-popup-label" for="pc-agent-popup-priority">Priority</label>
       <select id="pc-agent-popup-priority" class="pc-agent-popup-priority" data-popup-priority>
         <option value="low">low</option>
         <option value="normal" selected>normal</option>
@@ -3630,14 +3630,14 @@ const SHELL_TEMPLATE = `
 
       <div class="pc-agent-popup-actions" data-popup-actions>
         <div class="pc-agent-popup-actions-secondary" data-popup-actions-secondary>
-          <button type="button" class="pc-agent-popup-btn" data-popup-cancel>取消</button>
-          <button type="button" class="pc-agent-popup-btn danger" data-popup-delete hidden>删除标注</button>
+          <button type="button" class="pc-agent-popup-btn" data-popup-cancel>Cancel</button>
+          <button type="button" class="pc-agent-popup-btn danger" data-popup-delete hidden>Delete Annotation</button>
         </div>
         <div class="pc-agent-popup-actions-primary" data-popup-actions-primary>
-          <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>提交标注</button>
+          <button type="submit" class="pc-agent-popup-btn primary" data-popup-submit>Submit Annotation</button>
         </div>
       </div>
-      <p class="pc-agent-popup-status info" data-popup-status>等待操作</p>
+      <p class="pc-agent-popup-status info" data-popup-status>Waiting for operation</p>
     </form>
   </div>
 `;

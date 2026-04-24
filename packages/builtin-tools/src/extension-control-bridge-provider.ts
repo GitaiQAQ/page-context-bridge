@@ -1,8 +1,9 @@
 /**
  * Bridge-side provider for extension control tools.
  *
- * 这批工具在 bridge 侧本地执行，用于管理工具树启停状态并主动刷新 page tools。
- * 命名统一走 `extension.*` namespace。
+ * These tools execute locally on the bridge side for managing tool tree enable/disable states 
+ * and actively refreshing page tools.
+ * Names follow the `extension.*` namespace pattern.
  */
 
 import { z } from "zod";
@@ -152,7 +153,7 @@ export class ExtensionControlBridgeProvider {
         alias,
         {
           ...config,
-          // 旧名仅做兼容，不再作为首选入口。
+          // Legacy names are for compatibility only, no longer the primary entry point.
           description: `${config.description} (Deprecated alias. Use '${primaryName}' instead.)`,
         },
         handler,
@@ -228,7 +229,7 @@ export class ExtensionControlBridgeProvider {
 
     const getRuntimeStatusHandler = async () => {
       try {
-        // 状态查询保持透传，避免 bridge 侧拼装字段导致调试口径漂移。
+        // Status queries remain transparent to avoid debugging drift from bridge-side field assembly.
         const status = await rpc.getRuntimeStatus();
         return createTextResponse(JSON.stringify(status, null, 2));
       } catch (error) {
@@ -241,7 +242,7 @@ export class ExtensionControlBridgeProvider {
 
     const reconnectHandler = async () => {
       try {
-        // 重连行为仍由 extension 决定，bridge 只负责触发并返回结果。
+        // Reconnection behavior is still determined by extension, bridge only triggers and returns results.
         const result = await rpc.reconnectExtension();
         return createTextResponse(JSON.stringify({
           ok: true,
@@ -264,7 +265,7 @@ export class ExtensionControlBridgeProvider {
         }, null, 2));
       }
       try {
-        // manifest debug 直接复用 extension 现有结构，避免重复拼装。
+        // Manifest debug directly reuses extension's existing structure to avoid redundant assembly.
         const payload = await rpc.getContextManifestDebug(tabId);
         return createTextResponse(JSON.stringify(payload, null, 2));
       } catch (error) {
@@ -280,7 +281,7 @@ export class ExtensionControlBridgeProvider {
       const updates = Array.isArray(args.updates)
         ? (args.updates as PageToolEnableUpdate[])
         : [];
-      // 明确拒绝 page scope 缺 tabId 的输入，避免进入 extension 后静默 no-op。
+      // Explicitly reject page scope inputs missing tabId to avoid silent no-op in extension.
       for (let index = 0; index < updates.length; index += 1) {
         assertValidPageToolEnableUpdate(updates[index]!, index);
       }
@@ -356,7 +357,7 @@ export class ExtensionControlBridgeProvider {
         error: error instanceof Error ? error.message : String(error),
       }, null, 2));
 
-      // runtime status 仅用于诊断，拉取失败不阻断准备流程。
+      // Runtime status is for diagnostics only, failure to fetch doesn't block preparation flow.
       const runtimeStatus = await rpc.getRuntimeStatus().catch((error) => ({
         ok: false,
         error: error instanceof Error ? error.message : String(error),
@@ -392,7 +393,7 @@ export class ExtensionControlBridgeProvider {
 
       const pageToolsEnabled = enableReadOnlyPageTools ?? true;
       const builtinToolsEnabled = enableReadOnlyBuiltins ?? false;
-      // 仅收集“只读 + 未启用”候选，避免误开高风险变更型工具。
+      // Only collect "read-only + disabled" candidates to avoid accidentally enabling high-risk mutation tools.
       const updates = collectReadOnlyEnableUpdatesForPrepare(tree, {
         tabId,
         enableReadOnlyPageTools: pageToolsEnabled,
@@ -455,7 +456,7 @@ export class ExtensionControlBridgeProvider {
       }
 
       try {
-        // 安全入口必须先看工具树，只允许“已启用 + 只读”工具进入 extension.tool.debug.call。
+        // Security entry must first check tool tree, only allowing "enabled + read-only" tools into extension.tool.debug.call.
         const tree = await rpc.getPageToolsTree();
         const target = pickDebugTargetFromToolTree(tree, toolName, tabId);
         if (!target) {
@@ -593,7 +594,7 @@ export class ExtensionControlBridgeProvider {
 
 function assertValidPageToolEnableUpdate(update: PageToolEnableUpdate, index: number): void {
   const root = update.root ?? "page";
-  // extension 侧 root=page 且缺 tabId 时会直接 no-op，这里提前拦截避免误判为切换成功。
+  // Extension side will be no-op when root=page and tabId is missing, intercept here to avoid misjudging as successful toggle.
   if (root === "page" && update.tabId == null) {
     throw new Error(`updates[${index}] requires tabId when root is "page"`);
   }

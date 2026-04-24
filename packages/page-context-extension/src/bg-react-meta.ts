@@ -11,8 +11,8 @@ interface ReactMetaQueryInput {
 }
 
 /**
- * 在 background 侧补采集 React 元数据。
- * 只补 reactPath/reactLeaf，不改动其他字段；任何失败都静默降级。
+ * Supplementary React metadata collection on background side.
+ * Only supplements reactPath/reactLeaf, doesn't modify other fields; any failure silently degrades.
  */
 export async function enrichUiAnchorReactMetaInMainWorld(
   tabId: number,
@@ -26,7 +26,7 @@ export async function enrichUiAnchorReactMetaInMainWorld(
   const existingReactPath = toReactPath(existingMeta?.reactPath);
   const existingReactLeaf = toReactLeaf(existingMeta?.reactLeaf);
 
-  // 两个字段都已经有值时，直接跳过注入，避免额外脚本开销。
+  // If both fields already have values, skip injection directly to avoid extra script overhead.
   if (existingReactPath && existingReactLeaf) {
     return uiAnchor;
   }
@@ -64,7 +64,7 @@ export async function enrichUiAnchorReactMetaInMainWorld(
       },
     };
   } catch {
-    // 非 React 页面、受限页面或注入失败时一律静默，不影响主链路。
+    // Non-React pages, restricted pages, or injection failures all silently degrade without affecting main flow.
     return uiAnchor;
   }
 }
@@ -153,7 +153,7 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
           return bySelector;
         }
       } catch {
-        // selector 不合法时继续走坐标回退，不让异常打断主流程。
+        // When selector is invalid, continue with coordinate fallback, don't let exception interrupt main flow.
       }
     }
 
@@ -274,7 +274,7 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
   };
 
   const getComponentNameFromFiber = (fiber: ReactFiberNode): string | null => {
-    // HostComponent 的 type 是 div/span 等标签名，不是我们要的组件名。
+    // For HostComponent, the type is a tag name like div/span, not the component name we need.
     if (typeof fiber.type === "string") {
       return null;
     }

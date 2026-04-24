@@ -118,7 +118,7 @@ describe("connectWebSocket", () => {
     const wsModule = await import("./bg-ws-connection");
     const noop = vi.fn(async () => ({}));
 
-    // 第一次连接在握手阶段直接关闭：应立即失败，而不是悬挂。
+    // First connection closes directly during handshake: should fail immediately, not hang.
     const firstConnect = wsModule.connectWebSocket(noop, noop, noop);
     await flushMicrotasks();
     const firstSocket = FakeWebSocket.instances[0];
@@ -129,7 +129,7 @@ describe("connectWebSocket", () => {
     await expect(firstConnect).rejects.toThrow("before open");
     expect(wsModule.getWsState().connectPromise).toBeNull();
 
-    // 第二次连接仍然可用，说明前一次失败不会卡住全局 connectPromise。
+    // Second connection is still available, indicating previous failure doesn't block global connectPromise.
     const secondConnect = wsModule.connectWebSocket(noop, noop, noop);
     await flushMicrotasks();
     const secondSocket = FakeWebSocket.instances[1];
@@ -154,10 +154,10 @@ describe("connectWebSocket", () => {
     socket.emitOpen();
     await connectPromise;
 
-    // 确保 bridge 可直接通过 WS 调起 MAIN world 自愈入口。
+    // Ensure bridge can directly invoke MAIN world self-healing entry via WS.
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionMainWorldHostEnsure);
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionAgentationMainEnsure);
-    // 安全 debug 入口依赖该转发方法，缺失会导致 bridge 调用时报 method not found。
+    // Secure debug entry depends on this forwarding method, missing it causes bridge call to report method not found.
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionToolDebugCall);
   });
 });

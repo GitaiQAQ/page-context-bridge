@@ -8,7 +8,7 @@ import {
   RpcProtocolError,
   RPC_ERROR_CODES,
 } from "@page-context/shared-protocol";
-import { BuiltinExtensionProvider } from "@page-context/builtin-tools";
+import { BuiltinExtensionProvider, toCanonicalBuiltinRuntimeToolName } from "@page-context/builtin-tools";
 
 import type { BuiltinToolResult } from "./bg-page-context";
 import { executePageToolInTab } from "./bg-page-context";
@@ -63,16 +63,18 @@ export function getBuiltinToolDefinitions(): Array<{ name: string; description?:
 }
 
 export async function executeToolCall(tool: string, args: JsonRecord, tabId?: number): Promise<BuiltinToolResult> {
+  const normalizedTool = toCanonicalBuiltinRuntimeToolName(tool);
+
   // Check extension tool providers first
   for (const provider of extensionToolProviders) {
     const definitions = provider.getToolDefinitions();
-    const def = definitions.find((d) => d.name === tool);
+    const def = definitions.find((d) => d.name === normalizedTool);
     if (!def) {
       continue;
     }
 
     if (def.executionContext === "service-worker" && provider.executeInServiceWorker) {
-      return await provider.executeInServiceWorker(tool, args, serviceWorkerContext) as BuiltinToolResult;
+      return await provider.executeInServiceWorker(normalizedTool, args, serviceWorkerContext) as BuiltinToolResult;
     }
 
     if (def.executionContext === "content-script") {
@@ -81,7 +83,7 @@ export async function executeToolCall(tool: string, args: JsonRecord, tabId?: nu
         throw new RpcProtocolError(RPC_ERROR_CODES.invalidRequest, "No active tab available");
       }
       return await sendTabRequest<BuiltinToolResult>(targetTabId, BRIDGE_METHODS.extensionToolExecute, {
-        tool,
+        tool: normalizedTool,
         args,
         _providerId: provider.id,
       });
@@ -89,8 +91,8 @@ export async function executeToolCall(tool: string, args: JsonRecord, tabId?: nu
   }
 
   // Page context tools (namespaced)
-  if (tool.startsWith("page.") || tool.includes(".")) {
-    return await executePageTool(tool, args, tabId);
+  if (normalizedTool.startsWith("page.") || normalizedTool.includes(".")) {
+    return await executePageTool(normalizedTool, args, tabId);
   }
 
   throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unknown tool: ${tool}`);

@@ -34,8 +34,8 @@ const PAGE_TOOL_PREFERENCES_KEY = "pageToolPreferences";
 type JsonRecord = Record<string, unknown>;
 type FeedbackCreatePayloadFromUi = Pick<FeedbackAnnotationCreateParams, "body" | "priority" | "selectedText" | "uiAnchor"> & {
   /**
-   * 给 UI 壳最小 fork 的字段别名做兼容，避免前后端联调卡在命名差异上。
-   * 后续若统一字段，可直接删掉这个别名映射。
+   * Compatibility alias for the UI shell's minimal fork fields, avoiding naming differences during front-end and back-end debugging.
+   * This alias mapping can be removed if fields are unified in the future.
    */
   anchor?: FeedbackAnnotationCreateParams["uiAnchor"];
 };
@@ -84,7 +84,7 @@ function getBuiltinTools(): PageToolSpec[] {
     _bridgeControlTool: true,
   }));
 
-  // runtime + control 工具统一进入 builtin 模型；同名去重时优先保留 runtime 定义。
+  // Runtime and control tools are unified into the builtin model; runtime definitions are prioritized during deduplication.
   const deduped = new Map<string, PageToolSpec>();
   for (const tool of [...runtimeBuiltins, ...bridgeControlBuiltins]) {
     if (!deduped.has(tool.name)) {
@@ -163,7 +163,7 @@ async function discoverPageToolsForTab(tabId: number, force = false): Promise<Pa
   }
 
   const discoveryPromise = (async () => {
-    // 支持 sidepanel 手动刷新自愈：discover 前先确保 MAIN world host 已注入。
+    // Support manual refresh in the sidepanel for self-healing: ensure the MAIN world host is injected before discovery.
     await ensureMainWorldBridgeHostOnTab(tabId).catch((error) => {
       log("Ensure MAIN world host failed before discovery", tabId, error);
     });
@@ -216,8 +216,8 @@ async function discoverPageToolsAfterTabReload(tabId: number): Promise<void> {
   }
 
   const discoveryTask = (async () => {
-    // 页面刷新后，页面脚本重建 bridge 可能晚于 tabs.onUpdated("complete")。
-    // 这里做一次延迟补偿发现，减少“必须手动刷新 sidepanel 才能看到工具”的情况。
+    // After page refresh, page script bridge reconstruction may be later than tabs.onUpdated("complete").
+    // Add delayed discovery compensation here to reduce cases where manual sidepanel refresh is needed to see tools.
     const reloadDelays = [0, 2_000];
     for (const delay of reloadDelays) {
       if (delay > 0) {
@@ -250,7 +250,7 @@ async function listTabs() {
   }));
 }
 
-// background 统一通过 WS helper 访问 bridge，减少业务层重复判空与超时配置。
+// Background uniformly accesses bridge through WS helper to reduce duplicate null checks and timeout configurations in business layer.
 async function requestBridgeMethod<TResult>(method: string, params?: unknown): Promise<TResult> {
   return await requestBridge<TResult>(method, params, { timeoutMs: 20_000 });
 }
@@ -259,10 +259,10 @@ function buildFeedbackAnnotationCreateParams(
   payload: FeedbackCreatePayloadFromUi,
   context: ActiveTabFeedbackContext,
 ): FeedbackAnnotationCreateParams {
-  // 这里作为 background 的轻量 adapter 边界：
-  // 1) 统一 body/选区清洗规则
-  // 2) 接住 UI 壳新增字段（uiAnchor/anchor）并映射到 bridge 协议
-  // 3) 后续动作链路要扩展字段时，只改这一处即可
+  // This serves as a lightweight adapter boundary in background:
+  // 1) Unified body/selection cleaning rules
+  // 2) Catch UI shell's new fields (uiAnchor/anchor) and map to bridge protocol
+  // 3) When extending fields in future action chains, only modify this one place
   return {
     body: payload.body.trim(),
     priority: payload.priority,
@@ -303,7 +303,7 @@ function normalizeFeedbackUiAnchor(anchor: FeedbackAnnotationCreateParams["uiAnc
     meta: anchor.meta && Object.keys(anchor.meta).length > 0 ? anchor.meta : undefined,
   };
 
-  // 只要任意定位信号存在就保留；全部为空时回退为 undefined，避免污染存储。
+  // Keep any positioning signal if present; fallback to undefined when all are empty to avoid polluting storage.
   if (
     normalized.elementId ||
     normalized.cssSelector ||
@@ -370,7 +370,7 @@ function getMainWorldInjectionTarget(params: unknown): { tabId: number; frameId?
   if (!Number.isInteger(payload.frameId) || payload.frameId < 0) {
     throw new Error("frameId must be a non-negative integer");
   }
-  // WS 入口允许不传 frameId，表示让 Chrome 在目标 tab 的可注入 frame 上执行默认注入。
+  // WS entry allows omitting frameId, indicating Chrome should perform default injection on injectable frames of target tab.
   return { tabId, frameId: payload.frameId };
 }
 
@@ -612,7 +612,7 @@ function installPageContextBridgeHostInMainWorld(): void {
   };
 
   win[HOST_KEY] = host;
-  // 通过 getter/setter 保持 merge 语义：旧插件直接写 window.__pageContextBridge__ 也会被 host 收养为 source。
+  // Maintain merge semantics via getter/setter: legacy plugins writing directly to window.__pageContextBridge__ will also be adopted as a source by the host.
   Object.defineProperty(win, BRIDGE_KEY, {
     configurable: true,
     enumerable: false,
@@ -681,7 +681,7 @@ async function handleExtensionPageToolsRefresh(params: unknown): Promise<{ tools
   if (!tabId) {
     throw new Error("No tabId provided");
   }
-  // refresh 与 discover 复用同一条发现链路，避免两套逻辑漂移。
+  // Refresh and discover reuse the same discovery pipeline to avoid logic drift between two implementations.
   const entries = await discoverPageToolsForTab(tabId, true);
   return { tools: flattenPageTools(entries) };
 }
@@ -753,7 +753,7 @@ async function handleExtensionToolDebugCall(params: unknown) {
   }
 
   try {
-    // 这里保留 raw debug 能力；是否允许调用由 bridge provider 侧做“只读/启用”门禁。
+    // Retain raw debug capability here; whether calls are allowed is gated by bridge provider's "read-only/enabled" checks.
     const result = await executeToolCall(payload.toolName, payload.args ?? {}, payload.tabId);
     return { ok: true, result };
   } catch (error) {
@@ -765,8 +765,8 @@ async function handleExtensionToolDebugCall(params: unknown) {
 }
 
 async function onBridgeWsExtensionRequest(method: string, params: unknown): Promise<unknown> {
-  // 这条入口只处理 bridge 通过 WS 主动 request 的 extension 控制方法。
-  // 统一复用 runtime 分支里的同名 handler，确保 WS 与 runtime 行为一致。
+  // This entry only handles extension control methods actively requested by bridge via WS.
+  // Reuse same-named handlers from runtime branch to ensure WS and runtime behavior consistency.
   await ensurePageToolPreferencesLoaded();
 
   switch (method) {
@@ -832,7 +832,7 @@ chrome.runtime.onMessage.addListener(
         const payload = (message.params ?? {}) as FeedbackStateSnapshotParams;
         const params: FeedbackStateSnapshotParams = { ...payload };
         if (params.tabId == null && !params.sessionId) {
-          // 优先使用 sender.tab；仅在 sidepanel 无 sender.tab 时回退 active tab。
+          // Prioritize using sender.tab; only fallback to active tab when sidepanel has no sender.tab.
           const context = await captureActiveTabFeedbackContext(sender).catch(() => null);
           params.tabId = context?.tabId;
         }
@@ -855,9 +855,9 @@ chrome.runtime.onMessage.addListener(
         if (!payload.body?.trim()) {
           throw new Error("Feedback body is required");
         }
-        // content-script 的 UI 标注必须绑定消息发送者 tab，避免串到当前活动 tab。
+        // UI annotations from content-script must bind to message sender tab to avoid mixing with current active tab.
         const context = await captureActiveTabFeedbackContext(sender);
-        // 只在 uiAnchor 路径做 MAIN world 补采集：补到就带上，失败就保持原样。
+        // Only perform MAIN world supplemental collection on uiAnchor path: include if successful, keep as-is if failed.
         if (payload.uiAnchor) {
           payload.uiAnchor = await enrichUiAnchorReactMetaInMainWorld(context.tabId, payload.uiAnchor);
         }
@@ -887,7 +887,7 @@ chrome.runtime.onMessage.addListener(
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationDismiss: {
         const payload = (message.params ?? {}) as FeedbackAnnotationDismissParams;
-        // 与 create/update 对齐：在 extension 边界先拦截空 annotationId，避免无效 bridge 往返。
+        // Align with create/update: intercept empty annotationId at extension boundary first to avoid invalid bridge round trips.
         if (!payload.annotationId?.trim()) {
           throw new Error("Feedback annotationId is required");
         }
@@ -945,8 +945,8 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
-    // 同 URL 刷新也会触发 loading，但 changeInfo.url 可能为空。
-    // 因此只要进入 loading 就清理，确保后续一定走“重新发现 -> 重新发布”。
+    // Same URL refresh also triggers loading, but changeInfo.url may be empty.
+    // Therefore, clean up as soon as loading starts to ensure subsequent flow is "rediscover -> republish".
     tabReloadDiscoveryInFlight.delete(tabId);
     clearPageTools(tabId);
   }
