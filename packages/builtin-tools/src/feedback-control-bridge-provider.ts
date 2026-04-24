@@ -14,6 +14,7 @@ import type {
   FeedbackAnnotationReplyParams,
   FeedbackAnnotationResolveParams,
   FeedbackAnnotationUpdateParams,
+  FeedbackStateDeltaParams,
   FeedbackStateSnapshotParams,
 } from "@page-context/shared-protocol";
 import { z } from "zod";
@@ -24,6 +25,7 @@ function createTextResponse(text: string) {
 
 export interface FeedbackControlBridgeRpc {
   getFeedbackSnapshot(params: FeedbackStateSnapshotParams): unknown;
+  getFeedbackDelta(params: FeedbackStateDeltaParams): unknown;
   createFeedbackAnnotation(params: FeedbackAnnotationCreateParams): unknown;
   updateFeedbackAnnotation(params: FeedbackAnnotationUpdateParams): unknown;
   claimFeedbackAnnotation(params: FeedbackAnnotationClaimParams): unknown;
@@ -39,6 +41,7 @@ export interface FeedbackControlBridgeProviderOptions {
 
 export const FEEDBACK_CONTROL_TOOL_SUFFIXES = {
   getSnapshot: "get_snapshot",
+  watchEvents: "watch_events",
   createAnnotation: "create_annotation",
   updateAnnotation: "update_annotation",
   claim: "claim",
@@ -49,6 +52,7 @@ export const FEEDBACK_CONTROL_TOOL_SUFFIXES = {
 
 export const FEEDBACK_CONTROL_LEGACY_TOOL_NAMES = {
   getSnapshot: "feedback_get_snapshot",
+  watchEvents: "feedback_watch_events",
   createAnnotation: "feedback_create_annotation",
   updateAnnotation: "feedback_update_annotation",
   claim: "feedback_claim_annotation",
@@ -89,6 +93,11 @@ const feedbackUiAnchorSchema = z.object({
 
 const feedbackGetSnapshotSchema = z.object({
   tabId: z.number().int().optional(),
+  sessionId: z.string().optional(),
+});
+
+const feedbackWatchEventsSchema = z.object({
+  afterSeq: z.number().int().nonnegative().default(0),
   sessionId: z.string().optional(),
 });
 
@@ -158,6 +167,7 @@ export class FeedbackControlBridgeProvider {
 
   getToolNames(): {
     getSnapshot: string;
+    watchEvents: string;
     createAnnotation: string;
     updateAnnotation: string;
     claim: string;
@@ -167,6 +177,7 @@ export class FeedbackControlBridgeProvider {
   } {
     return {
       getSnapshot: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.getSnapshot}`,
+      watchEvents: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.watchEvents}`,
       createAnnotation: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.createAnnotation}`,
       updateAnnotation: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.updateAnnotation}`,
       claim: `${this.namespace}.${FEEDBACK_CONTROL_TOOL_SUFFIXES.claim}`,
@@ -237,6 +248,14 @@ export class FeedbackControlBridgeProvider {
         actorId: feedbackCreateAnnotationSchema.shape.actorId,
         actorName: feedbackCreateAnnotationSchema.shape.actorName,
       },
+    };
+    const watchEventsConfig = {
+      description: "Read feedback delta events after a cursor.",
+      inputSchema: {
+        afterSeq: feedbackWatchEventsSchema.shape.afterSeq,
+        sessionId: feedbackWatchEventsSchema.shape.sessionId,
+      },
+      annotations: { readOnlyHint: true },
     };
     const updateAnnotationConfig = {
       description: "Update an existing feedback annotation body/priority.",
@@ -311,6 +330,16 @@ export class FeedbackControlBridgeProvider {
       return createTextResponse(JSON.stringify({ annotation }, null, 2));
     };
 
+    const watchEventsHandler = async (args: Record<string, unknown>) => {
+      const parsed = feedbackWatchEventsSchema.parse(args);
+      // 事件模型由 feedback-store 维护；provider 只做轻量入口和参数适配。
+      const delta = rpc.getFeedbackDelta({
+        afterSeq: parsed.afterSeq,
+        sessionId: parsed.sessionId,
+      });
+      return createTextResponse(JSON.stringify(delta, null, 2));
+    };
+
     const updateAnnotationHandler = async (args: Record<string, unknown>) => {
       const parsed = feedbackUpdateAnnotationSchema.parse(args);
       const annotation = rpc.updateFeedbackAnnotation({
@@ -364,6 +393,9 @@ export class FeedbackControlBridgeProvider {
 
     register(names.getSnapshot, getSnapshotConfig, getSnapshotHandler);
     registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot, names.getSnapshot, getSnapshotConfig, getSnapshotHandler);
+
+    register(names.watchEvents, watchEventsConfig, watchEventsHandler);
+    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents, names.watchEvents, watchEventsConfig, watchEventsHandler);
 
     register(names.createAnnotation, createAnnotationConfig, createAnnotationHandler);
     registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.createAnnotation, names.createAnnotation, createAnnotationConfig, createAnnotationHandler);

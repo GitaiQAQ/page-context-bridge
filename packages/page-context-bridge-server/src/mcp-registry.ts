@@ -353,6 +353,7 @@ export class McpRegistry {
       ),
       {
         getFeedbackSnapshot: (params) => this.getFeedbackSnapshot(params),
+        getFeedbackDelta: (params) => this.getFeedbackDelta(params),
         createFeedbackAnnotation: (params) => this.createFeedbackAnnotation(params),
         updateFeedbackAnnotation: (params) => this.updateFeedbackAnnotation(params),
         claimFeedbackAnnotation: (params) => this.claimFeedbackAnnotation(params),
@@ -433,22 +434,6 @@ export class McpRegistry {
       },
     );
 
-    register(
-      "feedback_watch_events",
-      {
-        description: "Read feedback events after a cursor.",
-        inputSchema: {
-          afterSeq: z.number().int().nonnegative().default(0),
-          sessionId: z.string().optional(),
-        },
-      },
-      async (args) => {
-        const afterSeq = typeof args.afterSeq === "number" ? args.afterSeq : 0;
-        const sessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
-        const delta = this.getFeedbackDelta({ afterSeq, sessionId });
-        return createTextResponse(JSON.stringify(delta, null, 2));
-      },
-    );
   }
 
   registerExtensionToolControlToolsOnServer(mcpServer: McpServer): void {

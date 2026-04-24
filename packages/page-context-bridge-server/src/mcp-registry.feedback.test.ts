@@ -56,6 +56,7 @@ function parseTextResponse(payload: unknown) {
 
 const FEEDBACK_CONTROL_TOOL_NAMES = {
   getSnapshot: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.getSnapshot}`,
+  watchEvents: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.watchEvents}`,
   createAnnotation: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.createAnnotation}`,
   updateAnnotation: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.updateAnnotation}`,
   claim: `feedback.${FEEDBACK_CONTROL_TOOL_SUFFIXES.claim}`,
@@ -196,7 +197,8 @@ describe("mcp-registry feedback tools", () => {
     const fakeServer = new FakeMcpServer();
     registry.addServer(fakeServer as unknown as McpServer);
 
-    expect(fakeServer.tools.has("feedback_watch_events")).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.watchEvents)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.claim)).toBe(true);
 
     const created = registry.createFeedbackAnnotation({
@@ -208,7 +210,7 @@ describe("mcp-registry feedback tools", () => {
     const claim = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.claim);
     await claim?.({ annotationId: created.id, actorId: "agent-1", actorName: "Agent One" });
 
-    const watch = fakeServer.tools.get("feedback_watch_events");
+    const watch = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.watchEvents);
     const watched = await watch?.({ afterSeq: 0 });
     const parsed = parseTextResponse(watched);
     const events = parsed.events as Array<{ eventType: string }>;
@@ -218,6 +220,16 @@ describe("mcp-registry feedback tools", () => {
       "annotation.claimed",
     ]);
     expect(typeof parsed.lastSeq).toBe("number");
+
+    const watchLegacy = fakeServer.tools.get(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents);
+    // 旧入口与新入口共用同一条 delta 管线，确保迁移期间游标语义一致。
+    const watchedLegacy = await watchLegacy?.({ afterSeq: 1 });
+    const parsedLegacy = parseTextResponse(watchedLegacy);
+    const legacyEvents = parsedLegacy.events as Array<{ eventType: string }>;
+    expect(legacyEvents.map((item) => item.eventType)).toEqual([
+      "annotation.created",
+      "annotation.claimed",
+    ]);
   });
 
   it("registers namespaced feedback control tools and keeps legacy aliases", () => {
@@ -226,6 +238,7 @@ describe("mcp-registry feedback tools", () => {
     registry.addServer(fakeServer as unknown as McpServer);
 
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.getSnapshot)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.watchEvents)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.createAnnotation)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.updateAnnotation)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.claim)).toBe(true);
@@ -233,6 +246,7 @@ describe("mcp-registry feedback tools", () => {
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.resolve)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.dismiss)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot)).toBe(true);
+    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.createAnnotation)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.claim)).toBe(true);
