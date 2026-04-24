@@ -650,8 +650,7 @@ function collectReadOnlyEnableUpdatesForPrepare(
   };
 
   if (options.enableReadOnlyBuiltins) {
-    const builtins = isRecord(tree.builtins) ? tree.builtins : null;
-    const builtinTools = builtins && Array.isArray(builtins.tools) ? builtins.tools : [];
+    const builtinTools = collectBuiltinToolsFromTree(tree);
     for (const tool of builtinTools) {
       if (!isRecord(tool) || typeof tool.toolName !== "string") {
         continue;
@@ -752,11 +751,7 @@ function pickDebugTargetFromToolTree(
 }
 
 function collectBuiltinToolMatches(tree: unknown, toolName: string): DebugToolTreeCandidate[] {
-  if (!isRecord(tree)) {
-    return [];
-  }
-  const builtins = isRecord(tree.builtins) ? tree.builtins : null;
-  const tools = builtins && Array.isArray(builtins.tools) ? builtins.tools : [];
+  const tools = collectBuiltinToolsFromTree(tree);
   return tools
     .filter((item): item is Record<string, unknown> => isRecord(item) && item.toolName === toolName)
     .map((item) => ({
@@ -804,6 +799,36 @@ function collectPageToolMatches(tree: unknown, toolName: string, preferredTabId?
     }
   }
   return matches;
+}
+
+function collectBuiltinToolsFromTree(tree: unknown): unknown[] {
+  if (!isRecord(tree)) {
+    return [];
+  }
+  const builtins = isRecord(tree.builtins) ? tree.builtins : null;
+  if (!builtins) {
+    return [];
+  }
+
+  // Prefer new tree structure: builtins.namespaces[].instances[].tools[].
+  if (Array.isArray(builtins.namespaces)) {
+    const tools: unknown[] = [];
+    for (const namespace of builtins.namespaces) {
+      if (!isRecord(namespace) || !Array.isArray(namespace.instances)) {
+        continue;
+      }
+      for (const instance of namespace.instances) {
+        if (!isRecord(instance) || !Array.isArray(instance.tools)) {
+          continue;
+        }
+        tools.push(...instance.tools);
+      }
+    }
+    return tools;
+  }
+
+  // Compatible with old flat structure to avoid breaking debug links across versions.
+  return Array.isArray(builtins.tools) ? builtins.tools : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

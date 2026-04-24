@@ -88,10 +88,27 @@ function createRegistry() {
       kind: "builtins",
       totalTools: 3,
       enabledTools: 2,
-      tools: [
-          { kind: "builtin-tool", toolName: "builtin.list_tabs", enabled: true, readOnly: true },
-          { kind: "builtin-tool", toolName: "builtin.execute_js", enabled: true, readOnly: false },
-          { kind: "builtin-tool", toolName: "builtin.get_console_logs", enabled: false, readOnly: true },
+      namespaces: [
+        {
+          kind: "builtin-namespace",
+          namespace: "builtin",
+          totalTools: 3,
+          enabledTools: 2,
+          instances: [
+            {
+              kind: "builtin-instance",
+              namespace: "builtin",
+              instanceId: "default",
+              totalTools: 3,
+              enabledTools: 2,
+              tools: [
+                { kind: "builtin-tool", namespace: "builtin", instanceId: "default", toolName: "builtin.list_tabs", enabled: true, readOnly: true },
+                { kind: "builtin-tool", namespace: "builtin", instanceId: "default", toolName: "builtin.execute_js", enabled: true, readOnly: false },
+                { kind: "builtin-tool", namespace: "builtin", instanceId: "default", toolName: "builtin.get_console_logs", enabled: false, readOnly: true },
+              ],
+            },
+          ],
+        },
       ],
     },
     tabs: [],
@@ -373,10 +390,27 @@ describe("mcp-registry extension tool control tools", () => {
         kind: "builtins",
         totalTools: 3,
         enabledTools: 2,
-        tools: [
-          { kind: "builtin-tool", toolName: "builtin.list_tabs", enabled: true, readOnly: true },
-          { kind: "builtin-tool", toolName: "builtin.execute_js", enabled: true, readOnly: false },
-          { kind: "builtin-tool", toolName: "builtin.get_console_logs", enabled: false, readOnly: true },
+        namespaces: [
+          {
+            kind: "builtin-namespace",
+            namespace: "builtin",
+            totalTools: 3,
+            enabledTools: 2,
+            instances: [
+              {
+                kind: "builtin-instance",
+                namespace: "builtin",
+                instanceId: "default",
+                totalTools: 3,
+                enabledTools: 2,
+                tools: [
+                  { kind: "builtin-tool", namespace: "builtin", instanceId: "default", toolName: "builtin.list_tabs", enabled: true, readOnly: true },
+                  { kind: "builtin-tool", namespace: "builtin", instanceId: "default", toolName: "builtin.execute_js", enabled: true, readOnly: false },
+                  { kind: "builtin-tool", namespace: "builtin", instanceId: "default", toolName: "builtin.get_console_logs", enabled: false, readOnly: true },
+                ],
+              },
+            ],
+          },
         ],
       },
       tabs: [
