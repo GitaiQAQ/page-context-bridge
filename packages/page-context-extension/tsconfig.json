@@ -4,6 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "types": ["chrome", "node"],
     "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "jsx": "react-jsx",
     "jsxImportSource": "react"
   },

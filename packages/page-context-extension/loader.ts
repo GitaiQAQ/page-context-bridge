@@ -24,6 +24,14 @@ function showInitial() {
 }
 
 function showError() {
+  let portInfo = "";
+  try {
+    const url = new URL(target);
+    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    portInfo = `<span style="color:#999;font-size:11px">Target: ${url.hostname}:${port}</span>`;
+  } catch (_) {
+    portInfo = `<span style="color:#999;font-size:11px">Target: ${target}</span>`;
+  }
   status.innerHTML = `
     <svg class="icon-error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
       <circle cx="12" cy="12" r="10"/>
@@ -31,6 +39,7 @@ function showError() {
       <line x1="9" y1="9" x2="15" y2="15"/>
     </svg>
     <span class="error-text">Failed to load page.<br>Service may not be running.</span>
+    ${portInfo}
     <div style="display:flex;align-items:center;gap:6px;color:#999;font-size:12px">
       <span class="spinner"></span>
       <span>Waiting for service...</span>
