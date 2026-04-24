@@ -55,6 +55,7 @@ export const EXTENSION_CONTROL_TOOL_SUFFIXES = {
   getToolTree: "get_tool_tree",
   setToolsEnabled: "set_tools_enabled",
   refreshPageTools: "refresh_page_tools",
+  prepareTabForDebug: "prepare_tab_for_debug",
   toolDebugCall: "tool_debug_call",
   ensureMainWorldHost: "ensure_main_world_host",
   ensureAgentationMain: "ensure_agentation_main",
@@ -67,6 +68,7 @@ export const EXTENSION_CONTROL_LEGACY_TOOL_NAMES = {
   getToolTree: "extension_get_tool_tree",
   setToolsEnabled: "extension_set_tools_enabled",
   refreshPageTools: "extension_refresh_page_tools",
+  prepareTabForDebug: "extension_prepare_tab_for_debug",
   toolDebugCall: "extension_tool_debug_call",
   ensureMainWorldHost: "extension_ensure_main_world_host",
   ensureAgentationMain: "extension_ensure_agentation_main",
@@ -98,6 +100,7 @@ export class ExtensionControlBridgeProvider {
     getToolTree: string;
     setToolsEnabled: string;
     refreshPageTools: string;
+    prepareTabForDebug: string;
     toolDebugCall: string;
     ensureMainWorldHost: string;
     ensureAgentationMain: string;
@@ -109,6 +112,7 @@ export class ExtensionControlBridgeProvider {
       getToolTree: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
       setToolsEnabled: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
       refreshPageTools: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
+      prepareTabForDebug: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.prepareTabForDebug}`,
       toolDebugCall: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.toolDebugCall}`,
       ensureMainWorldHost: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureMainWorldHost}`,
       ensureAgentationMain: `${this.namespace}.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureAgentationMain}`,
@@ -182,6 +186,15 @@ export class ExtensionControlBridgeProvider {
       description: "Force extension to rediscover one tab's page tools and sync bridge registry.",
       inputSchema: {
         tabId: z.number().int().positive(),
+      },
+    };
+    const prepareTabForDebugConfig = {
+      description: "Prepare one tab for debug flow: ensure injections, refresh tools, and optionally re-enable read-only tools.",
+      inputSchema: {
+        tabId: z.number().int().positive(),
+        frameId: z.number().int().nonnegative().optional(),
+        enableReadOnlyPageTools: z.boolean().optional(),
+        enableReadOnlyBuiltins: z.boolean().optional(),
       },
     };
     const ensureMainWorldHostConfig = {
@@ -302,6 +315,120 @@ export class ExtensionControlBridgeProvider {
           error: error instanceof Error ? error.message : String(error),
         }, null, 2));
       }
+    };
+
+    const prepareTabForDebugHandler = async (args: Record<string, unknown>) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : NaN;
+      const frameId = parseOptionalFrameId(args.frameId);
+      const enableReadOnlyPageTools = parseOptionalBoolean(args.enableReadOnlyPageTools);
+      const enableReadOnlyBuiltins = parseOptionalBoolean(args.enableReadOnlyBuiltins);
+      if (!Number.isInteger(tabId) || tabId <= 0) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "tabId must be a positive integer",
+        }, null, 2));
+      }
+      if (args.frameId != null && frameId == null) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "frameId must be a non-negative integer",
+        }, null, 2));
+      }
+      if (args.enableReadOnlyPageTools != null && enableReadOnlyPageTools == null) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "enableReadOnlyPageTools must be a boolean",
+        }, null, 2));
+      }
+      if (args.enableReadOnlyBuiltins != null && enableReadOnlyBuiltins == null) {
+        return createTextResponse(JSON.stringify({
+          ok: false,
+          error: "enableReadOnlyBuiltins must be a boolean",
+        }, null, 2));
+      }
+
+      const failAtStep = (step: string, error: unknown) => createTextResponse(JSON.stringify({
+        ok: false,
+        tabId,
+        frameId: frameId ?? null,
+        step,
+        error: error instanceof Error ? error.message : String(error),
+      }, null, 2));
+
+      // 运行时状态只用于诊断，拉取失败不阻断准备流程。
+      const runtimeStatus = await rpc.getRuntimeStatus().catch((error) => ({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+
+      let mainWorldHostResult: unknown;
+      try {
+        mainWorldHostResult = await rpc.ensureMainWorldHost(tabId, frameId);
+      } catch (error) {
+        return failAtStep("ensure_main_world_host", error);
+      }
+
+      let agentationMainResult: unknown;
+      try {
+        agentationMainResult = await rpc.ensureAgentationMain(tabId, frameId);
+      } catch (error) {
+        return failAtStep("ensure_agentation_main", error);
+      }
+
+      let refreshed: ExtensionControlRefreshResult;
+      try {
+        refreshed = await rpc.refreshPageToolsForTab(tabId);
+      } catch (error) {
+        return failAtStep("refresh_page_tools", error);
+      }
+
+      let tree: unknown;
+      try {
+        tree = await rpc.getPageToolsTree();
+      } catch (error) {
+        return failAtStep("get_tool_tree", error);
+      }
+
+      const pageToolsEnabled = enableReadOnlyPageTools ?? true;
+      const builtinToolsEnabled = enableReadOnlyBuiltins ?? false;
+      // 仅收集“只读 + 未启用”的候选，避免误打开高风险变更型工具。
+      const updates = collectReadOnlyEnableUpdatesForPrepare(tree, {
+        tabId,
+        enableReadOnlyPageTools: pageToolsEnabled,
+        enableReadOnlyBuiltins: builtinToolsEnabled,
+      });
+
+      let setToolsEnabledResult: unknown = null;
+      if (updates.length > 0) {
+        try {
+          setToolsEnabledResult = await rpc.setPageToolsEnabledBatch(updates);
+        } catch (error) {
+          return failAtStep("set_tools_enabled", error);
+        }
+      }
+
+      return createTextResponse(JSON.stringify({
+        ok: true,
+        tabId,
+        frameId: frameId ?? null,
+        runtimeStatus,
+        ensured: {
+          mainWorldHost: mainWorldHostResult,
+          agentationMain: agentationMainResult,
+        },
+        refreshed: {
+          toolCount: refreshed.tools.length,
+          toolNames: refreshed.tools.map((tool) => rpc.normalizePageToolName?.(tool) ?? tool.name),
+          manifestSynced: refreshed.manifest != null,
+        },
+        readOnlyEnable: {
+          enableReadOnlyPageTools: pageToolsEnabled,
+          enableReadOnlyBuiltins: builtinToolsEnabled,
+          applied: updates.length,
+          updates,
+          tree: setToolsEnabledResult,
+        },
+      }, null, 2));
     };
 
     const toolDebugCallHandler = async (args: Record<string, unknown>) => {
@@ -447,6 +574,9 @@ export class ExtensionControlBridgeProvider {
     register(names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools, names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
 
+    register(names.prepareTabForDebug, prepareTabForDebugConfig, prepareTabForDebugHandler);
+    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.prepareTabForDebug, names.prepareTabForDebug, prepareTabForDebugConfig, prepareTabForDebugHandler);
+
     register(names.toolDebugCall, toolDebugCallConfig, toolDebugCallHandler);
     registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.toolDebugCall, names.toolDebugCall, toolDebugCallConfig, toolDebugCallHandler);
 
@@ -484,6 +614,97 @@ function parseOptionalTabId(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0
     ? value
     : undefined;
+}
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  return typeof value === "boolean" ? value : undefined;
+}
+
+interface PrepareTabForDebugEnableOptions {
+  tabId: number;
+  enableReadOnlyPageTools: boolean;
+  enableReadOnlyBuiltins: boolean;
+}
+
+function collectReadOnlyEnableUpdatesForPrepare(
+  tree: unknown,
+  options: PrepareTabForDebugEnableOptions,
+): PageToolEnableUpdate[] {
+  if (!isRecord(tree)) {
+    return [];
+  }
+  const updates: PageToolEnableUpdate[] = [];
+  const seen = new Set<string>();
+
+  const pushUniqueUpdate = (update: PageToolEnableUpdate, key: string) => {
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    updates.push(update);
+  };
+
+  if (options.enableReadOnlyBuiltins) {
+    const builtins = isRecord(tree.builtins) ? tree.builtins : null;
+    const builtinTools = builtins && Array.isArray(builtins.tools) ? builtins.tools : [];
+    for (const tool of builtinTools) {
+      if (!isRecord(tool) || typeof tool.toolName !== "string") {
+        continue;
+      }
+      if (!tool.readOnly || tool.enabled) {
+        continue;
+      }
+      pushUniqueUpdate(
+        { root: "builtin", toolName: tool.toolName, enabled: true },
+        `builtin:${tool.toolName}`,
+      );
+    }
+  }
+
+  if (options.enableReadOnlyPageTools && Array.isArray(tree.tabs)) {
+    for (const tab of tree.tabs) {
+      if (!isRecord(tab) || tab.tabId !== options.tabId) {
+        continue;
+      }
+      const namespaces = Array.isArray(tab.namespaces) ? tab.namespaces : [];
+      for (const namespace of namespaces) {
+        if (!isRecord(namespace) || typeof namespace.namespace !== "string") {
+          continue;
+        }
+        const instances = Array.isArray(namespace.instances) ? namespace.instances : [];
+        for (const instance of instances) {
+          if (!isRecord(instance) || typeof instance.instanceId !== "string") {
+            continue;
+          }
+          const tools = Array.isArray(instance.tools) ? instance.tools : [];
+          for (const tool of tools) {
+            if (!isRecord(tool) || typeof tool.toolName !== "string") {
+              continue;
+            }
+            if (!tool.readOnly || tool.enabled) {
+              continue;
+            }
+            pushUniqueUpdate(
+              {
+                root: "page",
+                tabId: options.tabId,
+                namespace: namespace.namespace,
+                instanceId: instance.instanceId,
+                toolName: tool.toolName,
+                enabled: true,
+              },
+              `page:${options.tabId}:${namespace.namespace}:${instance.instanceId}:${tool.toolName}`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return updates;
 }
 
 interface DebugToolTreeCandidate {

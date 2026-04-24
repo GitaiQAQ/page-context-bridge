@@ -42,6 +42,7 @@ const TOOL_NAMES = {
   getToolTree: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.getToolTree}`,
   setToolsEnabled: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.setToolsEnabled}`,
   refreshPageTools: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.refreshPageTools}`,
+  prepareTabForDebug: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.prepareTabForDebug}`,
   toolDebugCall: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.toolDebugCall}`,
   ensureMainWorldHost: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureMainWorldHost}`,
   ensureAgentationMain: `extension.${EXTENSION_CONTROL_TOOL_SUFFIXES.ensureAgentationMain}`,
@@ -155,6 +156,7 @@ describe("mcp-registry extension tool control tools", () => {
     expect(fakeServer.tools.has(TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.prepareTabForDebug)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.toolDebugCall)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.ensureMainWorldHost)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.ensureAgentationMain)).toBe(true);
@@ -164,6 +166,7 @@ describe("mcp-registry extension tool control tools", () => {
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools)).toBe(true);
+    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.prepareTabForDebug)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.toolDebugCall)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost)).toBe(true);
     expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureAgentationMain)).toBe(true);
@@ -350,6 +353,114 @@ describe("mcp-registry extension tool control tools", () => {
     expect(registry.getPageToolsByTab().get(88)).toEqual([
       { name: "crm.inspect", description: "Inspect CRM entity" },
     ]);
+  });
+
+  it("prepares one tab for debug by chaining ensure/refresh/tree/set operations", async () => {
+    const {
+      registry,
+      getRuntimeStatus,
+      ensureMainWorldHost,
+      ensureAgentationMain,
+      refreshPageTools,
+      getContextManifest,
+      getPageToolsTree,
+      setPageToolsEnabledBatch,
+    } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+    getPageToolsTree.mockResolvedValueOnce({
+      builtins: {
+        kind: "builtins",
+        totalTools: 3,
+        enabledTools: 2,
+        tools: [
+          { kind: "builtin-tool", toolName: "list_tabs", enabled: true, readOnly: true },
+          { kind: "builtin-tool", toolName: "execute_js", enabled: true, readOnly: false },
+          { kind: "builtin-tool", toolName: "get_console_logs", enabled: false, readOnly: true },
+        ],
+      },
+      tabs: [
+        {
+          kind: "tab",
+          tabId: 88,
+          namespaces: [
+            {
+              kind: "namespace",
+              namespace: "crm",
+              instances: [
+                {
+                  kind: "instance",
+                  instanceId: "default",
+                  tools: [
+                    { kind: "tool", toolName: "crm.inspect", enabled: false, readOnly: true },
+                    { kind: "tool", toolName: "crm.update", enabled: false, readOnly: false },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      totalTools: 5,
+      enabledTools: 2,
+    });
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.prepareTabForDebug);
+    const payload = await handler?.({
+      tabId: 88,
+      frameId: 2,
+      enableReadOnlyBuiltins: true,
+    });
+    const parsed = parseTextResponse(payload);
+
+    // 组合入口必须复用既有原子动作，且每步只执行一次，便于定位失败阶段。
+    expect(getRuntimeStatus).toHaveBeenCalledTimes(1);
+    expect(ensureMainWorldHost).toHaveBeenCalledTimes(1);
+    expect(ensureMainWorldHost).toHaveBeenCalledWith(88, 2);
+    expect(ensureAgentationMain).toHaveBeenCalledTimes(1);
+    expect(ensureAgentationMain).toHaveBeenCalledWith(88, 2);
+    expect(refreshPageTools).toHaveBeenCalledTimes(1);
+    expect(refreshPageTools).toHaveBeenCalledWith(88);
+    expect(getContextManifest).toHaveBeenCalledTimes(1);
+    expect(getContextManifest).toHaveBeenCalledWith(88);
+    expect(getPageToolsTree).toHaveBeenCalledTimes(1);
+    expect(setPageToolsEnabledBatch).toHaveBeenCalledTimes(1);
+    expect(setPageToolsEnabledBatch).toHaveBeenCalledWith([
+      { root: "builtin", toolName: "get_console_logs", enabled: true },
+      { root: "page", tabId: 88, namespace: "crm", instanceId: "default", toolName: "crm.inspect", enabled: true },
+    ]);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.tabId).toBe(88);
+    expect((parsed.refreshed as { toolCount: number }).toolCount).toBe(1);
+    expect((parsed.readOnlyEnable as { applied: number }).applied).toBe(2);
+  });
+
+  it("skips set_tools_enabled when prepare_tab_for_debug finds no read-only candidate", async () => {
+    const { registry, setPageToolsEnabledBatch } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.prepareTabForDebug);
+    const payload = await handler?.({ tabId: 88 });
+    const parsed = parseTextResponse(payload);
+
+    expect(setPageToolsEnabledBatch).not.toHaveBeenCalled();
+    expect(parsed.ok).toBe(true);
+    expect((parsed.readOnlyEnable as { applied: number }).applied).toBe(0);
+  });
+
+  it("returns explicit validation error when prepare_tab_for_debug misses tabId", async () => {
+    const { registry, ensureMainWorldHost } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    const handler = fakeServer.tools.get(TOOL_NAMES.prepareTabForDebug);
+    const payload = await handler?.({});
+    const parsed = parseTextResponse(payload);
+
+    expect(ensureMainWorldHost).not.toHaveBeenCalled();
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toContain("tabId must be a positive integer");
   });
 
   it("ensures main world host through namespaced ensure_main_world_host", async () => {
