@@ -69,6 +69,11 @@ describe("side-panel-app tools tree interactions", () => {
       expect(text).toContain("feedback.get_snapshot");
       expect(text).toContain("Built-in Tools");
     });
+
+    // builtin 结构应按 namespace/instance 树形渲染，而不是平铺列表。
+    expect(findCheckbox(element, { scope: "builtin", namespace: "builtin" })).not.toBeNull();
+    expect(findCheckbox(element, { scope: "builtin", namespace: "builtin", instanceId: "default" })).not.toBeNull();
+    expect(findCheckbox(element, { scope: "builtin", namespace: "extension" })?.disabled).toBe(true);
   });
 
   it("unchecks all descendant tool checkboxes when a namespace is disabled", async () => {
@@ -266,6 +271,58 @@ describe("side-panel-app tools tree interactions", () => {
       enabled: false,
     });
   });
+
+  it("routes builtin namespace toggle through builtin root semantics", async () => {
+    await import("./side-panel-app");
+
+    const element = document.createElement("side-panel-app");
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      expect(findCheckbox(element, { root: "builtin", scope: "builtin", namespace: "builtin" })).not.toBeNull();
+    });
+
+    const builtinNamespaceCheckbox = findCheckbox(element, { root: "builtin", scope: "builtin", namespace: "builtin" });
+    expect(builtinNamespaceCheckbox).not.toBeNull();
+    builtinNamespaceCheckbox!.checked = false;
+    builtinNamespaceCheckbox!.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+
+    await vi.waitFor(() => {
+      expect(findCheckbox(element, { root: "builtin", scope: "builtin", toolName: "builtin.get_page_info" })?.checked).toBe(false);
+      expect(findCheckbox(element, { root: "builtin", scope: "builtin", toolName: "builtin.navigate" })?.checked).toBe(false);
+      expect(findCheckbox(element, { root: "builtin", scope: "builtin", toolName: "extension.get_runtime_status" })?.checked).toBe(true);
+    });
+
+    expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionPageToolsSetEnabled, {
+      root: "builtin",
+      tabId: undefined,
+      namespace: "builtin",
+      instanceId: undefined,
+      toolName: undefined,
+      enabled: false,
+    });
+  });
+
+  it("does not expose local test actions for bridge control builtins", async () => {
+    await import("./side-panel-app");
+
+    const element = document.createElement("side-panel-app");
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      expect(element.shadowRoot?.querySelectorAll('button[data-action="test-tool"]').length).toBeGreaterThan(0);
+    });
+
+    const regularBuiltinTestButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[data-action="test-tool"][data-root="builtin"][data-tool-name="builtin.get_page_info"]',
+    );
+    const bridgeControlTestButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[data-action="test-tool"][data-root="builtin"][data-tool-name="extension.get_runtime_status"]',
+    );
+
+    expect(regularBuiltinTestButton).not.toBeNull();
+    expect(bridgeControlTestButton).toBeNull();
+  });
 });
 
 function installRuntimeRequestMock(input: {
@@ -310,7 +367,7 @@ function installRuntimeRequestMock(input: {
 
 function findCheckbox(
   element: Element,
-  expected: Partial<Record<"scope" | "namespace" | "instanceId" | "toolName", string>>,
+  expected: Partial<Record<"root" | "scope" | "namespace" | "instanceId" | "toolName", string>>,
 ): HTMLInputElement | null {
   const checkboxes = [...(element.shadowRoot?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])];
   return checkboxes.find((checkbox) => {

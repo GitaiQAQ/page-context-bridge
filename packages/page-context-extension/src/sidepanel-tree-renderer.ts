@@ -4,7 +4,16 @@
  */
 
 import { html, nothing, type TemplateResult } from "lit";
-import type { ToolTreeBuiltinTool, ToolTreeBuiltins, ToolTreeInstance, ToolTreeNamespace, ToolTreeTab, ToolTreeTool } from "./sidepanel-types";
+import type {
+  ToolTreeBuiltinInstance,
+  ToolTreeBuiltinNamespace,
+  ToolTreeBuiltinTool,
+  ToolTreeBuiltins,
+  ToolTreeInstance,
+  ToolTreeNamespace,
+  ToolTreeTab,
+  ToolTreeTool,
+} from "./sidepanel-types";
 
 export function renderToolsEmpty(message: string): TemplateResult {
   return html`<div class="flex flex-col items-center justify-center h-full text-base-content/40 p-5"><p class="text-xs">${message}</p></div>`;
@@ -27,12 +36,21 @@ export function filterTab(tab: ToolTreeTab, query: string): ToolTreeTab | null {
 }
 
 export function filterBuiltins(builtins: ToolTreeBuiltins, query: string): ToolTreeBuiltins {
+  const sourceNamespaces = normalizeBuiltinNamespaces(builtins);
   if (!query) {
-    return builtins;
+    return {
+      ...builtins,
+      namespaces: sourceNamespaces,
+      tools: sourceNamespaces.flatMap((namespace) => namespace.instances.flatMap((instance) => instance.tools)),
+    };
   }
-  const tools = builtins.tools.filter((tool) => [tool.label, tool.toolName, tool.description ?? "", "builtin"].some((value) => value.toLowerCase().includes(query)));
+  const namespaces = sourceNamespaces
+    .map((namespace) => filterBuiltinNamespace(namespace, query))
+    .filter((namespace): namespace is ToolTreeBuiltinNamespace => namespace !== null);
+  const tools = namespaces.flatMap((namespace) => namespace.instances.flatMap((instance) => instance.tools));
   return {
     ...builtins,
+    namespaces,
     totalTools: tools.length,
     enabledTools: tools.filter((tool) => tool.enabled).length,
     tools,
@@ -40,19 +58,133 @@ export function filterBuiltins(builtins: ToolTreeBuiltins, query: string): ToolT
 }
 
 export function renderBuiltinsNode(builtins: ToolTreeBuiltins): TemplateResult {
+  const namespaces = normalizeBuiltinNamespaces(builtins);
   return html`
     <details open>
       <summary>${renderTreeRow({
         level: "tab",
         checked: builtins.enabledTools === builtins.totalTools && builtins.totalTools > 0,
         indeterminate: builtins.enabledTools > 0 && builtins.enabledTools < builtins.totalTools,
-        data: { scope: "builtin", tabId: "builtin-root" },
+        data: { root: "builtin", scope: "builtin", tabId: "builtin-root" },
         label: "Built-in Tools",
         subtitle: "Extension provided tools",
         meta: `${builtins.enabledTools}/${builtins.totalTools} enabled`,
         badges: [html`<span class="badge badge-xs badge-primary">builtin</span>`],
       })}</summary>
-      ${builtins.tools.map((tool) => renderBuiltinToolNode(tool))}
+      ${namespaces.map((namespace) => renderBuiltinNamespaceNode(namespace))}
+    </details>
+  `;
+}
+
+function normalizeBuiltinNamespaces(builtins: ToolTreeBuiltins): ToolTreeBuiltinNamespace[] {
+  if (Array.isArray(builtins.namespaces) && builtins.namespaces.length > 0) {
+    return builtins.namespaces;
+  }
+  // 兼容旧平铺结构，避免版本切换期间 sidepanel 出现空白。
+  const byNamespace = new Map<string, ToolTreeBuiltinTool[]>();
+  for (const tool of builtins.tools ?? []) {
+    const namespace = tool.namespace || tool.toolName.split(".")[0] || "builtin";
+    const normalizedTool = {
+      ...tool,
+      namespace,
+      instanceId: tool.instanceId || "default",
+    };
+    byNamespace.set(namespace, [...(byNamespace.get(namespace) ?? []), normalizedTool]);
+  }
+  return Array.from(byNamespace.entries())
+    .map(([namespace, tools]) => ({
+      kind: "builtin-namespace" as const,
+      namespace,
+      totalTools: tools.length,
+      enabledTools: tools.filter((item) => item.enabled).length,
+      instances: [
+        {
+          kind: "builtin-instance" as const,
+          namespace,
+          instanceId: "default",
+          totalTools: tools.length,
+          enabledTools: tools.filter((item) => item.enabled).length,
+          tools: tools.sort((left, right) => left.label.localeCompare(right.label)),
+        },
+      ],
+    }))
+    .sort((left, right) => left.namespace.localeCompare(right.namespace));
+}
+
+function filterBuiltinNamespace(namespace: ToolTreeBuiltinNamespace, query: string): ToolTreeBuiltinNamespace | null {
+  const instances = namespace.instances
+    .map((instance) => filterBuiltinInstance(instance, query))
+    .filter((instance): instance is ToolTreeBuiltinInstance => instance !== null);
+  const selfMatches = !query || namespace.namespace.toLowerCase().includes(query);
+  if (!selfMatches && instances.length === 0) {
+    return null;
+  }
+  const finalInstances = selfMatches ? namespace.instances : instances;
+  return {
+    ...namespace,
+    instances: finalInstances,
+    totalTools: finalInstances.reduce((sum, item) => sum + item.totalTools, 0),
+    enabledTools: finalInstances.reduce((sum, item) => sum + item.enabledTools, 0),
+  };
+}
+
+function filterBuiltinInstance(instance: ToolTreeBuiltinInstance, query: string): ToolTreeBuiltinInstance | null {
+  const tools = instance.tools.filter((tool) => matchesBuiltinTool(tool, query));
+  const selfMatches = !query || instance.instanceId.toLowerCase().includes(query);
+  if (!selfMatches && tools.length === 0) {
+    return null;
+  }
+  const finalTools = selfMatches ? instance.tools : tools;
+  return {
+    ...instance,
+    tools: finalTools,
+    totalTools: finalTools.length,
+    enabledTools: finalTools.filter((tool) => tool.enabled).length,
+  };
+}
+
+function matchesBuiltinTool(tool: ToolTreeBuiltinTool, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  return [tool.namespace, tool.instanceId, tool.label, tool.toolName, tool.description ?? ""]
+    .some((value) => value.toLowerCase().includes(query));
+}
+
+function renderBuiltinNamespaceNode(namespace: ToolTreeBuiltinNamespace): TemplateResult {
+  return html`
+    <details open>
+      <summary>${renderTreeRow({
+        level: "namespace",
+        checked: namespace.enabledTools === namespace.totalTools && namespace.totalTools > 0,
+        indeterminate: namespace.enabledTools > 0 && namespace.enabledTools < namespace.totalTools,
+        toggleDisabled: namespace.instances.every((instance) => instance.tools.every((tool) => isBridgeControlBuiltinTool(tool))),
+        data: { root: "builtin", scope: "builtin", tabId: "builtin-root", namespace: namespace.namespace },
+        label: namespace.namespace,
+        subtitle: "Builtin namespace",
+        meta: `${namespace.enabledTools}/${namespace.totalTools} enabled`,
+        badges: [html`<span class="badge badge-xs badge-secondary">namespace</span>`],
+      })}</summary>
+      ${namespace.instances.map((instance) => renderBuiltinInstanceNode(instance))}
+    </details>
+  `;
+}
+
+function renderBuiltinInstanceNode(instance: ToolTreeBuiltinInstance): TemplateResult {
+  return html`
+    <details open>
+      <summary>${renderTreeRow({
+        level: "instance",
+        checked: instance.enabledTools === instance.totalTools && instance.totalTools > 0,
+        indeterminate: instance.enabledTools > 0 && instance.enabledTools < instance.totalTools,
+        toggleDisabled: instance.tools.every((tool) => isBridgeControlBuiltinTool(tool)),
+        data: { root: "builtin", scope: "builtin", tabId: "builtin-root", namespace: instance.namespace, instanceId: instance.instanceId },
+        label: instance.instanceId,
+        subtitle: instance.instanceId === "default" ? "Default instance" : "Builtin instance",
+        meta: `${instance.enabledTools}/${instance.totalTools} enabled`,
+        badges: [html`<span class="badge badge-xs badge-accent">instance</span>`],
+      })}</summary>
+      ${instance.tools.map((tool) => renderBuiltinToolNode(tool))}
     </details>
   `;
 }
@@ -64,7 +196,7 @@ export function renderTabNode(tab: ToolTreeTab): TemplateResult {
         level: "tab",
         checked: tab.enabledTools === tab.totalTools && tab.totalTools > 0,
         indeterminate: tab.enabledTools > 0 && tab.enabledTools < tab.totalTools,
-        data: { scope: "tab", tabId: String(tab.tabId) },
+        data: { root: "page", scope: "tab", tabId: String(tab.tabId) },
         label: tab.title,
         subtitle: tab.url ? tab.url : "",
         meta: `${tab.enabledTools}/${tab.totalTools} enabled`,
@@ -121,7 +253,7 @@ function renderNamespaceNode(namespace: ToolTreeNamespace): TemplateResult {
         level: "namespace",
         checked: namespace.enabledTools === namespace.totalTools && namespace.totalTools > 0,
         indeterminate: namespace.enabledTools > 0 && namespace.enabledTools < namespace.totalTools,
-        data: { scope: "namespace", tabId: String(namespace.tabId), namespace: namespace.namespace },
+        data: { root: "page", scope: "namespace", tabId: String(namespace.tabId), namespace: namespace.namespace },
         label: namespace.namespace,
         subtitle: "Namespace",
         meta: `${namespace.enabledTools}/${namespace.totalTools} enabled`,
@@ -139,7 +271,7 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
         level: "instance",
         checked: instance.enabledTools === instance.totalTools && instance.totalTools > 0,
         indeterminate: instance.enabledTools > 0 && instance.enabledTools < instance.totalTools,
-        data: { scope: "instance", tabId: String(instance.tabId), namespace: instance.namespace, instanceId: instance.instanceId },
+        data: { root: "page", scope: "instance", tabId: String(instance.tabId), namespace: instance.namespace, instanceId: instance.instanceId },
         label: instance.instanceId,
         subtitle: instance.instanceId === "default" ? "Default instance" : "Instance",
         meta: `${instance.enabledTools}/${instance.totalTools} enabled`,
@@ -153,14 +285,14 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
 function renderBuiltinToolNode(tool: ToolTreeBuiltinTool): TemplateResult {
   const bridgeControl = isBridgeControlBuiltinTool(tool);
   const subtitle = bridgeControl
-    ? `${tool.description ? tool.description : tool.toolName} (Bridge/MCP control tool, display only)`
+    ? `${tool.description ? tool.description : tool.toolName}（Bridge/MCP 控制工具，仅展示）`
     : (tool.description ? tool.description : tool.toolName);
   return renderTreeRow({
     level: "tool",
     checked: tool.enabled,
     indeterminate: false,
     toggleDisabled: bridgeControl,
-    data: { scope: "builtin", tabId: "builtin-root", toolName: tool.toolName },
+    data: { root: "builtin", scope: "builtin", tabId: "builtin-root", toolName: tool.toolName },
     label: tool.label,
     subtitle,
     meta: tool.toolName,
@@ -185,6 +317,7 @@ function renderToolNode(tool: ToolTreeTool): TemplateResult {
     checked: tool.enabled,
     indeterminate: false,
     data: {
+      root: "page",
       scope: "tool",
       tabId: String(tool.tabId),
       namespace: tool.namespace,
@@ -234,6 +367,7 @@ function renderTreeRow(input: {
         .checked=${input.checked}
         .disabled=${Boolean(input.toggleDisabled)}
         data-indeterminate=${input.indeterminate ? "true" : "false"}
+        data-root=${input.data.root ?? nothing}
         data-scope=${input.data.scope ?? nothing}
         data-tab-id=${input.data.tabId ?? nothing}
         data-namespace=${input.data.namespace ?? nothing}

@@ -1029,12 +1029,14 @@ export class SidePanelApp extends LitElement {
     const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
 
-    const { scope, tabId, namespace, instanceId, toolName } = target.dataset;
+    const { root, scope, tabId, namespace, instanceId, toolName } = target.dataset;
     if (!scope || !tabId) return;
+    // builtin 树节点（namespace/instance/tool）统一走 builtin root，避免复用页面 scope 时误写到 page 偏好树。
+    const resolvedRoot: "builtin" | "page" = (root === "builtin" || scope === "builtin") ? "builtin" : "page";
 
     void this._updateScopeEnabled({
-      root: scope === "builtin" ? "builtin" : "page",
-      tabId: scope === "builtin" ? undefined : Number(tabId),
+      root: resolvedRoot,
+      tabId: resolvedRoot === "builtin" ? undefined : Number(tabId),
       namespace,
       instanceId,
       toolName,

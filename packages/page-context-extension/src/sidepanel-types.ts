@@ -74,8 +74,8 @@ export interface ToolTreeBuiltins {
   enabledTools: number;
   namespaces: ToolTreeBuiltinNamespace[];
   /**
-   * 兼容字段：保留平铺视图，避免旧调用方一次性断裂。
-   * 新逻辑应优先使用 namespaces 树结构。
+   * 兼容字段：保留平铺列表给旧链路读取。
+   * 新逻辑统一走 namespaces -> instances -> tools，避免并行实现。
    */
   tools: ToolTreeBuiltinTool[];
 }
@@ -107,7 +107,7 @@ export interface ToolTreeBuiltinTool {
   inputSchema?: Record<string, unknown>;
   enabled: boolean;
   readOnly: boolean;
-  bridgeControl?: boolean;
+  bridgeControl: boolean;
 }
 
 export interface ToolDebugResponse {
