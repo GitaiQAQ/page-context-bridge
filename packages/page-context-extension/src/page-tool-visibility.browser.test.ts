@@ -53,6 +53,11 @@ describe("page tool visibility", () => {
     expect(tree.enabledTools).toBe(4);
     expect(tree.builtins.totalTools).toBe(2);
     expect(tree.builtins.enabledTools).toBe(2);
+    expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(["builtin"]);
+    expect(tree.builtins.namespaces[0]?.instances[0]?.tools.map((tool) => tool.toolName)).toEqual([
+      "builtin.get_page_info",
+      "builtin.navigate",
+    ]);
     expect(tree.tabs[0]?.namespaces[1]?.enabledTools).toBe(0);
     expect(tree.tabs[0]?.namespaces[1]?.instances).toHaveLength(2);
   });
@@ -80,6 +85,7 @@ describe("page tool visibility", () => {
     expect(tree.builtins.tools.find((tool) => tool.toolName === "extension.get_tool_tree")?.bridgeControl).toBe(true);
     expect(tree.builtins.tools.find((tool) => tool.toolName === "feedback.get_snapshot")?.bridgeControl).toBe(true);
     expect(tree.builtins.tools.find((tool) => tool.toolName === "builtin.get_page_info")?.bridgeControl).toBe(false);
+    expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(["builtin", "extension", "feedback"]);
   });
 
   it("keeps bridge control builtins enabled even when builtin root is disabled", () => {
@@ -99,6 +105,30 @@ describe("page tool visibility", () => {
     ).map((tool) => tool.name);
 
     expect(enabledBuiltins).toEqual(["extension.get_tool_tree"]);
+  });
+
+  it("normalizes legacy builtin aliases to canonical names in builtin tree", () => {
+    const tree = buildToolTree(
+      [],
+      new Map(),
+      [
+        { name: "navigate", description: "legacy alias" },
+        { name: "builtin.navigate", description: "canonical name" },
+        { name: "builtin.get_page_info", description: "builtin runtime tool" },
+      ],
+      {},
+    );
+
+    // 期望树中只保留 canonical 名称，避免 alias 与 canonical 重复展示。
+    expect(tree.builtins.tools.map((tool) => tool.toolName)).toEqual([
+      "builtin.get_page_info",
+      "builtin.navigate",
+    ]);
+    expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(["builtin"]);
+    expect(tree.builtins.namespaces[0]?.instances[0]?.tools.map((tool) => tool.toolName)).toEqual([
+      "builtin.get_page_info",
+      "builtin.navigate",
+    ]);
   });
 
   it("re-enables all descendants when a page parent scope is toggled back on", () => {

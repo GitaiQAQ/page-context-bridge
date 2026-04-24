@@ -146,7 +146,13 @@ export function getEnabledToolsForTab(entries: PageToolEntry[] | undefined, pref
 }
 
 export function getEnabledBuiltinTools(tools: PageToolSpec[], preferences: PageToolPreferences): PageToolSpec[] {
-  return tools.filter((tool) => isBridgeControlBuiltinTool(tool) || isToolEnabled(preferences, { root: "builtin", toolName: tool.name }));
+  return tools.filter((tool) => {
+    if (isBridgeControlBuiltinTool(tool)) {
+      return true;
+    }
+    // 偏好判断统一按 canonical 名称执行，兼容 legacy alias。
+    return isToolEnabled(preferences, { root: "builtin", toolName: toCanonicalBuiltinRuntimeToolName(tool.name) });
+  });
 }
 
 export function isToolEnabled(preferences: PageToolPreferences, scope: ToolScopeInput): boolean {
@@ -384,7 +390,19 @@ export function buildToolTree(
 }
 
 function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreferences): ToolTreeBuiltins {
-  const builtinTools = tools
+  const dedupedByName = new Map<string, PageToolSpec>();
+  for (const tool of tools) {
+    const normalizedName = toCanonicalBuiltinRuntimeToolName(tool.name);
+    // 统一收敛 canonical 名称，避免 legacy alias 与 canonical 在树里重复展示。
+    if (!dedupedByName.has(normalizedName)) {
+      dedupedByName.set(normalizedName, {
+        ...tool,
+        name: normalizedName,
+      });
+    }
+  }
+
+  const builtinTools = Array.from(dedupedByName.values())
     .map((tool) => {
       const path = parseBuiltinToolPath(tool.name);
       return {
