@@ -17,17 +17,17 @@ describe("feedback-store", () => {
     const store = createDeterministicStore();
     const annotation = store.createAnnotation({
       actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
-      body: "按钮位置不对",
+      body: "Button position is incorrect",
       priority: "high",
       tabId: 7,
       url: "https://example.com/a",
       title: "Example A",
-      selectedText: "立即购买",
+      selectedText: "Buy now",
       uiAnchor: {
         elementId: " buy-now-btn ",
         cssSelector: " #buy-now ",
         xpath: "//*[@id='buy-now']",
-        textQuote: " 立即购买 ",
+        textQuote: " Buy now ",
         framePath: [0, 1, -2],
         rect: { x: 12, y: 34, width: 56, height: 20 },
         textRange: { start: 0, end: 4 },
@@ -58,11 +58,11 @@ describe("feedback-store", () => {
     expect(snapshot.lastSeq).toBe(2);
     expect(snapshot.snapshotVersion).toBe(1);
     expect(annotation.context.pageInfo.route).toBe("/item/1");
-    expect(annotation.target.textQuote).toBe("立即购买");
+    expect(annotation.target.textQuote).toBe("Buy now");
     expect(annotation.target.uiAnchor).toMatchObject({
       elementId: "buy-now-btn",
       cssSelector: "#buy-now",
-      textQuote: "立即购买",
+      textQuote: "Buy now",
       framePath: [0, 1],
     });
     expect(snapshot.annotations[0]?.context.uiAnchor).toEqual(annotation.context.uiAnchor);
@@ -72,7 +72,7 @@ describe("feedback-store", () => {
     const store = createDeterministicStore();
     const created = store.createAnnotation({
       actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
-      body: "老版本不带 anchor",
+      body: "Old version without anchor",
       tabId: 18,
       url: "https://example.com/legacy",
       linkedCapabilities: {
@@ -94,7 +94,7 @@ describe("feedback-store", () => {
     const resolved = store.resolveAnnotation({
       annotationId: created.id,
       actor: { source: "agent", id: "bot-legacy", displayName: "Agent Legacy" },
-      resolution: "保持兼容",
+      resolution: "Maintain compatibility",
     });
 
     expect(resolved.status).toBe("resolved");
@@ -104,7 +104,7 @@ describe("feedback-store", () => {
     const store = createDeterministicStore();
     const created = store.createAnnotation({
       actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
-      body: "文案错别字",
+      body: "Text contains typos",
       tabId: 8,
       url: "https://example.com/b",
       linkedCapabilities: {
@@ -123,7 +123,7 @@ describe("feedback-store", () => {
     store.resolveAnnotation({
       annotationId: created.id,
       actor: { source: "agent", id: "bot-1", displayName: "Agent A" },
-      resolution: "已修复并发布",
+      resolution: "Fixed and deployed",
     });
 
     const delta = store.readDelta({ afterSeq: 2 });
@@ -138,7 +138,7 @@ describe("feedback-store", () => {
     const store = createDeterministicStore();
     const created = store.createAnnotation({
       actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
-      body: "原始文案",
+      body: "Original text",
       priority: "normal",
       tabId: 12,
       url: "https://example.com/d",
@@ -154,10 +154,10 @@ describe("feedback-store", () => {
     const updated = store.updateAnnotation({
       annotationId: created.id,
       actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
-      body: "更新后的文案",
+      body: "Updated text",
       priority: "high",
     });
-    expect(updated.body).toBe("更新后的文案");
+    expect(updated.body).toBe("Updated text");
     expect(updated.priority).toBe("high");
 
     const dismissed = store.dismissAnnotation({
@@ -179,7 +179,7 @@ describe("feedback-store", () => {
     const store = createDeterministicStore();
     const created = store.createAnnotation({
       actor: { source: "extension", id: "ext-user", displayName: "Extension User" },
-      body: "先不处理",
+      body: "Leave for later",
       tabId: 9,
       url: "https://example.com/c",
       linkedCapabilities: {

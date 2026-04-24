@@ -8,3 +8,9 @@ log/
 .DS_Store
 .history
 .npmrc
+.gsd
+.vscode
+.bg-shell
+.claude
+.playwright-mcp
+temp

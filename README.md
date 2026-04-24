@@ -245,21 +245,25 @@ pnpm dev
 
 ## Quick Start (For AI Integration)
 
-**Goal**: Expose `window.__pageContextBridge__` on your page so this extension can bridge your page's tools/resources/skills into standard MCP protocol for any LLM agent.
+**Goal**: Let LLM quickly produce business-domain abstractions and source bridge implementations under the current **Host merge** architecture.
 
-**Copy the following prompt to any LLM to auto-generate integration code for your current project:**
+Use the single canonical guide:
+
+1. [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
+
+**Copy this prompt to any LLM:**
 
 ```text
-Read ./docs/page-context-bridge-all-in-one-guidance.md, then generate a minimal complete window.__pageContextBridge__ implementation for the current project's business page.
+Read ./docs/page-context-bridge-all-in-one-guidance.md.
+Then implement page integration for the current business project as a source bridge registered to window.__pageContextBridgeHost__.
 
 Requirements:
-1. Organize namespaces by business domain (e.g. catalog, checkout, profile) — NOT utils/misc/common
-2. tools = atomic actions, resources = read-only state, skills = task intent descriptions
-3. Output ready-to-paste TypeScript code for the page
-4. Also output an example getManifest() return value
+1. Namespace design must follow business domains (not misc/common/utils).
+2. tools/resources/skills must all be present and task-oriented.
+3. Support multi-instance routing in namespace.
+4. Do NOT directly overwrite window.__pageContextBridge__; registerSource to host and handle host-ready late binding.
+5. Output ready-to-paste TypeScript code and a concrete getManifest() example.
 ```
-
-Full specification: [Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
 
 ## Load Extension in Chrome
 

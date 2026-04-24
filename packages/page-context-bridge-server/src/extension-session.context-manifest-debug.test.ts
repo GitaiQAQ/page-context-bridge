@@ -62,7 +62,7 @@ describe("extension-session context manifest debug rpc", () => {
 
     const payload = await getContextManifestDebugFromExtension("tenant-a", manager, 11);
 
-    // 兼容旧扩展：只返回 manifest 时，bridge 自动补齐 raw/debug。
+    // Compatible with old extensions: when only manifest is returned, bridge automatically fills in raw/debug.
     expect(payload.manifest?.scene).toBe("legacy");
     expect(payload.rawManifest?.scene).toBe("legacy");
     expect(payload.debug).toBeNull();

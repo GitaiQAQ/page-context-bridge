@@ -209,7 +209,7 @@ describe("mcp-registry extension tool control tools", () => {
     const payload = await handler?.({ tabId: 42 });
     const parsed = parseTextResponse(payload);
 
-    // debug 工具应把 tabId 原样下发，避免 bridge 侧猜测当前 tab 造成混淆。
+    // Debug tools should pass tabId as-is to avoid confusion caused by bridge-side guessing of the current tab.
     expect(getContextManifestDebug).toHaveBeenCalledTimes(1);
     expect(getContextManifestDebug).toHaveBeenCalledWith(42);
     expect(parsed.tabId).toBe(42);
@@ -342,7 +342,7 @@ describe("mcp-registry extension tool control tools", () => {
     const payload = await handler?.({ tabId: 88 });
     const parsed = parseTextResponse(payload);
 
-    // agent 主动刷新后，应立即把最新工具写回当前 registry，避免等待异步通知。
+    // After agent actively refreshes, it should immediately write the latest tools back to the current registry to avoid waiting for async notifications.
     expect(refreshPageTools).toHaveBeenCalledTimes(1);
     expect(refreshPageTools).toHaveBeenCalledWith(88);
     expect(getContextManifest).toHaveBeenCalledTimes(1);
@@ -413,7 +413,7 @@ describe("mcp-registry extension tool control tools", () => {
     });
     const parsed = parseTextResponse(payload);
 
-    // 组合入口必须复用既有原子动作，且每步只执行一次，便于定位失败阶段。
+    // Combined entry must reuse existing atomic actions and execute each step only once for easy failure stage identification.
     expect(getRuntimeStatus).toHaveBeenCalledTimes(1);
     expect(ensureMainWorldHost).toHaveBeenCalledTimes(1);
     expect(ensureMainWorldHost).toHaveBeenCalledWith(88, 2);

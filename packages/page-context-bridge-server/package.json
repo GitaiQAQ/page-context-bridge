@@ -1,6 +1,6 @@
 {
   "name": "@page-context/mcp-bridge",
-  "version": "0.0.2-14",
+  "version": "0.0.2-15",
   "description": "Page Context MCP Bridge - relays extension context tools to MCP clients via stdio/SSE transport",
   "type": "module",
   "main": "dist/index.js",

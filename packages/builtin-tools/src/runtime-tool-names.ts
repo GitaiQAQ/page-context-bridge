@@ -1,7 +1,7 @@
 /**
- * runtime builtin 工具命名模型。
+ * Runtime builtin tool naming model.
  *
- * 规范名统一为 `builtin.*`；旧的平铺名称继续保留为兼容别名。
+ * Canonical names are unified as `builtin.*`; old flat names remain as compatibility aliases.
  */
 
 export const BUILTIN_RUNTIME_NAMESPACE = "builtin";

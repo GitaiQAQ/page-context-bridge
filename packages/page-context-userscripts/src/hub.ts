@@ -59,7 +59,7 @@ export function getOrCreateUserscriptBridgeHub(win: Window, doc: Document): User
   };
   const bridge = createHubBridge(win, doc, state);
   registerHubSourceOnHost(state, bridge);
-  // host 由 extension content-script 注入。userscript 只监听 ready 并注册自身 source。
+  // The host is injected by the extension's content-script. Userscripts only listen for ready events and register their own sources.
   win.addEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, (event) => {
     const host = (event as CustomEvent<unknown>).detail;
     if (!isPageContextBridgeHost(host)) {
@@ -115,7 +115,7 @@ function registerHubSourceOnHost(state: HubState, bridge: PageContextBridgeLike)
     return;
   }
   state.unregisterHubSource?.();
-  // userscript hub 始终通过 host 注册，不直接操作 window.__pageContextBridge__，避免多来源互相覆盖。
+  // The userscript hub always registers via the host and does not directly manipulate window.__pageContextBridge__ to avoid multi-source overwrites.
   state.unregisterHubSource = bridgeHost.registerSource({
     sourceId: HUB_SOURCE_ID,
     bridge,

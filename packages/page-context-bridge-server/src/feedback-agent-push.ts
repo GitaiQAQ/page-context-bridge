@@ -9,8 +9,8 @@ export interface FeedbackAgentPushAdapter {
 }
 
 /**
- * 可选状态读取接口：用于把 push-agent 的运行态暴露给 snapshot/sidepanel。
- * 约束：读取必须是纯函数，不得有副作用。
+ * Optional status reader interface: exposes push-agent runtime state to snapshot/sidepanel.
+ * Constraint: reading must be pure functions without side effects.
  */
 export interface FeedbackAgentPushStatusReader {
   getPushAgentStatus(): FeedbackPushAgentStatus;
@@ -35,8 +35,8 @@ const ENABLED_VALUES = new Set(["1", "true", "yes", "on"]);
 const DEFAULT_RUNTIME_DIR_NAME = ".feedback-agent-opencode";
 
 /**
- * 从环境变量构建本地 auto-push 适配器。
- * 默认关闭，避免在普通 bridge 运行时引入额外副作用。
+ * Create local auto-push adapter from environment variables.
+ * Disabled by default to avoid introducing extra side effects in normal bridge runtime.
  */
 export function createFeedbackAgentPushAdapterFromEnv(
   tenantId: string,
@@ -64,8 +64,8 @@ export function createFeedbackAgentPushAdapterFromEnv(
 }
 
 /**
- * 从环境变量生成“最小可观测”状态。
- * 说明：这里只表达配置态；运行态（最近一次 launch）由 adapter 在内存中持续更新。
+ * Generate "minimal observable" status from environment variables.
+ * Note: This only represents configuration state; runtime state (last launch) is continuously updated by adapter in memory.
  */
 export function createFeedbackPushAgentStatusFromEnv(
   env: NodeJS.ProcessEnv = getRuntimeEnv(),
@@ -78,8 +78,8 @@ export function createFeedbackPushAgentStatusFromEnv(
 }
 
 /**
- * 为 feedback agent 构建隔离的 opencode 运行环境。
- * 目标：默认不读取用户全局 ~/.config/opencode，且允许通过 FEEDBACK_PUSH_AGENT_* 精确覆盖。
+ * Build isolated opencode runtime environment for feedback agent.
+ * Goal: By default, do not read user global ~/.config/opencode, and allow precise override via FEEDBACK_PUSH_AGENT_*.
  */
 export function buildFeedbackAgentSpawnEnv(env: NodeJS.ProcessEnv, workingDirectory: string): NodeJS.ProcessEnv {
   const runtimeRoot = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_RUNTIME_ROOT)
@@ -101,7 +101,7 @@ export function buildFeedbackAgentSpawnEnv(env: NodeJS.ProcessEnv, workingDirect
 }
 
 /**
- * 最小 bridge 侧本地推送：只负责“新注解 -> 一次 opencode run”。
+ * Minimal bridge-side local push: only responsible for "new annotation -> one opencode run".
  */
 export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, FeedbackAgentPushStatusReader {
   private readonly launchedAnnotationIds = new Set<string>();
@@ -122,7 +122,7 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
   }
 
   pushNewAnnotation(annotation: FeedbackAnnotation): void {
-    // 进程内去重：同一 annotation 只尝试启动一次，避免重复推送。
+    // In-process deduplication: only attempt to launch once per annotation to avoid duplicate pushes.
     if (this.launchedAnnotationIds.has(annotation.id)) {
       return;
     }
@@ -133,7 +133,7 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
       args.push("-m", this.options.model);
     }
     if (this.options.agentName) {
-      // 与 opencode-protocol 的参数映射保持一致：agent => -agent
+      // Keep consistent with opencode-protocol parameter mapping: agent => -agent
       args.push("-agent", this.options.agentName);
     }
     args.push(buildFeedbackAgentPrompt(this.options.tenantId, annotation));
@@ -181,26 +181,26 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
 export function buildFeedbackAgentPrompt(tenantId: string, annotation: FeedbackAnnotation): string {
   const body = annotation.body.trim() || "(empty)";
   const lines = [
-    "你是 bridge 触发的本地 agent，需要处理一条新反馈注解。",
+    "You are a local agent triggered by bridge, need to handle a new feedback annotation.",
     `tenant_id: ${tenantId}`,
     `annotation_id: ${annotation.id}`,
     `session_id: ${annotation.sessionId}`,
     "",
-    "先调用并仅调用现有 feedback.* MCP 工具推进流程：",
+    "First call and only call existing feedback.* MCP tools to advance the process:",
     `1) feedback_get_annotation({"annotationId":"${annotation.id}"})`,
-    // 主入口统一 feedback.*；旧的 feedback_*_annotation 仅做兼容别名，不建议新流程继续使用。
+    // Main entry point unified as feedback.*; old feedback_*_annotation are only for compatibility aliases, not recommended for new workflows.
     `2) feedback.claim({"annotationId":"${annotation.id}"})`,
-    `3) feedback.reply({"annotationId":"${annotation.id}","body":"你的行动计划"})`,
-    `4) 完成后 feedback.resolve({"annotationId":"${annotation.id}","resolution":"你的结论"})`,
+    `3) feedback.reply({"annotationId":"${annotation.id}","body":"Your action plan"})`,
+    `4) After completion, feedback.resolve({"annotationId":"${annotation.id}","resolution":"Your conclusion"})`,
     "",
-    "下面是用户反馈原文：",
+    "Below is the original user feedback:",
     body,
   ];
   return lines.join("\n");
 }
 
 /**
- * 统一构建 push-agent 状态，避免各调用方手写分支导致字段漂移。
+ * Unified construction of push-agent status to avoid field drift from manual branching by callers.
  */
 export function createFeedbackPushAgentStatus(input: {
   enabled: boolean;

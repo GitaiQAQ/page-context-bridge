@@ -15,7 +15,7 @@ function createAnnotation(overrides: Partial<FeedbackAnnotation> = {}): Feedback
     id: "annotation_1",
     sessionId: "session_1",
     author: { source: "extension", id: "u1", displayName: "U1" },
-    body: "列表加载慢",
+    body: "List loading is slow",
     status: "open",
     priority: "high",
     target: {

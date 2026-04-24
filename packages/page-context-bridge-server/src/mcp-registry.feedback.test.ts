@@ -84,7 +84,7 @@ describe("mcp-registry feedback tools", () => {
     registry.syncContextManifestOnAllServers(5, manifest);
 
     const created = registry.createFeedbackAnnotation({
-      body: "手机号格式异常",
+      body: "Phone number format is invalid",
       priority: "high",
       tabId: 5,
       url: "https://example.com/lead/1",
@@ -113,7 +113,7 @@ describe("mcp-registry feedback tools", () => {
     });
 
     const created = registry.createFeedbackAnnotation({
-      body: "提交按钮无响应",
+      body: "Submit button is unresponsive",
       tabId: 7,
       url: "https://example.com/form",
     });
@@ -128,14 +128,14 @@ describe("mcp-registry feedback tools", () => {
       },
     });
 
-    // agent 触发失败不应回滚 annotation 创建，仓库状态要先落地成功。
+    // Agent trigger failure should not roll back annotation creation, repository state should be persisted first.
     const created = registry.createFeedbackAnnotation({
-      body: "异常兜底验证",
+      body: "Exception fallback validation",
       tabId: 13,
       url: "https://example.com/fallback",
     });
 
-    expect(created.body).toBe("异常兜底验证");
+    expect(created.body).toBe("Exception fallback validation");
     const annotations = registry.listFeedbackAnnotations({ tabId: 13 });
     expect(annotations.some((item) => item.id === created.id)).toBe(true);
   });
@@ -165,7 +165,7 @@ describe("mcp-registry feedback tools", () => {
     });
 
     const created = registry.createFeedbackAnnotation({
-      body: "auto push 失败可观测性",
+      body: "Auto push failure observability",
       tabId: 21,
       url: "https://example.com/failure",
     });
@@ -203,7 +203,7 @@ describe("mcp-registry feedback tools", () => {
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.claim)).toBe(true);
 
     const created = registry.createFeedbackAnnotation({
-      body: "列表加载慢",
+      body: "List loading is slow",
       tabId: 3,
       url: "https://example.com/list",
     });
@@ -223,7 +223,7 @@ describe("mcp-registry feedback tools", () => {
     expect(typeof parsed.lastSeq).toBe("number");
 
     const watchLegacy = fakeServer.tools.get(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents);
-    // 旧入口与新入口共用同一条 delta 管线，确保迁移期间游标语义一致。
+    // Old and new entry points share the same delta pipeline to ensure cursor semantics consistency during migration.
     const watchedLegacy = await watchLegacy?.({ afterSeq: 1 });
     const parsedLegacy = parseTextResponse(watchedLegacy);
     const legacyEvents = parsedLegacy.events as Array<{ eventType: string }>;
@@ -263,7 +263,7 @@ describe("mcp-registry feedback tools", () => {
 
     const create = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.createAnnotation);
     const createdPayload = await create?.({
-      body: "首版问题描述",
+      body: "Initial issue description",
       priority: "normal",
       tabId: 33,
       url: "https://example.com/feedback",
@@ -275,7 +275,7 @@ describe("mcp-registry feedback tools", () => {
     const update = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.updateAnnotation);
     const updatedPayload = await update?.({
       annotationId: created.id,
-      body: "修订后的问题描述",
+      body: "Revised issue description",
       priority: "high",
     });
     const updated = parseTextResponse(updatedPayload).annotation as { body: string; priority: string };
@@ -287,7 +287,7 @@ describe("mcp-registry feedback tools", () => {
     const reply = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.reply);
     const repliedPayload = await reply?.({
       annotationId: created.id,
-      body: "先复现并补日志，再给出修复 PR",
+      body: "First reproduce and add logs, then provide a fix PR",
       kind: "action_note",
       actorId: "agent-9",
     });
@@ -296,13 +296,13 @@ describe("mcp-registry feedback tools", () => {
     const resolve = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.resolve);
     const resolvedPayload = await resolve?.({
       annotationId: created.id,
-      resolution: "已定位为防抖参数错误并完成修复",
+      resolution: "Identified as debounce parameter error and completed the fix",
       actorId: "agent-9",
     });
     const resolved = parseTextResponse(resolvedPayload).annotation as { status: string; resolution?: string };
 
     const createSecondPayload = await create?.({
-      body: "误报样例",
+      body: "False positive example",
       tabId: 33,
       url: "https://example.com/feedback",
     });
@@ -310,7 +310,7 @@ describe("mcp-registry feedback tools", () => {
     const dismiss = fakeServer.tools.get(FEEDBACK_CONTROL_TOOL_NAMES.dismiss);
     const dismissedPayload = await dismiss?.({
       annotationId: createdSecond.id,
-      dismissReason: "与已处理主问题重复",
+      dismissReason: "Duplicate of already processed main issue",
       actorId: "agent-9",
     });
     const dismissed = parseTextResponse(dismissedPayload).annotation as { status: string; dismissReason?: string };
@@ -320,25 +320,25 @@ describe("mcp-registry feedback tools", () => {
     const snapshot = parseTextResponse(snapshotPayload);
     const annotations = snapshot.annotations as Array<{ id: string; body: string; priority: string }>;
 
-    // 验证 feedback.* 主入口串起完整流程，且状态变更与 thread 都落在同一份 store 真值里。
-    expect(updated.body).toBe("修订后的问题描述");
+    // Verify that feedback.* main entry connects the complete workflow, and state changes and threads are stored in the same store truth.
+    expect(updated.body).toBe("Revised issue description");
     expect(updated.priority).toBe("high");
     expect(claimed.status).toBe("claimed");
-    expect(replied.thread.some((item) => item.body.includes("补日志") && item.kind === "action_note")).toBe(true);
+    expect(replied.thread.some((item) => item.body.includes("add logs") && item.kind === "action_note")).toBe(true);
     expect(resolved.status).toBe("resolved");
-    expect(resolved.resolution).toContain("防抖参数错误");
+    expect(resolved.resolution).toContain("debounce parameter error");
     expect(dismissed.status).toBe("dismissed");
-    expect(dismissed.dismissReason).toContain("重复");
+    expect(dismissed.dismissReason).toContain("duplicate");
     expect(annotations.some((item) =>
       item.id === created.id
-      && item.body === "修订后的问题描述"
+      && item.body === "Revised issue description"
       && item.priority === "high")).toBe(true);
   });
 
   it("updates and dismisses annotation through registry methods", () => {
     const registry = createRegistry();
     const created = registry.createFeedbackAnnotation({
-      body: "初始内容",
+      body: "Initial content",
       priority: "normal",
       tabId: 11,
       url: "https://example.com/form",
@@ -346,10 +346,10 @@ describe("mcp-registry feedback tools", () => {
 
     const updated = registry.updateFeedbackAnnotation({
       annotationId: created.id,
-      body: "编辑后的内容",
+      body: "Edited content",
       priority: "critical",
     });
-    expect(updated.body).toBe("编辑后的内容");
+    expect(updated.body).toBe("Edited content");
     expect(updated.priority).toBe("critical");
 
     const dismissed = registry.dismissFeedbackAnnotation({

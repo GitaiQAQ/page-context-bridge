@@ -1,78 +1,61 @@
-# Page Context Bridge All-in-One Integration Guide
+# Page Context Bridge Integration Guide
 
-This is an integration guide that can be directly copied to another LLM for implementing `Page Context Bridge` in **any business project page**, enabling bridge / MCP / agent to standardize consumption of page-side `tools + resources + skills`.
+This document defines the page-side integration contract for Page Context Bridge.
+Goal: after integration, an engineer or LLM can read this document, run the prescribed calls, and resolve concrete business issues with evidence.
 
-The goal of this document is not to explain the internal implementation details of the current repository, but to provide a **complete implementation guide for integrators**.
+## 1. Core Model
 
----
+Page Context Bridge uses **Host + multiple Source registration** on the page.
 
-## 1. Goal
+Roles:
 
-You need to implement a unified page capability object in the business page:
+- **Host**: `window.__pageContextBridgeHost__`
+- **Host ready event**: `page-context-bridge-host:ready`
+- **Merged bridge for readers**: `window.__pageContextBridge__`
+- **Optional merged alias for readers**: `window.__pageContextTools__`
+- **Business runtime**: a **source** registered into host by `registerSource(...)`
 
-- `window.__pageContextBridge__`
+Rule of ownership:
 
-It is used to expose:
+1. The host owns the merged bridge on `window.__pageContextBridge__`.
+2. Business code owns only its own source bridge.
+3. Business code must register that source to host.
+4. Business code must not overwrite the merged bridge when host exists.
 
-- Atomic tools `tools` within the page
-- Read-only context `resources`
-- Task-oriented skill descriptions `skills`
-- Page-level manifest `manifest`
+## 2. Non-Negotiable Rules
 
-Then Page Context Bridge compiles these capabilities into standard MCP output:
+These rules are mandatory.
 
-- Atomic tool -> MCP `tool`
-- resource -> MCP `resource`
-- skill -> MCP `prompt`
+1. Use `window.__pageContextBridgeHost__` as the only public registration point.
+2. Treat `window.__pageContextBridge__` as the merged reader surface, not as a business-owned object.
+3. Register a business bridge as a **source** with a stable `sourceId`.
+4. Handle late host initialization by listening to `page-context-bridge-host:ready`.
+5. Return a disposer from host binding and call it on unmount.
+6. Support multi-instance pages inside the business bridge. Do not register one source per instance.
+7. Keep `getManifest()` consistent with `listNamespaces()`, `listResources()`, and `listSkills()`.
+8. Use stable, deterministic namespace IDs, resource IDs, and skill IDs.
+9. Keep tools atomic, resources read-only, and skills task-oriented.
+10. Do not expose project internals through random debug globals when the bridge protocol already covers the use case.
 
-This way, the Agent doesn't need to directly understand the business page's internal implementation, it only needs to read the standard capabilities exposed by MCP.
-
----
-
-## 2. Overall Flow
-
-The target flow is as follows:
-
-`Business Project(skills + tools + resources) -> Page -> Bridge -> MCP -> Agent + Skills`
-
-Responsibility layers:
-
-- **Business Project Page**: Declares real business semantics
-- **Page Context Bridge**: Collects and standardizes these semantics
-- **MCP**: Exposes standard objects to Agent
-- **Agent**: Performs inference and execution based on the trimmed capability set
-
----
-
-## 3. Global Object You Must Implement
-
-The page must expose:
-
-- `window.__pageContextBridge__`
-
-It is also recommended to expose:
-
-- `window.__pageContextTools__`
-
-Both can point to the same object.
-
-Do not use the following old names:
-
-- `__pageDebugTools__`
-- `__MCP_BRIDGE_TEST__`
-- `__MCP_BRIDGE_DEMO__`
-
----
-
-## 4. Minimum Interface Definition
-
-The page object must implement at least these methods:
+## 3. Minimum Runtime Contract
 
 ```ts
-interface PageContextBridge {
+interface PageToolInstance {
+  instanceId: string
+  listTools(): ToolSpec[]
+  callTool(name: string, input?: Record<string, unknown>): unknown
+}
+
+interface PageToolNamespace {
+  namespace: string
+  listInstances(): string[]
+  getInstance(instanceId: string): PageToolInstance | undefined
+}
+
+interface PageContextBridgeLike {
   version: string
   listNamespaces(): string[]
-  getNamespace(namespace: string): ToolNamespace | undefined
+  getNamespace(namespace: string): PageToolNamespace | undefined
 
   getScene(): string
   listResources(): ContextResourceDescriptor[]
@@ -83,598 +66,523 @@ interface PageContextBridge {
 
   getManifest(): PageContextManifest
 }
+
+interface PageContextBridgeHost {
+  registerSource(input: {
+    sourceId: string
+    bridge: PageContextBridgeLike
+    priority?: number
+    tags?: string[]
+  }): () => void
+}
 ```
 
-namespace/instance/tool structure:
+Protocol mapping:
+
+- page tool -> MCP `tool`
+- page resource -> MCP `resource`
+- page skill -> MCP `prompt`
+
+## 4. What a Business Implementation Must Deliver
+
+A correct business integration delivers all of the following:
+
+1. One source bridge object for the business runtime.
+2. One internal instance registry for all mounted page instances.
+3. Namespaces grouped by business semantics, not by technical leftovers.
+4. Read-only resources with deterministic IDs.
+5. Skills that reference real `resourceIds` and real qualified `toolNames`.
+6. Host binding that works for both immediate-host and late-host cases.
+7. Mount and unmount hooks that update registry state and unregister from host when the last instance is gone.
+
+Definition of done:
+
+1. The integrated page can answer at least these business questions:
+- Why did this page enter the current scene?
+- Why is this option hidden/disabled/forbidden/absent?
+- Why did this default selection win?
+- Why does rendered UI not match runtime state?
+- What changed between two runtime snapshots?
+2. Answers must be reproducible from resources/tool outputs, not guesswork.
+
+## 5. Proven Blueprint From `campaign-creation`
+
+A proven namespace layout is:
+
+- `workspace`: page-level targeting and multi-instance discovery
+- `entry`: route split and deeplink reasoning
+- `availability`: why an option is visible, hidden, disabled, forbidden, or absent
+- `selection`: why one branch won, including default selection reasoning
+- `structure`: graph, search, subtree inspection, diff, snapshot
+- `runtime`: bounded runtime state and rendered surface evidence
+
+A proven resource layout is:
+
+- page-level resource: `workspace.page-summary`
+- per-instance resources:
+  - `entry.<instanceId>.routing-context`
+  - `availability.<instanceId>.option-catalog`
+  - `availability.<instanceId>.investigation-sop`
+  - `selection.<instanceId>.selection-state`
+  - `structure.<instanceId>.graph-summary`
+  - `runtime.<instanceId>.state`
+  - `runtime.<instanceId>.surface`
+
+A proven skill layout is:
+
+- `workspace.pick-instance`
+- `entry.<instanceId>.explain-scene-and-deeplink`
+- `availability.<instanceId>.diagnose-option-availability`
+- `availability.<instanceId>.follow-investigation-sop`
+- `selection.<instanceId>.explain-selection-decision`
+- `structure.<instanceId>.inspect-runtime-structure`
+- `runtime.<instanceId>.inspect-runtime-surface`
+
+Why this layout works:
+
+1. `workspace` solves multi-instance targeting before deeper analysis.
+2. Per-instance namespaces keep tool scope small and explicit.
+3. `investigation-sop` turns debugging procedure into runtime-readable guidance instead of hidden tribal knowledge.
+
+## 6. Recommended File Layout
+
+Use three layers.
+
+1. `hub.ts`
+- Builds the project-specific runtime API from local internals.
+- Keeps business data collection separate from bridge protocol code.
+
+2. `page-context-capabilities-*.ts`
+- One file per namespace.
+- Each file defines `listTools()` and `callTool()` for that namespace.
+
+3. `page-context-bridge.ts`
+- Owns the source bridge object.
+- Owns the mounted instance registry.
+- Builds resources, skills, and manifest.
+- Binds and unbinds the source to host.
+
+## 7. Source Bridge Skeleton
+
+Use a private project-scoped registry key. Do not use `window.__pageContextBridge__` as your business-owned storage.
 
 ```ts
-interface ToolNamespace {
-  namespace: string
-  listInstances(): string[]
-  getInstance(instanceId: string): ToolInstance | undefined
-}
+const PAGE_CONTEXT_BRIDGE_VERSION = "2.0.0"
+const PAGE_CONTEXT_SOURCE_ID = "campaign-selector-page-runtime"
+const PAGE_CONTEXT_BRIDGE_REGISTRY_KEY = "__campaignSelectorPageContextBridgeRegistry__"
 
-interface ToolInstance {
+type MountedInstance = {
   instanceId: string
-  listTools(): PageToolDescriptor[]
-  callTool(name: string, input?: Record<string, unknown>): unknown
+  model: CampaignSelectorModelModule
+  api: PageContextInstanceApi
+}
+
+interface MutablePageContextBridge extends PageContextBridgeLike {
+  internalInstances: Record<string, MountedInstance>
+  unbindFromHost?: () => void
+}
+
+declare global {
+  interface Window {
+    __pageContextBridgeHost__?: PageContextBridgeHost
+    __pageContextBridge__?: PageContextBridgeLike
+    __campaignSelectorPageContextBridgeRegistry__?: MutablePageContextBridge
+  }
+}
+
+export function ensurePageContextBridge(): MutablePageContextBridge {
+  if (typeof window === "undefined") {
+    return createEmptyBridge()
+  }
+
+  const existingRegistry = window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY]
+  if (existingRegistry) {
+    syncNamespaces(existingRegistry)
+    return existingRegistry
+  }
+
+  const bridge: MutablePageContextBridge = {
+    version: PAGE_CONTEXT_BRIDGE_VERSION,
+    internalInstances: {},
+    unbindFromHost: undefined,
+    listNamespaces: () => ["workspace", "entry", "availability", "selection", "structure", "runtime"],
+    getNamespace: (namespace) => buildNamespace(namespace, bridge),
+    getScene: () => detectScene(bridge),
+    listResources: () => listResources(bridge),
+    readResource: (id) => readResource(bridge, id),
+    listSkills: () => listSkills(bridge),
+    getSkill: (id, input) => getSkill(bridge, id, input),
+    getManifest: () => buildManifest(bridge),
+  }
+
+  bridge.unbindFromHost = bindBridgeToPageContextHost(bridge)
+  syncNamespaces(bridge)
+  window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY] = bridge
+  return bridge
 }
 ```
 
----
+Implementation rule:
 
-## 5. Standard Data Structures
+- The business bridge may live on a private project key.
+- The host-owned merged bridge remains on `window.__pageContextBridge__`.
+- If host is absent, keep the source bridge private and wait for host readiness instead of publishing a fake merged bridge.
 
-Please strictly align with the following structures:
+## 8. Host Binding Template
+
+This pattern is required because host may appear before or after the business script.
 
 ```ts
-interface ContextNamespaceDescriptor {
-  namespace: string
-  title: string
-  description?: string
-  tags?: string[]
+const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = "page-context-bridge-host:ready"
+
+function isPageContextBridgeHost(value: unknown): value is PageContextBridgeHost {
+  const candidate = value as Partial<PageContextBridgeHost> | undefined
+  return Boolean(candidate && typeof candidate.registerSource === "function")
 }
 
-interface ContextResourceDescriptor {
-  id: string
-  namespace: string
-  title: string
-  description?: string
-  mimeType?: string
-  kind?: "json" | "text"
-  tags?: string[]
-}
+function bindBridgeToPageContextHost(bridge: PageContextBridgeLike): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined
+  }
 
-interface ContextResourcePayload {
-  id: string
-  mimeType?: string
-  text: string
-}
+  let unregisterFromHost: (() => void) | undefined
+  let listeningHostReadyEvent = false
 
-interface ContextSkillDescriptor {
-  id: string
-  namespace: string
-  title: string
-  description: string
-  intentTags?: string[]
-  resourceIds?: string[]
-  toolNames?: string[]
-  mode?: "analysis" | "readonly" | "mutation" | "macro"
-}
+  const stopListeningHostReadyEvent = () => {
+    if (!listeningHostReadyEvent) {
+      return
+    }
+    window.removeEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, onHostReady as EventListener)
+    listeningHostReadyEvent = false
+  }
 
-interface ContextSkillPrompt {
-  skill: ContextSkillDescriptor
-  text: string
-}
+  const tryRegisterOnHost = (candidateHost?: unknown) => {
+    if (unregisterFromHost) {
+      return
+    }
 
-interface PageContextManifest {
-  version: string
-  app: string
-  route: string
-  scene: string
-  namespaces: ContextNamespaceDescriptor[]
-  resources: ContextResourceDescriptor[]
-  skills: ContextSkillDescriptor[]
-  generatedAt: string
+    const host = isPageContextBridgeHost(candidateHost)
+      ? candidateHost
+      : window.__pageContextBridgeHost__
+
+    if (!host) {
+      return
+    }
+
+    unregisterFromHost = host.registerSource({
+      sourceId: PAGE_CONTEXT_SOURCE_ID,
+      bridge,
+      priority: 120,
+      tags: ["page", "campaign-selector"],
+    })
+
+    stopListeningHostReadyEvent()
+  }
+
+  const onHostReady = (event: Event) => {
+    tryRegisterOnHost((event as CustomEvent<unknown>).detail)
+  }
+
+  tryRegisterOnHost()
+
+  if (!unregisterFromHost) {
+    window.addEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, onHostReady as EventListener)
+    listeningHostReadyEvent = true
+
+    // Check again after listening to avoid host initialization happening between these two steps.
+    tryRegisterOnHost()
+  }
+
+  return () => {
+    stopListeningHostReadyEvent()
+    unregisterFromHost?.()
+    unregisterFromHost = undefined
+  }
 }
 ```
 
----
+Hard behavior requirements:
 
-## 6. Design Principles
+1. Register at most once for the current bridge object.
+2. Remove the ready listener after successful registration.
+3. Return a disposer that removes the listener and unregisters the source.
+4. Never assign `window.__pageContextBridge__ = bridge` inside this binding path.
 
-### 6.1 Tools are Atomic Actions
+## 9. Mount and Unmount Lifecycle
 
-`tools` should only perform clear, executable, well-bounded actions, such as:
+Use one source bridge and many mounted instances.
 
-- `catalog.primary.addItem`
-- `form.profile.setProfile`
-- `checkout.payment.submit`
+```ts
+export function mountPageContextInstance(input: {
+  instanceId: string
+  model: CampaignSelectorModelModule
+  api: PageContextInstanceApi
+}): () => void {
+  if (typeof window === "undefined") {
+    return () => undefined
+  }
 
-Do not stuff an overly complex large process directly into a "black box tool", unless it is very stable and indeed suitable as a macro action.
+  const bridge = ensurePageContextBridge()
 
-### 6.2 Resources are Read-only Context
+  bridge.internalInstances[input.instanceId] = {
+    instanceId: input.instanceId,
+    model: input.model,
+    api: input.api,
+  }
 
-`resources` are used to expose the current page state and should not have side effects, such as:
+  syncNamespaces(bridge)
 
-- Current form values
-- Current list items
-- Page summary
-- Current route scene
-- Recent logs
+  return () => {
+    delete bridge.internalInstances[input.instanceId]
+    syncNamespaces(bridge)
 
-### 6.3 Skills are Strategy Descriptions, Not Atomic Actions
+    if (Object.keys(bridge.internalInstances).length === 0) {
+      bridge.unbindFromHost?.()
+      bridge.unbindFromHost = undefined
 
-The purpose of `skills` is to tell the agent:
+      if (window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY] === bridge) {
+        delete window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY]
+      }
+    }
+  }
+}
+```
 
-- What this task is
-- Which resources are recommended to read
-- Which tools are allowed
-- How to organize reasoning
+Lifecycle rules:
 
-At the current stage, skills should be compiled into MCP `prompts`, not directly turned into macro tools.
+1. Mount adds the instance to the internal registry.
+2. Mount refreshes namespace projections, resources, skills, and manifest.
+3. Unmount removes the instance from the internal registry.
+4. Unmount refreshes projections again.
+5. Only when the last instance disappears should the source unregister from host.
 
----
+## 10. Namespace, Resource, and Skill Design Rules
 
-## 7. Naming Conventions
+### 10.1 Namespace rules
 
-### 7.1 Namespace
+Good namespaces describe the problem space:
 
-Namespace should be divided by business domain, not by technical implementation, for example:
+- `workspace`
+- `entry`
+- `availability`
+- `selection`
+- `structure`
+- `runtime`
 
-- `catalog`
-- `checkout`
-- `profile`
-- `analytics`
-- `qa`
+Bad namespaces hide meaning:
 
-Not recommended:
-
-- `utils`
 - `misc`
-- `components`
-- `service`
+- `common`
+- `utils`
 
-### 7.2 Instance
+### 10.2 Tool rules
 
-If multiple entities or context instances exist under the same namespace, use `instanceId` to distinguish, for example:
+A tool should be one bounded action.
 
-- `catalog.primary`
-- `catalog.secondary`
-- `checkout.shipping`
-- `checkout.payment`
+Good:
 
-### 7.3 Tool Name
+- `explainEntryRouting`
+- `explainOptionState`
+- `traceDefaultSelection`
+- `inspectStructureBranch`
+- `inspectRenderedSurface`
 
-Tool names should be verb phrases or query phrases, for example:
+Bad:
 
-- `getItems`
-- `addItem`
-- `removeItem`
-- `setProfile`
-- `submitOrder`
+- `debugEverything`
+- `inspectAll`
+- `runWorkflow`
 
-The final complete tool name will be:
+### 10.3 Resource rules
 
-- `namespace.instance.tool`
-- Example: `catalog.primary.getItems`
-
-### 7.4 Resource ID
-
-Resource ID should be stable, concise, and only express "what is being read", for example:
-
-- `catalog.items`
-- `form.profile`
-- `checkout.summary`
-- `page.summary`
-
-### 7.5 Skill ID
-
-Skill ID should express clear task intent, for example:
-
-- `catalog.manage-items`
-- `form.update-profile`
-- `checkout.apply-coupon`
-- `qa.run-smoke-suite`
-
----
-
-## 8. Behaviors the Page Must Implement
-
-### 8.1 `listNamespaces()`
-
-Returns the list of available namespaces on the current page.
-
-### 8.2 `getNamespace(namespace)`
-
-Returns the instance collection and tool collection for a namespace.
-
-### 8.3 `getScene()`
-
-Returns the current page scene, for example:
-
-- `checkout-address`
-- `checkout-payment`
-- `catalog-list`
-- `profile-edit`
-
-Scene should be as close to user tasks as possible, not the raw route text.
-
-### 8.4 `listResources()`
-
-Returns declarations of all readable resources on the current page.
-
-### 8.5 `readResource(id)`
-
-Returns the current value based on resource ID.
+Resources are for stable, read-only context.
 
 Requirements:
 
-- Return structure must include `id`
-- Content is carried in the `text` field
-- If it's structured data, put JSON string in `text`
+1. Use deterministic IDs.
+2. Keep payloads bounded.
+3. Return a structured fallback for unknown IDs.
+4. Prefer one resource per investigation context instead of one giant dump.
 
-### 8.6 `listSkills()`
+### 10.4 Skill rules
 
-Returns all skill descriptions on the current page.
+A skill is a task guide, not a raw data bucket.
 
-### 8.7 `getSkill(id, input?)`
+Requirements:
 
-Returns a prompt text that can be directly read by the model.
+1. One skill should represent one job to be done.
+2. `resourceIds` must point to real resources.
+3. `toolNames` must point to real callable tools.
+4. Skills should narrow reasoning scope instead of listing everything.
 
-This prompt should at least include:
+## 11. Business Problem Runbooks (Use After Integration)
 
-- Skill title
-- Goal description
-- Recommended resources to read
-- Allowed tools
-- Reasoning rules / execution constraints
+Use these playbooks directly for incident handling.
 
-### 8.8 `getManifest()`
+Output contract for every runbook:
 
-Returns the current complete manifest.
+1. `instanceId`
+2. `scene`
+3. `symbol` (if relevant)
+4. `nodeId` (if relevant)
+5. `verdict`
+6. `evidence` (resource IDs + tool outputs used)
+7. `nextAction`
 
-Manifest should be a unified snapshot of the current page's capabilities.
+### 11.1 Option Is Missing, Hidden, Disabled, or Forbidden
 
----
+Question:
+- Why is option `X` not available?
 
-## 9. Minimal Page Integration Template
+Call order:
 
-You can directly refer to the following template:
+1. `workspace.page-summary` -> identify target instance.
+2. `workspace.page.locateInstance` -> when multiple instances exist.
+3. `structure.<instanceId>.inspectStructureBranch` with `symbol`.
+4. `availability.<instanceId>.explainOptionState` with `symbol`.
+5. `availability.<instanceId>.explainBlockingPath` with `symbol` and optional `nodeId/signal`.
+6. `runtime.<instanceId>.readRuntimeState` with targeted `paths` from blocking guard hints.
+
+Expected outcome:
+
+1. Clear classification: `visible | hidden | disabled | forbidden | absent`.
+2. Nearest blocking ancestor or winning guard source when blocked.
+3. Exact feature tuple and boolean that led to the result.
+
+### 11.2 Wrong Default Selection
+
+Question:
+- Why did selector choose branch `A` instead of expected `B`?
+
+Call order:
+
+1. `entry.<instanceId>.explainEntryRouting`.
+2. `entry.<instanceId>.explainDeeplinkImpact` (optional `keys` filter).
+3. `selection.<instanceId>.explainCurrentSelection`.
+4. `selection.<instanceId>.traceDefaultSelection` with concrete `nodeId` and `resolver`.
+5. `runtime.<instanceId>.readRuntimeState` for targeted inputs referenced by trace.
+
+Expected outcome:
+
+1. The winning resolver and path are explicit.
+2. Deeplink and mode inputs that influenced defaulting are explicit.
+3. If `nodeId` is missing, report insufficient trace and request a concrete node.
+
+### 11.3 Wrong Scene or Deeplink Routing
+
+Question:
+- Why did runtime enter the wrong page scene?
+
+Call order:
+
+1. `entry.<instanceId>.routing-context` resource.
+2. `entry.<instanceId>.explainEntryRouting`.
+3. `entry.<instanceId>.explainDeeplinkImpact` with keys for suspected flags.
+
+Expected outcome:
+
+1. Scene decision reasons are explicit and ordered.
+2. Deeplink flags are grouped by impact category.
+3. Routing conclusion names the exact triggering inputs.
+
+### 11.4 Rendered UI Does Not Match Runtime
+
+Question:
+- Why does UI surface differ from expected runtime state?
+
+Call order:
+
+1. `runtime.<instanceId>.inspectRenderedSurface` (`includeText`, bounded `maxItems`).
+2. `runtime.<instanceId>.readRuntimeState` with targeted paths.
+3. `selection.<instanceId>.explainCurrentSelection`.
+4. `availability.<instanceId>.explainOptionState` for suspicious symbols.
+
+Expected outcome:
+
+1. DOM evidence and runtime evidence are reported separately.
+2. Any mismatch is tied to concrete state or availability signals.
+3. Report whether mismatch is data/state, gating, or rendering-only.
+
+### 11.5 Refactor Regression or Snapshot Drift
+
+Question:
+- Did recent code changes alter runtime graph semantics?
+
+Call order:
+
+1. `structure.<instanceId>.exportRuntimeSnapshot` (`compact`) for baseline/current.
+2. `structure.<instanceId>.compareStructure` with baseline.
+3. `structure.<instanceId>.inspectStructureBranch` for changed symbols.
+
+Expected outcome:
+
+1. Graph diff is explicit (added/removed/changed).
+2. Impacted symbols/branches are enumerated.
+3. Regression report includes minimal reproducing evidence.
+
+## 12. Validation Checklist
+
+Run these checks in the page console after integration:
 
 ```ts
-const pageContextBridge = {
-  version: "0.1.0",
-
-  listNamespaces() {
-    return ["catalog", "form", "qa"]
-  },
-
-  getNamespace(namespace) {
-    const namespaces = {
-      catalog: {
-        namespace: "catalog",
-        listInstances: () => ["primary"],
-        getInstance: (instanceId) => {
-          if (instanceId !== "primary") return undefined
-          return {
-            instanceId: "primary",
-            listTools: () => [
-              {
-                name: "getItems",
-                description: "List catalog items",
-                inputSchema: { type: "object", properties: {} },
-              },
-              {
-                name: "addItem",
-                description: "Add a catalog item",
-                inputSchema: {
-                  type: "object",
-                  properties: { text: { type: "string" } },
-                  required: ["text"],
-                },
-              },
-            ],
-            callTool(name, input = {}) {
-              switch (name) {
-                case "getItems":
-                  return { items: getCatalogItems() }
-                case "addItem":
-                  return addCatalogItem(String(input.text ?? ""))
-                default:
-                  throw new Error(`Unknown tool: ${name}`)
-              }
-            },
-          }
-        },
-      },
-    }
-
-    return namespaces[namespace]
-  },
-
-  getScene() {
-    return detectSceneFromRouteAndDom()
-  },
-
-  listResources() {
-    return [
-      {
-        id: "catalog.items",
-        namespace: "catalog",
-        title: "Catalog Items",
-        description: "Current catalog items",
-        mimeType: "application/json",
-        kind: "json",
-      },
-    ]
-  },
-
-  readResource(id) {
-    switch (id) {
-      case "catalog.items":
-        return {
-          id,
-          mimeType: "application/json",
-          text: JSON.stringify({ items: getCatalogItems() }, null, 2),
-        }
-      default:
-        throw new Error(`Unknown resource: ${id}`)
-    }
-  },
-
-  listSkills() {
-    return [
-      {
-        id: "catalog.manage-items",
-        namespace: "catalog",
-        title: "Manage Catalog Items",
-        description: "Inspect or update catalog items",
-        intentTags: ["catalog", "items", "mutation"],
-        resourceIds: ["catalog.items"],
-        toolNames: ["catalog.primary.getItems", "catalog.primary.addItem"],
-        mode: "mutation",
-      },
-    ]
-  },
-
-  getSkill(id, input = {}) {
-    const skill = this.listSkills().find((entry) => entry.id === id)
-    if (!skill) return undefined
-
-    const goal = typeof input.goal === "string" && input.goal ? input.goal : "Complete this business task"
-
-    return {
-      skill,
-      text: [
-        `You are using the Page Context Bridge skill '${skill.title}'.`,
-        `Goal: ${goal}`,
-        `Namespace: ${skill.namespace}`,
-        `Description: ${skill.description}`,
-        `Recommended resources: ${(skill.resourceIds ?? []).join(", ") || "(none)"}`,
-        `Allowed tools: ${(skill.toolNames ?? []).join(", ") || "(none)"}`,
-        "Rules:",
-        "1. Read resources first.",
-        "2. Only use allowed tools.",
-        "3. Keep the plan minimal.",
-      ].join("\n"),
-    }
-  },
-
-  getManifest() {
-    return {
-      version: "0.1.0",
-      app: "business-app",
-      route: window.location.pathname,
-      scene: this.getScene(),
-      namespaces: [
-        { namespace: "catalog", title: "Catalog", description: "Catalog operations" },
-      ],
-      resources: this.listResources(),
-      skills: this.listSkills(),
-      generatedAt: new Date().toISOString(),
-    }
-  },
-}
-
-window.__pageContextBridge__ = pageContextBridge
-window.__pageContextTools__ = pageContextBridge
+window.__pageContextBridgeHost__?.listSources?.()
+window.__pageContextBridge__?.listNamespaces()
+window.__pageContextBridge__?.getScene()
+window.__pageContextBridge__?.listResources()
+window.__pageContextBridge__?.readResource("workspace.page-summary")
+window.__pageContextBridge__?.listSkills()
+window.__pageContextBridge__?.getManifest()
 ```
 
----
+What must be true:
 
-## 10. Skill Design Specification
+1. The business source appears in `listSources()` when the host exposes diagnostics.
+2. `listNamespaces()` returns stable business-oriented namespaces.
+3. Per-instance resources exist only for mounted instances.
+4. `readResource()` returns bounded JSON payloads and a safe fallback for unknown IDs.
+5. Every skill in `listSkills()` references resources and tools that actually exist.
+6. `getManifest()` matches the runtime output of `listNamespaces()`, `listResources()`, and `listSkills()`.
 
-Each skill should include the following information as much as possible:
+## 13. Test Requirements
 
-- `id`
-- `namespace`
-- `title`
-- `description`
-- `intentTags`
-- `resourceIds`
-- `toolNames`
-- `mode`
+At minimum, cover these cases.
 
-### 10.1 `mode` Suggested Values
+1. Register on host when host already exists.
+2. Register on late host after `page-context-bridge-host:ready`.
+3. Keep host-owned `window.__pageContextBridge__` untouched.
+4. Do not duplicate source registration for the same bridge object.
+5. Expose expected namespaces, resources, skills, and manifest.
+6. Unregister from host when the last instance unmounts.
+7. Keep other mounted instances alive when only one instance unmounts.
+8. Return safe fallback payloads for unknown resources.
+9. Return `undefined` for unknown skills.
 
-- `analysis`
-  - Analysis / interpretation oriented
-  - Read-only as much as possible
-- `readonly`
-  - Strictly read-only
-- `mutation`
-  - Has state modifications
-- `macro`
-  - Can be considered as a candidate macro flow
-
-### 10.2 toolNames Must Be Precise
-
-Skills should only list **tools truly needed for this task**, do not stuff all tools from the entire namespace.
-
-Correct:
-
-- `form.update-profile` only lists `form.profile.getProfile`, `form.profile.setProfile`, `fill_input`
-
-Incorrect:
-
-- Putting all tools under `form.*` in
-
----
-
-## 11. Resource Design Specification
-
-Resources should satisfy:
-
-- Read-only
-- Easy to cache
-- Stable structure
-- Clear purpose
-
-Recommended to output first:
-
-- Page summary
-- Current business object summary
-- Form snapshot
-- Recent logs
-- List data summary
-
-Not recommended to blindly stuff super large DOM or super large raw state tree into a single resource.
-
----
-
-## 12. Scene Design Specification
-
-`scene` is an important basis for capability trimming.
-
-It is recommended that scene satisfies:
-
-- User task oriented, not low-level technical state
-- Fine enough, but not so fragmented that each small component has its own scene
-
-Recommended examples:
-
-- `catalog-list`
-- `catalog-detail`
-- `checkout-address`
-- `checkout-payment`
-- `profile-edit`
-
-Not recommended:
-
-- `page-1`
-- `component-ready`
-- `state-3`
-
----
-
-## 13. Namespace Trimming Requirements
-
-Your implementation must support namespace trimming by default.
-
-This means:
-
-- Page capabilities can be many, but capabilities exposed to the agent must be trimmable
-- If a namespace is not in the current scene, or is configured off, its corresponding:
-  - skill
-  - resource
-  - tool
-  should all be filterable
-
-Do not directly expose all capabilities to the agent and rely on prompt constraints.
-
----
-
-## 14. What Not to Do When Integrating
-
-### Don't Do This
-
-- Don't only expose `tools`, completely omit `resources/skills`
-- Don't stuff all business logic into a giant `runEverything()` tool
-- Don't use vague namespaces, like `common`, `misc`
-- Don't let `skill.toolNames` contain a bunch of unrelated tools
-- Don't output unstable manifests with frequently changing field names
-- Don't continue using the old name `__pageDebugTools__`
-
-### Should Do This
-
-- Organize namespaces by business domain
-- Use resources to express page state
-- Use skills to express task semantics
-- Use tools to express atomic actions
-- Make manifest stable, enumerable, and debuggable
-
----
-
-## 15. Delivery Standard
-
-After implementation is complete, the page should at least satisfy:
-
-1. `window.__pageContextBridge__` exists
-2. `getManifest()` returns a complete object
-3. `listResources()/readResource()` works properly
-4. `listSkills()/getSkill()` works properly
-5. `getNamespace().getInstance().listTools()/callTool()` works properly
-6. `toolNames` in skill matches actual callable tools
-7. `resourceIds` in manifest matches actual resources
-8. Namespace semantics are clear, non-technical naming
-
----
-
-## 16. Self-check List
-
-After completion, at least check the following items yourself:
-
-- [ ] `window.__pageContextBridge__` is injected
-- [ ] `listNamespaces()` returns namespaces matching business domains
-- [ ] `getScene()` returns current task scene
-- [ ] `listResources()` returns resource declarations
-- [ ] `readResource(id)` can return JSON/text content
-- [ ] `listSkills()` returns skill declarations
-- [ ] `getSkill(id)` returns readable prompt
-- [ ] `getManifest()` returns complete snapshot
-- [ ] Same-name tools under same namespace with multiple instances can be correctly routed
-- [ ] Skill only lists necessary tools, does not expose redundant tools
-- [ ] After disabling a namespace, corresponding resources/skills/tools can be trimmed
-
----
-
-## 17. Directly Executable Instructions for Another LLM
-
-You can directly copy the following to another model:
+## 14. Direct Implementation Prompt For Another LLM
 
 ```text
-Please implement Page Context Bridge integration in the current business page.
+Implement page-side Page Context Bridge integration for this business runtime.
 
-Goals:
-1. Expose window.__pageContextBridge__ on the page (can also assign to window.__pageContextTools__).
-2. Implement the following methods:
-   - listNamespaces()
-   - getNamespace(namespace)
-   - getScene()
-   - listResources()
-   - readResource(id)
-   - listSkills()
-   - getSkill(id, input?)
-   - getManifest()
-3. Data structures must include:
-   - PageContextManifest
-   - ContextNamespaceDescriptor
-   - ContextResourceDescriptor
-   - ContextResourcePayload
-   - ContextSkillDescriptor
-   - ContextSkillPrompt
-4. Namespace must be divided by business domain, do not use technical naming like misc/common/utils.
-5. Skill only describes tasks, do not stuff all tools in.
-6. Resource is read-only, content is returned via text; structured content should return JSON string.
-7. Must support multiple instances under same namespace.
-8. Output minimal but complete page implementation code, and provide an actual example result of getManifest().
+Requirements:
+1. Use Host + Source architecture.
+2. Register the business source to window.__pageContextBridgeHost__ with registerSource(...).
+3. Handle late host initialization via the page-context-bridge-host:ready event.
+4. Do not overwrite window.__pageContextBridge__ when host exists.
+5. Use one source bridge with an internal multi-instance registry.
+6. Expose tools, resources, skills, and getManifest().
+7. Use business-oriented namespaces and deterministic resource/skill IDs.
+8. Return an unmount disposer that unregisters the source when the last instance is removed.
+9. Ensure the integration can resolve concrete business issues using runbooks:
+   - option availability
+   - default selection
+   - scene/deeplink routing
+   - runtime vs rendered surface mismatch
+   - structure regression diff
 
-Constraints:
-- Do not use old name __pageDebugTools__.
-- Do not only implement tools, must also implement resources and skills.
-- Do not introduce naming coupled with Chrome DevTools semantics.
-- Prioritize reusing existing business state, routing, and DOM information to build scene/resource/skill.
+Deliverables:
+- page-context-bridge.ts
+- page-context-capabilities-*.ts
+- resource and skill catalog assembly
+- mount/unmount lifecycle wiring
+- validation snippets
+- tests for immediate-host and late-host registration
 ```
-
----
-
-## 18. Reference Points Aligned with Current Repository Implementation
-
-If you need to compare with the current repository, you can refer to:
-
-- Design documentation: `docs/page-context-capability-pipeline.md`
-- Shared protocol types: `packages/shared-protocol/src/index.ts`
-- Page example implementation: `packages/page-context-extension/src/example-page-core.ts`
-
----
-
-## 19. One-sentence Summary
-
-You are not "adding a few more tools to the page", you are doing:
-
-- **Page Business Capability Declaration**
-- **Standard Input Compilable by Bridge**
-- **Context Capability Layer Understandable, Trimmable, and Dispatchable by Agent**
-
-If you strictly follow this document, the page can smoothly integrate with Page Context Bridge.

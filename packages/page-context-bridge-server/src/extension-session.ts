@@ -69,14 +69,14 @@ export function isWsServerReady(): boolean {
 function assertExtensionReady(tenantId: string, manager: TenantManager): ExtensionSlot {
   const tenant = manager.get(tenantId);
   if (!tenant?.extension) {
-    throw new Error(`No extension connected for session "${tenantId}". Load the extension and ensure its service worker is running.`);
+        throw new Error(`No extension connected for session "${tenantId}". Load the extension and ensure its service worker is running.`);
   }
   if (tenant.extension.ws.readyState !== WebSocket.OPEN) {
     throw new Error(`Extension for session "${tenantId}" is not open.`);
   }
-  if (!tenant.extension.ready) {
-    throw new Error(`Extension for session "${tenantId}" transport is connected but not ready yet; waiting for session.register.`);
-  }
+    if (!tenant.extension.ready) {
+      throw new Error(`Extension for session "${tenantId}" transport is connected but not ready yet; waiting for session.register.`);
+    }
   return tenant.extension;
 }
 
@@ -129,7 +129,7 @@ export async function reconnectExtensionFromBridge(
   manager: TenantManager,
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
-  // bridge 只负责转发 reconnect 指令，具体重连退避和会话重建仍由 extension 现有逻辑负责。
+  // Bridge only forwards reconnect command; retry backoff and session reconstruction remain the responsibility of extension's existing logic.
   return await current.peer.request<unknown>(BRIDGE_METHODS.extensionReconnect, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
 }
 
@@ -141,7 +141,7 @@ export async function debugToolCallOnExtension(
   tabId?: number,
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
-  // 保持透传：安全校验在 provider 层完成，这里只负责稳定路由到 extension 既有 debug 入口。
+  // Keep transparent: security validation is done at provider layer, here only ensures stable routing to extension's existing debug entry.
   return await current.peer.request<unknown>(
     BRIDGE_METHODS.extensionToolDebugCall,
     { toolName, args, tabId },
@@ -156,7 +156,7 @@ export async function ensureMainWorldHostFromBridge(
   frameId?: number,
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
-  // 这里不做参数“兜底修复”，让 extension 侧统一校验并返回明确错误，避免 bridge/extension 口径分叉。
+  // No parameter fallback repair here; let extension side perform unified validation and return clear errors to avoid bridge/extension divergence.
   const params: { tabId: number; frameId?: number } = { tabId };
   if (typeof frameId === "number") {
     params.frameId = frameId;
@@ -224,7 +224,7 @@ export async function refreshPageToolsFromExtension(
     );
     return result.tools ?? [];
   } catch (error) {
-    // 兼容旧版扩展：未实现 refresh 时，自动回退到 discover。
+    // Backward compatibility for old extensions: fallback to discover when refresh is not implemented.
     if (!isRpcMethodNotFound(error)) {
       throw error;
     }
@@ -251,7 +251,7 @@ export async function setPageToolsEnabledBatchOnExtension(
   updates: PageToolEnableUpdate[],
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
-  // 批量场景按顺序复用 extension 现有 setEnabled 逻辑，确保偏好存储与发布行为完全一致。
+  // In batch scenarios, reuse extension's existing setEnabled logic sequentially to ensure preference storage and publishing behavior remain consistent.
   if (updates.length === 0) {
     return await current.peer.request<unknown>(BRIDGE_METHODS.extensionPageToolsTreeGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
   }
@@ -282,7 +282,7 @@ function normalizeContextManifestDebugPayload(payload: unknown): ContextManifest
     };
   }
 
-  // 兼容旧扩展：仅返回 manifest 对象时，桥接层补齐 raw/debug 字段。
+  // Backward compatibility for old extensions: when only manifest object is returned, bridge layer fills in raw/debug fields.
   const legacyManifest = normalizeManifestValue(payload);
   return {
     manifest: legacyManifest,
@@ -407,7 +407,7 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
     return { ok: true };
   });
 
-  // 反馈相关 RPC 全部落到 registry，确保 extension 与 MCP 看到的是同一份状态。
+  // All feedback-related RPCs are handled by registry to ensure extension and MCP see the same state.
   peer.register(BRIDGE_METHODS.feedbackStateSnapshot, async (params: unknown) => {
     const payload = validateParams(feedbackStateSnapshotParamsSchema, params ?? {}, BRIDGE_METHODS.feedbackStateSnapshot);
     return registry.getFeedbackSnapshot(payload as FeedbackStateSnapshotParams);

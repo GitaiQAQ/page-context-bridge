@@ -1,8 +1,8 @@
 /**
- * 通过复用 provider 的 register 逻辑收集 bridge control tool 规格。
+ * Collect bridge control tool specifications by reusing provider register logic.
  *
- * 这样 extension 侧的可见性/树模型可以直接和 provider 保持一致，
- * 不需要再维护一份重复常量。
+ * This allows extension-side visibility/tree model to stay consistent with the provider,
+ * avoiding the need to maintain redundant constants.
  */
 
 import {
@@ -19,7 +19,7 @@ export interface BridgeControlToolSpec {
   description: string;
   inputSchema: Record<string, unknown>;
   annotations?: Record<string, unknown>;
-  // 用显式标记区分 bridge 控制工具，避免影响普通 builtin 的启停语义。
+  // Use explicit marking to distinguish bridge control tools, avoiding impact on normal builtin start/stop semantics.
   _bridgeControlTool: true;
 }
 
@@ -61,7 +61,7 @@ function addControlToolSpec(
   name: string,
   schema: { description: string; inputSchema: Record<string, unknown>; annotations?: Record<string, unknown> },
 ): void {
-  // 仅收敛 canonical namespace 名称，避免 sidepanel/tool-tree 中出现 legacy alias 重复项。
+  // Only converge canonical namespace names to avoid duplicate legacy alias items in sidepanel/tool-tree.
   if (!name.includes(".")) {
     return;
   }

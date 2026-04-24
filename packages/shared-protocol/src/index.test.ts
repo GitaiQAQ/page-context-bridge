@@ -60,7 +60,7 @@ describe("RpcPeer", () => {
   });
 
   it("keeps feedback create payload backward compatible while supporting uiAnchor", () => {
-    // 老 payload 不带 uiAnchor 仍应可通过类型约束，避免升级阻塞。
+    // Legacy payload without uiAnchor should still pass type constraints to avoid upgrade blocking.
     const legacyPayload: FeedbackAnnotationCreateParams = {
       body: "legacy body",
       tabId: 1,

@@ -2,7 +2,7 @@
  * Feedback domain shared types and method constants.
  */
 
-// 反馈 RPC 方法单独维护，便于 extension/bridge/MCP 三端复用同一套字符串常量。
+// Feedback RPC methods are maintained separately to facilitate reuse of the same string constants across extension/bridge/MCP three ends.
 export const FEEDBACK_METHODS = {
   feedbackStateSnapshot: "feedback.state.snapshot",
   feedbackStateDelta: "feedback.state.delta",
@@ -64,8 +64,8 @@ export interface FeedbackTarget {
 }
 
 /**
- * 结构化 UI 定位锚点。
- * 字段全部可选，保证老数据和老调用无需改动即可继续工作。
+ * Structured UI positioning anchor.
+ * All fields are optional to ensure old data and old calls can continue working without modification.
  */
 export interface FeedbackUiAnchor {
   elementId?: string;
@@ -171,8 +171,8 @@ export interface FeedbackStateSnapshotParams {
 }
 
 /**
- * feedback auto-push 的最近一次 launch 结果。
- * 只保留排障最关键的信息，避免把实现细节泄漏给 UI 层。
+ * Last launch result of feedback auto-push.
+ * Only retains the most critical troubleshooting information, avoiding leaking implementation details to the UI layer.
  */
 export interface FeedbackPushAgentLastLaunch {
   annotationId: string;
@@ -183,10 +183,10 @@ export interface FeedbackPushAgentLastLaunch {
 }
 
 /**
- * feedback auto-push 的运行态信号。
- * - enabled：配置开关是否开启
- * - readiness：当前是否可尝试 launch（最小就绪信号）
- * - lastLaunch：最近一次 launch 结果（含失败原因）
+ * Runtime status signals for feedback auto-push.
+ * - enabled: Whether the configuration switch is enabled
+ * - readiness: Whether launch can be attempted currently (minimum readiness signal)
+ * - lastLaunch: Last launch result (including failure reason)
  */
 export interface FeedbackPushAgentStatus {
   enabled: boolean;

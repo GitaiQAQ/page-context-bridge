@@ -22,7 +22,7 @@ Implement bidirectional communication between the browser extension and the loca
 ```
 ┌─────────────────┐     HTTP/SSE      ┌──────────────────┐     chrome.runtime     ┌─────────────────┐
 │   MCP Client    │ ◄───────────────► │   MCP Server     │ ◄───────────────────► │  Extension SW   │
-│  (OpenCode等)   │                   │  (Node.js HTTP)  │                      │ (Service Worker)│
+│  (OpenCode etc.) │                   │  (Node.js HTTP)  │                      │ (Service Worker)│
 └─────────────────┘                   └──────────────────┘                      └────────┬────────┘
         │                                                                             │
         │                           ┌──────────────────────┐                          │

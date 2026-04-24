@@ -6,7 +6,8 @@
 
 - Each userscript owns one adapter only: React, Apollo, TanStack Query, Jotai, or Redux DevTools.
 - Multiple userscripts can be injected together and will all register into the shared hub at `window.__pageContextUserscriptHub__`.
-- The hub only attaches `window.__pageContextBridge__` / `window.__pageContextTools__` when the page does not already provide its own bridge, which keeps the integration non-invasive.
+- The hub registers as a source on `window.__pageContextBridgeHost__` (when host is ready), and the host performs merge across all sources.
+- Legacy direct assignments to `window.__pageContextBridge__` are treated as source candidates by host merge, avoiding destructive overwrite semantics.
 
 ## Build Outputs
 

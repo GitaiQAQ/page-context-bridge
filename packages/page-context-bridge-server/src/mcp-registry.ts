@@ -117,7 +117,7 @@ export class McpRegistry {
     this.enabledBuiltinToolNames = expandBuiltinToolNameAliases(this.toolProviders.flatMap((p) => p.getToolSpecs().map((t) => t.name)));
     this.feedbackStore = new FeedbackStore(tenantId);
     const runtimeEnv = options.env ?? getRuntimeEnv();
-    // 允许测试注入 adapter；未注入时才按环境变量自动创建。
+    // Allow test injection of adapter; automatically create based on environment variables only when not injected.
     this.feedbackAgentPushAdapter = options.feedbackAgentPushAdapter !== undefined
       ? options.feedbackAgentPushAdapter
       : createFeedbackAgentPushAdapterFromEnv(tenantId, runtimeEnv, (message) => log(message));
@@ -202,7 +202,7 @@ export class McpRegistry {
         : undefined,
       linkedCapabilities: derived.links,
     });
-    // bridge 状态先落库，随后 fire-and-forget 触发本地 agent，保证仓库仍是唯一权威来源。
+    // Persist bridge state to storage first, then trigger local agent via fire-and-forget, ensuring the store remains the single source of truth.
     try {
       this.feedbackAgentPushAdapter?.pushNewAnnotation(created);
     } catch (error) {
@@ -478,13 +478,13 @@ export class McpRegistry {
   // ── Page tools ──
 
   async refreshPageToolsForTab(tabId: number): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
-    // 主动刷新走“discover + 本地 registry 覆盖”路径，保证 agent 当前会话立即看到新工具。
+    // Active refresh follows the "discover + local registry override" path, ensuring the agent sees new tools immediately in the current session.
     const tools = await this.rpcCaller.refreshPageTools(tabId);
     this.unregisterPageToolsFromAllServers(tabId);
     this.setPageTools(tabId, tools);
     this.registerPageToolsOnAllServers(tabId, tools);
 
-    // manifest 同步失败不影响 tools 刷新，降级为 null，避免整个刷新动作回滚。
+    // Manifest sync failure does not affect tool refresh; degrades to null to avoid rolling back the entire refresh action.
     const manifest = await this.rpcCaller.getContextManifest(tabId).catch((error) => {
       log(`Refresh manifest failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
@@ -781,7 +781,7 @@ function expandBuiltinToolNameAliases(toolNames: string[]): Set<string> {
     if (legacyName) {
       expanded.add(legacyName);
     }
-    // 非 runtime builtin（如 extension.* / feedback.*）保持原名即可。
+    // Non-runtime builtins (e.g., extension.* / feedback.*) can just keep their original names.
     if (canonicalName !== name) {
       expanded.add(name);
     }

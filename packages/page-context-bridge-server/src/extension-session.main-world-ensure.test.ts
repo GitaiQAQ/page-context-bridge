@@ -30,7 +30,7 @@ describe("extension-session main world ensure rpc", () => {
 
     expect(result).toEqual({ ok: true, result: { rows: [] } });
     expect(requestMock).toHaveBeenCalledTimes(1);
-    // debug 调用必须保持原始参数形态，避免中间层偷偷改写 tool 名或 args。
+    // Debug calls must preserve the original parameter format to avoid the middleware secretly modifying tool names or args.
     expect(requestMock.mock.calls[0]?.[0]).toBe(BRIDGE_METHODS.extensionToolDebugCall);
     expect(requestMock.mock.calls[0]?.[1]).toEqual({ toolName: "list_tabs", args: { limit: 3 }, tabId: 18 });
   });
@@ -43,7 +43,7 @@ describe("extension-session main world ensure rpc", () => {
 
     expect(result).toEqual({ ok: true });
     expect(requestMock).toHaveBeenCalledTimes(1);
-    // 保证 bridge 只透传参数，不在中间层改写字段名。
+    // Ensure bridge only passes through parameters without modifying field names in the middleware.
     expect(requestMock.mock.calls[0]?.[0]).toBe(BRIDGE_METHODS.extensionMainWorldHostEnsure);
     expect(requestMock.mock.calls[0]?.[1]).toEqual({ tabId: 12, frameId: 3 });
   });

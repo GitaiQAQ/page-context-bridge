@@ -89,8 +89,8 @@ export interface UpdateFeedbackAnnotationInput extends Omit<FeedbackAnnotationUp
 }
 
 /**
- * 每个租户一份内存反馈仓库。
- * 目标是保持行为确定、结构简单，方便后续替换为持久化存储。
+ * In-memory feedback store per tenant.
+ * Goal: Maintain deterministic behavior, simple structure, easy to replace with persistent storage later.
  */
 export class FeedbackStore {
   private readonly maxEvents: number;
@@ -339,7 +339,7 @@ export class FeedbackStore {
   updateAnnotation(input: UpdateFeedbackAnnotationInput): FeedbackAnnotation {
     const annotation = this.requireAnnotation(input.annotationId);
 
-    // 终态标注不允许再编辑，避免“已处理项”被静默篡改。
+    // Final state annotations cannot be edited again to avoid silent modification of "processed items".
     if (annotation.status === "resolved" || annotation.status === "dismissed") {
       throw new Error(`Cannot update annotation in status: ${annotation.status}`);
     }
@@ -505,7 +505,7 @@ function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): FeedbackUiAnch
     return undefined;
   }
 
-  // 锚点只做“轻清洗 + 合法性过滤”，不做重计算，保证仓库层职责单一。
+  // Anchor points only do "light cleaning + legality filtering", no recalculation, ensuring single responsibility for the store layer.
   const framePath = Array.isArray(anchor.framePath)
     ? anchor.framePath.filter((item) => Number.isInteger(item) && item >= 0)
     : undefined;
@@ -545,7 +545,7 @@ function normalizeUiRect(
   if (!rect) {
     return undefined;
   }
-  // 非法几何数据直接丢弃，避免后续回放链路出现 NaN/负尺寸。
+  // Invalid geometric data is directly discarded to avoid NaN/negative dimensions in subsequent playback chains.
   const x = Number(rect.x);
   const y = Number(rect.y);
   const width = Number(rect.width);
@@ -566,7 +566,7 @@ function normalizeUiTextRange(
     return undefined;
   }
 
-  // 文本范围需要满足 [start, end] 且 start/end 为非负整数。
+  // Text range must satisfy [start, end] with start/end being non-negative integers.
   const start = Number(range.start);
   const end = Number(range.end);
   if (!Number.isInteger(start) || !Number.isInteger(end)) {

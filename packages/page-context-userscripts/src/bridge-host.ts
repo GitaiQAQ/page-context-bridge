@@ -18,7 +18,7 @@ import { safeRoute, toJsonResource } from "./utils";
 const HOST_KEY = "__pageContextBridgeHost__";
 const HOST_VERSION = "page-context-bridge-host/1.0.0";
 const HOST_BRIDGE_MARKER = "__pageContextBridgeHostBridge__";
-// host 接管 window 之前会先收养现有 bridge，避免加载顺序不稳定导致能力丢失。
+// The host will adopt existing bridges before taking over window to avoid losing capabilities due to unstable loading order.
 const HOST_ADOPTED_SOURCE_ID = "adopted-window-bridge";
 const HOST_DEFAULT_SCENE = "page-context-host-idle";
 
@@ -69,7 +69,7 @@ export function getOrCreatePageContextBridgeHost(win: Window, doc: Document): Pa
     listDiagnostics: () => [...state.diagnostics],
   };
 
-  // 先收养旧 bridge，再把 host bridge 挂到 window 上，保证切换过程中协议连续可读。
+  // Adopt the old bridge first, then attach the host bridge to window to ensure protocol readability remains continuous during the transition.
   adoptExistingPageBridge(state, hostWindow);
   hostWindow[HOST_KEY] = host;
   attachHostBridge(hostWindow, bridge);
@@ -114,7 +114,7 @@ function registerSource(
     registerOrder: ++state.registerOrderCursor,
   });
 
-  // 如果业务 source 后注册的是被 host 兜底收养的同一对象，移除兜底 source，避免重复暴露。
+  // If the registered business source is the same object as the one adopted by the host as a fallback, remove the fallback source to avoid duplicate exposure.
   if (sourceId !== HOST_ADOPTED_SOURCE_ID) {
     const adopted = state.sourcesById.get(HOST_ADOPTED_SOURCE_ID);
     if (adopted?.bridge === bridge) {
@@ -159,7 +159,7 @@ function dispatchHostReadyEvent(win: Window, host: PageContextBridgeHost): void 
 }
 
 function getOrderedSources(state: HostState): SourceEntry[] {
-  // priority 决定冲突仲裁；registerOrder 只用于稳定排序，避免结果抖动。
+  // priority determines conflict resolution; registerOrder is used only for stable sorting to avoid result jitter.
   return Array.from(state.sourcesById.values()).sort((left, right) => {
     if (left.priority !== right.priority) {
       return right.priority - left.priority;

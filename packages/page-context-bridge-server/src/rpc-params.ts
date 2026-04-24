@@ -105,7 +105,7 @@ const feedbackActorSchema = z.object({
   displayName: z.string().min(1),
 });
 
-// uiAnchor 结构只做必要约束：保证基本类型正确，详细清洗仍交给 store 层处理。
+// uiAnchor structure only imposes necessary constraints: ensures basic type correctness, detailed cleaning still handled by store layer.
 const feedbackUiRectSchema = z.object({
   x: z.number(),
   y: z.number(),
