@@ -5,10 +5,7 @@
 import type {
   ContextResourceDescriptor,
   ContextSkillDescriptor,
-  FeedbackAnnotation,
   FeedbackPriority,
-  FeedbackSession,
-  FeedbackStateSnapshotResult,
   PageContextManifest,
 } from "@page-context/shared-protocol";
 
@@ -74,8 +71,8 @@ export interface ToolTreeBuiltins {
   enabledTools: number;
   namespaces: ToolTreeBuiltinNamespace[];
   /**
-   * 兼容字段：保留平铺列表给旧链路读取。
-   * 新逻辑统一走 namespaces -> instances -> tools，避免并行实现。
+   * Compatible field: Keep flat list for legacy consumption.
+   * New logic uniformly follows namespaces -> instances -> tools to avoid parallel implementations.
    */
   tools: ToolTreeBuiltinTool[];
 }
@@ -134,12 +131,7 @@ export interface ContextSkillResponse {
   prompt: { skill: ContextSkillDescriptor; text: string } | null;
 }
 
-export interface FeedbackCreateInput {
+export interface SidepanelFeedbackDraft {
   body: string;
   priority: FeedbackPriority;
-}
-
-export interface FeedbackSnapshotResponse extends FeedbackStateSnapshotResult {
-  sessions: FeedbackSession[];
-  annotations: FeedbackAnnotation[];
 }

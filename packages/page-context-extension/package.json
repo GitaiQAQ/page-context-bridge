@@ -9,14 +9,17 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-preview.mjs",
-    "build": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && vite build",
-    "typecheck": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --dir ../.. exec vitest run --project browser",
+    "build": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build && vite build",
+    "typecheck": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build && pnpm --dir ../.. exec vitest run --project browser",
     "watch": "web-ext run --source-dir=dist --target=chromium"
   },
   "dependencies": {
+    "@page-context/agentation": "workspace:*",
     "@page-context/builtin-tools": "workspace:*",
     "@page-context/shared-protocol": "workspace:*",
+    "@page-context/tool-executor": "workspace:*",
+    "@page-context/tool-visibility": "workspace:*",
     "lit": "^3.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

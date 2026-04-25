@@ -24,8 +24,13 @@ vi.mock("./bg-feedback-context", () => ({
   captureActiveTabFeedbackContext: captureActiveTabFeedbackContextMock,
 }));
 
-vi.mock("./bg-react-meta", () => ({
+vi.mock("@page-context/agentation", () => ({
   enrichUiAnchorReactMetaInMainWorld: enrichUiAnchorReactMetaInMainWorldMock,
+  ensureAgentationMainOnSenderTab: vi.fn(async () => ({ ok: true })),
+  ensureAgentationMainOnTab: vi.fn(async () => ({ ok: true })),
+  ensureMainWorldBridgeHostOnTab: vi.fn(async () => ({ ok: true })),
+  ensureMainWorldBridgeHostOnSenderTab: vi.fn(async () => ({ ok: true })),
+  getMainWorldInjectionTarget: vi.fn((params: unknown) => params),
 }));
 
 vi.mock("./bg-page-context", () => ({
@@ -39,7 +44,14 @@ vi.mock("./bg-page-context", () => ({
 vi.mock("./bg-tool-executor", () => ({
   executeToolCall: vi.fn(async () => ({ ok: true })),
   getBuiltinToolDefinitions: vi.fn(() => []),
-}));
+}), { virtual: true });
+
+vi.mock("@page-context/tool-executor", () => ({
+  executeToolCall: vi.fn(async () => ({ ok: true })),
+  getBuiltinToolDefinitions: vi.fn(() => []),
+  getExtensionToolProviders: vi.fn(() => []),
+  getServiceWorkerContext: vi.fn(() => ({})),
+}), { virtual: true });
 
 vi.mock("./context-manifest-filter-debug", () => ({
   buildContextManifestFilterDebug: vi.fn(() => ({ filtered: true })),

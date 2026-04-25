@@ -1,5 +1,13 @@
 import { BRIDGE_METHODS } from "@page-context/shared-protocol";
-import type { FeedbackStateSnapshotResult, FeedbackStateDeltaResult, FeedbackPriority, FeedbackUiAnchor } from "@page-context/shared-protocol";
+import type {
+  FeedbackStateSnapshotResult,
+  FeedbackStateDeltaResult,
+  FeedbackUiAdapter,
+  FeedbackUiCreateInput,
+  FeedbackUiCreateResult,
+  FeedbackUiUpdateInput,
+  FeedbackUiDismissInput,
+} from "@page-context/shared-protocol";
 
 import { sendRuntimeRequest } from "./runtime-rpc";
 
@@ -7,43 +15,6 @@ type RuntimeRequest = <TResult>(method: string, params?: unknown) => Promise<TRe
 
 export interface FeedbackUiAdapterDeps {
   sendRequest?: RuntimeRequest;
-}
-
-/** Bridge adapter interface: content-script forwards UI operations to background through this interface */
-export interface FeedbackUiAdapter {
-  createAnnotation(input: CreateAnnotationInput): Promise<CreateAnnotationResult>;
-  updateAnnotation?(input: UpdateAnnotationInput): Promise<unknown>;
-  dismissAnnotation?(input: DismissAnnotationInput): Promise<unknown>;
-  getFeedbackSnapshot?(): Promise<FeedbackStateSnapshotResult>;
-  getFeedbackStateDelta?(): Promise<FeedbackStateDeltaResult>;
-}
-
-export interface CreateAnnotationInput {
-  body: string;
-  priority: FeedbackPriority;
-  selectedText?: string;
-  uiAnchor?: FeedbackUiAnchor;
-  target: {
-    elementName: string;
-    elementPath: string;
-    rect: DOMRectReadOnly;
-  };
-}
-
-export interface CreateAnnotationResult {
-  id?: string;
-  raw?: unknown;
-}
-
-export interface UpdateAnnotationInput {
-  annotationId: string;
-  body: string;
-  priority: FeedbackPriority;
-}
-
-export interface DismissAnnotationInput {
-  annotationId: string;
-  dismissReason?: string;
 }
 
 /**
@@ -56,7 +27,7 @@ export function createFeedbackUiAdapter(deps: FeedbackUiAdapterDeps = {}): Feedb
   let feedbackLastSeq = 0;
 
   return {
-    async createAnnotation(input: CreateAnnotationInput): Promise<CreateAnnotationResult> {
+    async createAnnotation(input: FeedbackUiCreateInput): Promise<FeedbackUiCreateResult> {
       const payload = {
         body: input.body,
         priority: input.priority,
@@ -67,7 +38,7 @@ export function createFeedbackUiAdapter(deps: FeedbackUiAdapterDeps = {}): Feedb
       return normalizeCreateResult(raw);
     },
 
-    async updateAnnotation(input: UpdateAnnotationInput): Promise<unknown> {
+    async updateAnnotation(input: FeedbackUiUpdateInput): Promise<unknown> {
       const payload = {
         annotationId: input.annotationId,
         body: input.body,
@@ -76,7 +47,7 @@ export function createFeedbackUiAdapter(deps: FeedbackUiAdapterDeps = {}): Feedb
       return await sendRequest<unknown>(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate, payload);
     },
 
-    async dismissAnnotation(input: DismissAnnotationInput): Promise<unknown> {
+    async dismissAnnotation(input: FeedbackUiDismissInput): Promise<unknown> {
       const payload = {
         annotationId: input.annotationId,
         dismissReason: input.dismissReason,
@@ -108,7 +79,7 @@ function normalizeFeedbackSeq(next: unknown, fallback: number): number {
   return value;
 }
 
-function normalizeCreateResult(raw: unknown): CreateAnnotationResult {
+function normalizeCreateResult(raw: unknown): FeedbackUiCreateResult {
   if (!raw || typeof raw !== "object") {
     return { raw };
   }

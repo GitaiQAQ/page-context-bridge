@@ -50,9 +50,11 @@ describe("page tool visibility", () => {
     );
 
     expect(tree.totalTools).toBe(6);
-    expect(tree.enabledTools).toBe(4);
+    // Default policy: only read-only builtin runtime tools are enabled by default.
+    // So builtin.navigate is disabled unless explicitly enabled.
+    expect(tree.enabledTools).toBe(3);
     expect(tree.builtins.totalTools).toBe(2);
-    expect(tree.builtins.enabledTools).toBe(2);
+    expect(tree.builtins.enabledTools).toBe(1);
     expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(["builtin"]);
     expect(tree.builtins.namespaces[0]?.instances[0]?.tools.map((tool) => tool.toolName)).toEqual([
       "builtin.get_page_info",
@@ -67,7 +69,9 @@ describe("page tool visibility", () => {
     preferences = setScopeEnabled(preferences, { root: "builtin" }, true);
 
     const enabledBuiltins = getEnabledBuiltinTools(builtinTools, preferences).map((tool) => tool.name);
-    expect(enabledBuiltins).toEqual(["builtin.get_page_info", "builtin.navigate"]);
+    // Default policy only enables read-only builtin runtime tools.
+    // Enabling the builtin root does not automatically enable non-read tools.
+    expect(enabledBuiltins).toEqual(["builtin.get_page_info"]);
   });
 
   it("marks extension/feedback control tools as bridge-control builtins for sidepanel display hints", () => {
@@ -107,27 +111,22 @@ describe("page tool visibility", () => {
     expect(enabledBuiltins).toEqual(["extension.get_tool_tree"]);
   });
 
-  it("normalizes legacy builtin aliases to canonical names in builtin tree", () => {
+  it("preserves original tool names in builtin tree without normalization", () => {
     const tree = buildToolTree(
       [],
       new Map(),
       [
-        { name: "navigate", description: "legacy alias" },
-        { name: "builtin.navigate", description: "canonical name" },
+        { name: "builtin.navigate", description: "canonical builtin" },
         { name: "builtin.get_page_info", description: "builtin runtime tool" },
+        { name: "extension.get_tool_tree", description: "bridge control" },
       ],
       {},
     );
 
-    // 期望树中只保留 canonical 名称，避免 alias 与 canonical 重复展示。
     expect(tree.builtins.tools.map((tool) => tool.toolName)).toEqual([
       "builtin.get_page_info",
       "builtin.navigate",
-    ]);
-    expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(["builtin"]);
-    expect(tree.builtins.namespaces[0]?.instances[0]?.tools.map((tool) => tool.toolName)).toEqual([
-      "builtin.get_page_info",
-      "builtin.navigate",
+      "extension.get_tool_tree",
     ]);
   });
 

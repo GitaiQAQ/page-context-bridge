@@ -29,9 +29,14 @@ vi.mock("./bg-feedback-context", () => ({
   })),
 }));
 
-vi.mock("./bg-react-meta", () => ({
+vi.mock("@page-context/agentation", () => ({
   enrichUiAnchorReactMetaInMainWorld: vi.fn(async (_tabId: number, anchor: unknown) => anchor),
-}));
+  ensureAgentationMainOnSenderTab: vi.fn(async () => ({ ok: true })),
+  ensureAgentationMainOnTab: vi.fn(async () => ({ ok: true })),
+  ensureMainWorldBridgeHostOnTab: vi.fn(async () => ({ ok: true })),
+  ensureMainWorldBridgeHostOnSenderTab: vi.fn(async () => ({ ok: true })),
+  getMainWorldInjectionTarget: vi.fn((params: unknown) => params),
+}), { virtual: true });
 
 vi.mock("./bg-page-context", () => ({
   discoverPageToolsInTab: discoverPageToolsInTabMock,
@@ -41,28 +46,33 @@ vi.mock("./bg-page-context", () => ({
   sleep: vi.fn(async () => undefined),
 }));
 
-vi.mock("./bg-tool-executor", () => ({
+// NOTE: ./bg-tool-executor, ./page-tool-registry, ./page-tool-visibility are now re-export shims.
+// Only mock the real @page-context/* packages with { virtual: true }.
+
+vi.mock("@page-context/tool-executor", () => ({
   executeToolCall: vi.fn(async () => ({ ok: true })),
   getBuiltinToolDefinitions: vi.fn(() => []),
-}));
+  getExtensionToolProviders: vi.fn(() => []),
+  getServiceWorkerContext: vi.fn(() => ({})),
+}), { virtual: true });
 
 vi.mock("./context-manifest-filter-debug", () => ({
   buildContextManifestFilterDebug: vi.fn(() => ({ filtered: true })),
 }));
 
-vi.mock("./page-tool-registry", () => ({
-  flattenPageTools: vi.fn((entries?: Array<{ tools?: unknown[] }>) => (entries ?? []).flatMap((entry) => entry.tools ?? [])),
-  mergePageToolEntry: vi.fn((entries: unknown[], entry: unknown) => [...entries, entry]),
-  normalizePageToolEntries: vi.fn((entries: unknown[]) => entries ?? []),
-}));
-
-vi.mock("./page-tool-visibility", () => ({
+vi.mock("@page-context/tool-visibility", () => ({
   buildToolTree: vi.fn(async () => ({ tabs: [] })),
   getEnabledBuiltinTools: vi.fn((tools: unknown[]) => tools),
   getEnabledToolsForTab: vi.fn((entries?: Array<{ tools?: unknown[] }>) => (entries ?? []).flatMap((entry) => entry.tools ?? [])),
   isToolEnabled: vi.fn(() => true),
   setScopeEnabled: vi.fn((current: Record<string, unknown>) => current),
-}));
+  clearPageTools: vi.fn(),
+  publishPageToolsForTab: vi.fn(),
+  publishBuiltinTools: vi.fn(),
+  flattenPageTools: vi.fn((entries?: Array<{ tools?: unknown[] }>) => (entries ?? []).flatMap((entry) => entry.tools ?? [])),
+  mergePageToolEntry: vi.fn((entries: unknown[], entry: unknown) => [...entries, entry]),
+  normalizePageToolEntries: vi.fn((entries: unknown[]) => entries ?? []),
+}), { virtual: true });
 
 describe("background page tools refresh lifecycle", () => {
   const originalChrome = globalThis.chrome;
@@ -94,16 +104,27 @@ describe("background page tools refresh lifecycle", () => {
       },
     ]);
 
-    listener(7, { status: "complete" }, {} as chrome.tabs.Tab);
+    listener(7, { status: "complete" }, { id: 7, url: "https://example.com", status: "complete" } as chrome.tabs.Tab);
     await vi.waitFor(() => {
-      expect(queueNotificationMock).toHaveBeenCalledWith(BRIDGE_METHODS.bridgePageToolsRegistered, {
+      const call = queueNotificationMock.mock.calls.find(
+        ([method, payload]) =>
+          method === BRIDGE_METHODS.bridgePageToolsRegistered &&
+          (payload as { tabId?: number } | undefined)?.tabId === 7,
+      );
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({
         tabId: 7,
-        tools: [tool],
+        tools: [
+          expect.objectContaining({
+            name: "demo.inspect",
+            description: "inspect demo",
+          }),
+        ],
       });
     });
 
     queueNotificationMock.mockClear();
-    listener(7, { status: "loading" }, {} as chrome.tabs.Tab);
+    listener(7, { status: "loading" }, { id: 7, url: "https://example.com", status: "loading" } as chrome.tabs.Tab);
     await flushMicrotasks();
 
     expect(queueNotificationMock).toHaveBeenCalledWith(BRIDGE_METHODS.bridgePageToolsUnregistered, {
@@ -130,14 +151,26 @@ describe("background page tools refresh lifecycle", () => {
         },
       ]);
 
-    listener(11, { status: "complete" }, {} as chrome.tabs.Tab);
+    listener(11, { status: "complete" }, { id: 11, url: "https://example.com/next", status: "complete" } as chrome.tabs.Tab);
 
     await vi.waitFor(() => {
       expect(discoverPageToolsInTabMock).toHaveBeenCalledTimes(5);
     });
-    expect(queueNotificationMock).toHaveBeenCalledWith(BRIDGE_METHODS.bridgePageToolsRegistered, {
+
+    const call = queueNotificationMock.mock.calls.find(
+      ([method, payload]) =>
+        method === BRIDGE_METHODS.bridgePageToolsRegistered &&
+        (payload as { tabId?: number } | undefined)?.tabId === 11,
+    );
+    expect(call).toBeDefined();
+    expect(call?.[1]).toMatchObject({
       tabId: 11,
-      tools: [tool],
+      tools: [
+        expect.objectContaining({
+          name: "demo.refreshed",
+          description: "after refresh",
+        }),
+      ],
     });
   });
 });

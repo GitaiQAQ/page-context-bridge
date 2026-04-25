@@ -80,7 +80,7 @@ function normalizeBuiltinNamespaces(builtins: ToolTreeBuiltins): ToolTreeBuiltin
   if (Array.isArray(builtins.namespaces) && builtins.namespaces.length > 0) {
     return builtins.namespaces;
   }
-  // 兼容旧平铺结构，避免版本切换期间 sidepanel 出现空白。
+  // Compatible with old flat structure to avoid blank sidepanel during version transitions.
   const byNamespace = new Map<string, ToolTreeBuiltinTool[]>();
   for (const tool of builtins.tools ?? []) {
     const namespace = tool.namespace || tool.toolName.split(".")[0] || "builtin";
@@ -285,7 +285,7 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
 function renderBuiltinToolNode(tool: ToolTreeBuiltinTool): TemplateResult {
   const bridgeControl = isBridgeControlBuiltinTool(tool);
   const subtitle = bridgeControl
-    ? `${tool.description ? tool.description : tool.toolName}（Bridge/MCP 控制工具，仅展示）`
+    ? `${tool.description ? tool.description : tool.toolName} (Bridge/MCP control tool, display only)`
     : (tool.description ? tool.description : tool.toolName);
   return renderTreeRow({
     level: "tool",

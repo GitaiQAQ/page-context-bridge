@@ -10,8 +10,8 @@ import {
   type PageContextManifest,
 } from "@page-context/shared-protocol";
 
-import type { PageToolEntry, PageToolSpec } from "./page-tool-registry";
-import { normalizePageToolEntries } from "./page-tool-registry";
+import type { PageToolEntry, PageToolSpec } from "@page-context/tool-visibility";
+import { normalizePageToolEntries } from "@page-context/tool-visibility";
 
 type JsonRecord = Record<string, unknown>;
 

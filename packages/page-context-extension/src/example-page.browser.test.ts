@@ -81,10 +81,10 @@ describe("example page", () => {
     bootstrapExamplePage(window, document);
 
     const environment = { win: window, doc: document, consoleEntries: [] };
-    expect(executeContentScriptTool("get_page_info", {}, environment)).toMatchObject({ title: "Page Context Bridge - Test Page" });
-    expect(executeContentScriptTool("query_elements", { selector: "#items-list li" }, environment)).toMatchObject({ count: 2 });
-    expect(executeContentScriptTool("fill_input", { selector: "#full-name-input", value: "Trae QA" }, environment)).toMatchObject({ filled: true });
-    expect(executeContentScriptTool("get_element_text", { selector: "#selection-target" }, environment)).toMatchObject({ text: "Selection target text for bridge tests." });
+    expect(executeContentScriptTool("builtin.get_page_info", {}, environment)).toMatchObject({ title: "Page Context Bridge - Test Page" });
+    expect(executeContentScriptTool("builtin.query_elements", { selector: "#items-list li" }, environment)).toMatchObject({ count: 2 });
+    expect(executeContentScriptTool("builtin.fill_input", { selector: "#full-name-input", value: "Trae QA" }, environment)).toMatchObject({ filled: true });
+    expect(executeContentScriptTool("builtin.get_element_text", { selector: "#selection-target" }, environment)).toMatchObject({ text: "Selection target text for bridge tests." });
   });
 
   it("exposes manifest, resources, and skill prompts for bridge compilation", () => {

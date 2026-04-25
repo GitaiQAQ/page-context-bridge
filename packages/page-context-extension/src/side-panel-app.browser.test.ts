@@ -70,7 +70,7 @@ describe("side-panel-app tools tree interactions", () => {
       expect(text).toContain("Built-in Tools");
     });
 
-    // builtin 结构应按 namespace/instance 树形渲染，而不是平铺列表。
+    // Built-in structure should be rendered as a namespace/instance tree, not a flat list.
     expect(findCheckbox(element, { scope: "builtin", namespace: "builtin" })).not.toBeNull();
     expect(findCheckbox(element, { scope: "builtin", namespace: "builtin", instanceId: "default" })).not.toBeNull();
     expect(findCheckbox(element, { scope: "builtin", namespace: "extension" })?.disabled).toBe(true);

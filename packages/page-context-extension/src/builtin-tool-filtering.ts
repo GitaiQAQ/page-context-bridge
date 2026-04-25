@@ -1,6 +1,5 @@
-import type { PageToolSpec } from "./page-tool-registry";
-import { getEnabledBuiltinTools, type PageToolPreferences } from "./page-tool-visibility";
-
-export function filterBuiltinTools(tools: PageToolSpec[], preferences: PageToolPreferences): PageToolSpec[] {
-  return getEnabledBuiltinTools(tools, preferences);
-}
+/**
+ * Re-export shim — delegates to @page-context/tool-visibility.
+ * New code should import directly from "@page-context/tool-visibility".
+ */
+export { filterBuiltinTools } from "@page-context/tool-visibility";

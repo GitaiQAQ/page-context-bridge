@@ -1,13 +1,12 @@
 import {
   BRIDGE_METHODS,
   type ContextResourcePayload,
-  type FeedbackAnnotation,
-  type FeedbackPushAgentStatus,
   type FeedbackAnnotationClaimParams,
   type FeedbackAnnotationDismissParams,
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,
-  type FeedbackAnnotationStatus,
+  type FeedbackPriority,
+  type FeedbackStateSnapshotResult,
   type PageContextManifest,
 } from "@page-context/shared-protocol";
 
@@ -33,12 +32,25 @@ import {
   renderContextResourceCard,
   renderContextSkillCard,
 } from "./sidepanel-context-panel";
+import {
+  createFeedbackActionState,
+  type FeedbackAnnotationActionState,
+  type FeedbackActionFormMode,
+  type FeedbackActionInputField,
+  readFeedbackActionState,
+  reconcileFeedbackActionStates,
+  renderFeedbackTab,
+  updateFeedbackActionStates,
+} from "./sidepanel-feedback";
+import { renderToolsTab } from "./sidepanel-tools-view";
+import { renderContextTab, type RenderContextTabInput } from "./sidepanel-context-controller";
+import { initializeToolTestState, resetToolTestArgsState } from "./sidepanel-tool-test-controller";
+import { normalizeUrl, createBoundMessageHandler, buildLoaderUrl } from "./sidepanel-navigation";
 import type {
   ContextManifestResponse,
   ContextSkillResponse,
-  FeedbackCreateInput,
-  FeedbackSnapshotResponse,
   RuntimeStatus,
+  SidepanelFeedbackDraft,
   ToolDebugResponse,
   ToolTestSelection,
   ToolTreeResponse,
@@ -65,20 +77,6 @@ const customRules = css`
   .tab-content { display: none; }
   .tab-content.active { display: flex; }
 `;
-
-type FeedbackActionFormMode = "reply" | "resolve" | "dismiss" | null;
-type FeedbackActionInputField = "replyBody" | "resolveNote" | "dismissReason";
-
-// Sidepanel only maintains interaction state; business truth still comes from bridge snapshot.
-interface FeedbackAnnotationActionState {
-  mode: FeedbackActionFormMode;
-  replyBody: string;
-  resolveNote: string;
-  dismissReason: string;
-  submitting: boolean;
-  error: string;
-  success: string;
-}
 
 @customElement("side-panel-app")
 export class SidePanelApp extends LitElement {
@@ -136,10 +134,10 @@ export class SidePanelApp extends LitElement {
   @state() private _toolTestTabIdValue = "";
   @state() private _toolTestTabIdDisabled = false;
   @state() private _feedbackBody = "";
-  @state() private _feedbackPriority: FeedbackCreateInput["priority"] = "normal";
+  @state() private _feedbackPriority: SidepanelFeedbackDraft["priority"] = "normal";
   @state() private _feedbackCreateStatus = "Idle";
   @state() private _feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
-  @state() private _feedbackSnapshot: FeedbackSnapshotResponse | null = null;
+  @state() private _feedbackSnapshot: FeedbackStateSnapshotResult | null = null;
   @state() private _feedbackLoading = false;
   @state() private _feedbackError = "";
   @state() private _feedbackActionStateByAnnotationId: Record<string, FeedbackAnnotationActionState> = {};
@@ -483,8 +481,12 @@ export class SidePanelApp extends LitElement {
     this.requestUpdate();
 
     try {
-      this._feedbackSnapshot = await sendRuntimeRequest<FeedbackSnapshotResponse>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
-      this._reconcileFeedbackActionStates(this._feedbackSnapshot.annotations);
+      this._feedbackSnapshot = await sendRuntimeRequest<FeedbackStateSnapshotResult>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
+      // After polling, keep only annotation form states present in the current snapshot to avoid leaking stale local input into new snapshots.
+      this._feedbackActionStateByAnnotationId = reconcileFeedbackActionStates(
+        this._feedbackActionStateByAnnotationId,
+        this._feedbackSnapshot.annotations,
+      );
       this._feedbackCreateStatus = "Snapshot loaded";
       this._feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
     } catch (error) {
@@ -512,7 +514,7 @@ export class SidePanelApp extends LitElement {
       await sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, {
         body,
         priority: this._feedbackPriority,
-      } satisfies FeedbackCreateInput);
+      } satisfies SidepanelFeedbackDraft);
       this._feedbackBody = "";
       this._feedbackCreateStatus = "Created";
       this._feedbackCreateStatusClass = "text-xs font-semibold text-success";
@@ -524,87 +526,15 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  private _feedbackStatusBadgeClass(status: string): string {
-    switch (status) {
-      case "resolved":
-        return "badge badge-success badge-sm";
-      case "claimed":
-        return "badge badge-info badge-sm";
-      case "dismissed":
-        return "badge badge-ghost badge-sm";
-      default:
-        return "badge badge-warning badge-sm";
-    }
-  }
-
-  private _feedbackPushAgentBadgeClass(status: FeedbackPushAgentStatus | null): string {
-    if (!status) {
-      return "badge badge-ghost badge-sm";
-    }
-    if (!status.enabled) {
-      return "badge badge-ghost badge-sm";
-    }
-    const lastResult = status.lastLaunch?.result;
-    if (lastResult === "failed") {
-      return "badge badge-error badge-sm";
-    }
-    if (lastResult === "success") {
-      return "badge badge-success badge-sm";
-    }
-    return "badge badge-info badge-sm";
-  }
-
-  private _feedbackPushAgentBadgeText(status: FeedbackPushAgentStatus | null): string {
-    if (!status) {
-      return "unknown";
-    }
-    if (!status.enabled) {
-      return "disabled";
-    }
-    const lastResult = status.lastLaunch?.result;
-    if (lastResult === "failed") {
-      return "last launch failed";
-    }
-    if (lastResult === "success") {
-      return "last launch ok";
-    }
-    return "ready";
-  }
-
-  private _createFeedbackActionState(): FeedbackAnnotationActionState {
-    return {
-      mode: null,
-      replyBody: "",
-      resolveNote: "",
-      dismissReason: "",
-      submitting: false,
-      error: "",
-      success: "",
-    };
-  }
-
-  private _reconcileFeedbackActionStates(annotations: FeedbackAnnotation[]): void {
-    // Only keep annotation states from current snapshot to avoid retaining invalid local states after polling.
-    const next: Record<string, FeedbackAnnotationActionState> = {};
-    for (const annotation of annotations) {
-      next[annotation.id] = this._feedbackActionStateByAnnotationId[annotation.id] ?? this._createFeedbackActionState();
-    }
-    this._feedbackActionStateByAnnotationId = next;
-  }
-
   private _readFeedbackActionState(annotationId: string): FeedbackAnnotationActionState {
-    return this._feedbackActionStateByAnnotationId[annotationId] ?? this._createFeedbackActionState();
+    return readFeedbackActionState(this._feedbackActionStateByAnnotationId, annotationId);
   }
 
   private _updateFeedbackActionState(
     annotationId: string,
     updater: (current: FeedbackAnnotationActionState) => FeedbackAnnotationActionState,
   ): void {
-    const current = this._readFeedbackActionState(annotationId);
-    this._feedbackActionStateByAnnotationId = {
-      ...this._feedbackActionStateByAnnotationId,
-      [annotationId]: updater(current),
-    };
+    this._feedbackActionStateByAnnotationId = updateFeedbackActionStates(this._feedbackActionStateByAnnotationId, annotationId, updater);
   }
 
   private _setFeedbackActionMode(annotationId: string, mode: FeedbackActionFormMode): void {
@@ -718,158 +648,19 @@ export class SidePanelApp extends LitElement {
     );
   }
 
-  private _canClaimAnnotation(status: FeedbackAnnotationStatus): boolean {
-    // Keep consistent with bridge-side state machine to avoid frontend initiating inevitably failed transitions.
-    return status === "open" || status === "needs_info";
-  }
-
-  private _canReplyAnnotation(status: FeedbackAnnotationStatus): boolean {
-    return status !== "resolved" && status !== "dismissed";
-  }
-
-  private _canResolveAnnotation(status: FeedbackAnnotationStatus): boolean {
-    return status === "claimed" || status === "in_progress" || status === "needs_info";
-  }
-
-  private _canDismissAnnotation(status: FeedbackAnnotationStatus): boolean {
-    return status !== "resolved" && status !== "dismissed";
-  }
-
-  private _formatFeedbackTime(timestamp: string): string {
-    const date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString("en-US", { hour12: false });
-  }
-
-  private _renderFeedbackThread(annotation: FeedbackAnnotation): TemplateResult {
-    // Thread details directly show actor/kind/time, facilitating basic collaborative communication within sidepanel.
-    if (annotation.thread.length === 0) {
-      return html`<div class="text-xs opacity-50">No thread messages</div>`;
-    }
-
-    return html`
-      <div class="flex flex-col gap-1">
-        ${annotation.thread.map((message) => html`
-          <div class="border border-base-300 rounded-md p-2 bg-base-200/60 flex flex-col gap-1">
-            <div class="flex items-center gap-1 text-[11px] opacity-70">
-              <span class="font-semibold">${message.author.displayName}</span>
-              <span class="badge badge-ghost badge-xs">${message.author.source}</span>
-              <span class="badge badge-outline badge-xs">${message.kind}</span>
-              <span class="ml-auto">${this._formatFeedbackTime(message.createdAt)}</span>
-            </div>
-            <div class="text-xs whitespace-pre-wrap break-words">${message.body}</div>
-          </div>
-        `)}
-      </div>
-    `;
-  }
-
-  private _renderFeedbackActionForm(annotation: FeedbackAnnotation, state: FeedbackAnnotationActionState): TemplateResult {
-    // Inline forms are only responsible for collecting input; actual state changes are determined by snapshot refresh after successful RPC.
-    if (state.mode === "reply") {
-      return html`
-        <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
-          <textarea
-            class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
-            placeholder="Add processing progress or follow-up questions"
-            .value=${state.replyBody}
-            @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "replyBody", event)}
-          ></textarea>
-          <div class="flex items-center gap-2">
-            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>Cancel</button>
-            <button class="btn btn-xs btn-primary ml-auto" .disabled=${state.submitting} @click=${() => this._replyFeedbackAnnotation(annotation.id)}>
-              ${state.submitting ? "Submitting..." : "Submit Reply"}
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    if (state.mode === "resolve") {
-      return html`
-        <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
-          <textarea
-            class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
-            placeholder="Optional: fill in resolution notes"
-            .value=${state.resolveNote}
-            @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "resolveNote", event)}
-          ></textarea>
-          <div class="flex items-center gap-2">
-            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>Cancel</button>
-            <button class="btn btn-xs btn-success ml-auto" .disabled=${state.submitting} @click=${() => this._resolveFeedbackAnnotation(annotation.id)}>
-              ${state.submitting ? "Submitting..." : "Confirm Resolve"}
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    if (state.mode === "dismiss") {
-      return html`
-        <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
-          <input
-            class="input input-sm input-bordered"
-            placeholder="Optional: fill in dismiss reason"
-            .value=${state.dismissReason}
-            @input=${(event: Event) => this._handleFeedbackActionInput(annotation.id, "dismissReason", event)}
-          />
-          <div class="flex items-center gap-2">
-            <button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, null)}>Cancel</button>
-            <button class="btn btn-xs btn-warning ml-auto" .disabled=${state.submitting} @click=${() => this._dismissFeedbackAnnotation(annotation.id)}>
-              ${state.submitting ? "Submitting..." : "Confirm Dismiss"}
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    return html``;
-  }
-
-  private _renderFeedbackActions(annotation: FeedbackAnnotation): TemplateResult {
-    const state = this._readFeedbackActionState(annotation.id);
-    const canClaim = this._canClaimAnnotation(annotation.status);
-    const canReply = this._canReplyAnnotation(annotation.status);
-    const canResolve = this._canResolveAnnotation(annotation.status);
-    const canDismiss = this._canDismissAnnotation(annotation.status);
-
-    return html`
-      <div class="flex flex-wrap items-center gap-1.5">
-        ${canClaim
-          ? html`<button class="btn btn-xs btn-info" .disabled=${state.submitting} @click=${() => this._claimFeedbackAnnotation(annotation.id)}>${state.submitting ? "Submitting..." : "Claim"}</button>`
-          : nothing}
-        ${canReply
-          ? html`<button class="btn btn-xs btn-ghost" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "reply")}>Reply</button>`
-          : nothing}
-        ${canResolve
-          ? html`<button class="btn btn-xs btn-success btn-outline" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "resolve")}>Resolve</button>`
-          : nothing}
-        ${canDismiss
-          ? html`<button class="btn btn-xs btn-warning btn-outline" .disabled=${state.submitting} @click=${() => this._setFeedbackActionMode(annotation.id, "dismiss")}>Dismiss</button>`
-          : nothing}
-        ${(!canClaim && !canReply && !canResolve && !canDismiss)
-          ? html`<span class="text-xs opacity-50">No actions available in current state</span>`
-          : nothing}
-      </div>
-      ${state.error ? html`<div class="text-xs text-error">${state.error}</div>` : nothing}
-      ${state.success ? html`<div class="text-xs text-success">${state.success}</div>` : nothing}
-      ${this._renderFeedbackActionForm(annotation, state)}
-    `;
-  }
-
   // ─── Tool Test Panel ───────────────────────────────────────────
   private _openToolTestPanel(selection: ToolTestSelection): void {
     this._currentToolTestSelection = selection;
-    this._toolTestTitle = `Tool Test · ${selection.label}`;
-    this._toolTestSubtitle = selection.root === "builtin"
-      ? `Built-in tool: ${selection.toolName}`
-      : `Context tool: ${selection.toolName}${selection.tabId != null ? ` · tab ${selection.tabId}` : ""}`;
-    this._toolTestTabIdValue = selection.tabId != null ? String(selection.tabId) : "";
-    this._toolTestTabIdDisabled = selection.root === "page" && selection.tabId != null;
-    this._toolTestSchemaOutput = formatJson(selection.inputSchema ?? {});
-    this._toolTestArgs = createArgsTemplate(selection.inputSchema);
-    this._toolTestOutput = "(no output yet)";
-    this._toolTestStatusText = "Ready";
-    this._toolTestStatusClass = "text-xs font-semibold opacity-60";
+    const init = initializeToolTestState(selection);
+    this._toolTestTitle = init.toolTestTitle;
+    this._toolTestSubtitle = init.toolTestSubtitle;
+    this._toolTestTabIdValue = init.toolTestTabIdValue;
+    this._toolTestTabIdDisabled = init.toolTestTabIdDisabled;
+    this._toolTestSchemaOutput = init.toolTestSchemaOutput;
+    this._toolTestArgs = init.toolTestArgs;
+    this._toolTestOutput = init.toolTestOutput;
+    this._toolTestStatusText = init.toolTestStatusText;
+    this._toolTestStatusClass = init.toolTestStatusClass;
     this.requestUpdate();
   }
 
@@ -923,16 +714,16 @@ export class SidePanelApp extends LitElement {
   }
 
   private _resetToolTestArgs(): void {
-    this._toolTestArgs = createArgsTemplate(this._currentToolTestSelection?.inputSchema);
-    this._toolTestOutput = "(no output yet)";
-    this._toolTestStatusText = "Ready";
-    this._toolTestStatusClass = "text-xs font-semibold opacity-60";
+    const reset = resetToolTestArgsState(this._currentToolTestSelection?.inputSchema);
+    if (reset.toolTestArgs !== undefined) this._toolTestArgs = reset.toolTestArgs;
+    if (reset.toolTestOutput !== undefined) this._toolTestOutput = reset.toolTestOutput;
+    if (reset.toolTestStatusText !== undefined) this._toolTestStatusText = reset.toolTestStatusText;
+    if (reset.toolTestStatusClass !== undefined) this._toolTestStatusClass = reset.toolTestStatusClass;
   }
 
   // ─── Navigation / Iframe ───────────────────────────────────────
   private _navigateTo(url: string): void {
-    const normalized = /^https?:\/\//.test(url) ? url : `http://${url}`;
-    this._currentUrl = normalized;
+    this._currentUrl = normalizeUrl(url);
     this._urlBarVisible = true;
   }
 
@@ -949,7 +740,7 @@ export class SidePanelApp extends LitElement {
     this._currentIframe = null;
 
     // Load extension's built-in loader page — it probes target and shows UI internally
-    const loaderUrl = chrome.runtime.getURL("loader.html") + "#" + this._currentUrl;
+    const loaderUrl = buildLoaderUrl(this._currentUrl);
 
     this._currentIframe = document.createElement("iframe");
     this._currentIframe.src = loaderUrl;
@@ -961,18 +752,7 @@ export class SidePanelApp extends LitElement {
   }
 
   /** Handler for messages from the loader iframe */
-  private _boundMessageHandler = (e: MessageEvent): void => {
-    if (!e.data?.type) return;
-
-    switch (e.data.type) {
-      case "sidepanel-action":
-        if (e.data.action === "open-opencode") {
-          void chrome.tabs.create({ url: "opencode://v1/web?port=22338" });
-        }
-        break;
-      // sidepanel-probe messages are informational — loader handles its own UI
-    }
-  };
+  private _boundMessageHandler = createBoundMessageHandler();
 
   // ─── Event Handlers ────────────────────────────────────────────
   private _handleTabClick(tab: "tools" | "context" | "feedback" | "diagnosis"): void {
@@ -1031,7 +811,7 @@ export class SidePanelApp extends LitElement {
 
     const { root, scope, tabId, namespace, instanceId, toolName } = target.dataset;
     if (!scope || !tabId) return;
-    // builtin 树节点（namespace/instance/tool）统一走 builtin root，避免复用页面 scope 时误写到 page 偏好树。
+    // Built-in tree nodes (namespace/instance/tool) follow the builtin root uniformly to avoid mistakenly writing to the page preference tree when reusing page scope.
     const resolvedRoot: "builtin" | "page" = (root === "builtin" || scope === "builtin") ? "builtin" : "page";
 
     void this._updateScopeEnabled({
@@ -1092,7 +872,7 @@ export class SidePanelApp extends LitElement {
 
   private _handleFeedbackPriorityChange(event: Event): void {
     const input = event.target as HTMLSelectElement;
-    this._feedbackPriority = input.value as FeedbackCreateInput["priority"];
+    this._feedbackPriority = input.value as SidepanelFeedbackDraft["priority"];
   }
 
   // ─── Render Tools Tree Content ─────────────────────────────────
@@ -1126,9 +906,6 @@ export class SidePanelApp extends LitElement {
     const toolsCount = this._toolTreeResponse
       ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled)`
       : "";
-    const currentFeedbackSession = this._feedbackSnapshot?.sessions[0] ?? null;
-    const feedbackAnnotations = this._feedbackSnapshot?.annotations ?? [];
-    const feedbackPushAgentStatus = this._feedbackSnapshot?.pushAgent ?? null;
 
     return html`
       <!-- Header: status-dot (clickable refresh) / title / icon-nav (right) -->
@@ -1156,282 +933,81 @@ export class SidePanelApp extends LitElement {
         </div>
       </div>
 
-      <!-- Tools Tab -->
-      <div class="tab-content ${classMap({ active: this._activeTab === "tools" })} flex flex-col flex-1 min-h-0">
-        <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 sticky top-0 z-10">
-          <span class="text-xs font-bold uppercase tracking-wide opacity-60">Context Tools</span>
-          <span class="text-xs opacity-50">${toolsCount}</span>
-          <button class="btn btn-xs btn-ghost ml-auto" @click=${() => this._loadPageTools(true)}>Refresh</button>
-        </div>
-        <div class="px-3 py-1.5 border-b border-base-300 bg-base-200 sticky top-[2.75rem] z-20">
-          <input type="search" .value=${this._currentFilter} @input=${this._handleToolsFilterInput} placeholder="Filter by tab / namespace / instance / tool" class="input input-sm input-bordered w-full" />
-        </div>
-        <div class="flex-1 overflow-y-auto" id="toolsPanel" @change=${this._handleToolsPanelChange} @click=${this._handleToolsPanelClick}>
-          ${this._renderToolsTreeContent()}
-        </div>
+      ${renderToolsTab({
+        active: this._activeTab === "tools",
+        toolsCount,
+        currentFilter: this._currentFilter,
+        currentToolTestSelection: this._currentToolTestSelection,
+        toolTestTitle: this._toolTestTitle,
+        toolTestSubtitle: this._toolTestSubtitle,
+        toolTestTabIdValue: this._toolTestTabIdValue,
+        toolTestTabIdDisabled: this._toolTestTabIdDisabled,
+        toolTestSchemaOutput: this._toolTestSchemaOutput,
+        toolTestArgs: this._toolTestArgs,
+        toolTestOutput: this._toolTestOutput,
+        toolTestStatusText: this._toolTestStatusText,
+        toolTestStatusClass: this._toolTestStatusClass,
+        toolTestRunning: this._toolTestRunning,
+        renderToolsTreeContent: () => this._renderToolsTreeContent(),
+        onRefresh: () => void this._loadPageTools(true),
+        onFilterInput: this._handleToolsFilterInput,
+        onPanelChange: this._handleToolsPanelChange,
+        onPanelClick: this._handleToolsPanelClick,
+        onCloseToolTestPanel: this._closeToolTestPanel,
+        onToolTestTabIdInput: this._handleToolTestTabIdInput,
+        onToolTestArgsInput: this._handleToolTestArgsInput,
+        onResetToolTestArgs: this._resetToolTestArgs,
+        onRunToolDebugCall: () => void this._runToolDebugCall(),
+      })}
 
-        <!-- Tool Test Panel -->
-        ${when(this._currentToolTestSelection, () => html`
-          <div class="test-panel open border-t border-base-300 bg-base-100 p-3 flex-col gap-2 shrink-0 max-h-[48%] overflow-auto">
-            <div class="flex items-center justify-between gap-2">
-              <div>
-                <div class="text-sm font-bold">${this._toolTestTitle}</div>
-                <div class="text-xs opacity-60 break-all">${this._toolTestSubtitle}</div>
-              </div>
-              <button class="btn btn-xs btn-ghost" @click=${this._closeToolTestPanel}>Close</button>
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="label text-xs font-semibold" for="toolTestTabIdInput">Tab ID</label>
-              <input id="toolTestTabIdInput" type="number" .value=${this._toolTestTabIdValue} .disabled=${this._toolTestTabIdDisabled} @input=${this._handleToolTestTabIdInput} placeholder="Optional for built-in tools" class="input input-sm input-bordered" />
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="label text-xs font-semibold" for="toolTestSchemaOutput">Input Schema</label>
-              <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words min-h-[3rem]">${this._toolTestSchemaOutput}</pre>
-            </div>
-            <div class="flex flex-col gap-1">
-              <label class="label text-xs font-semibold" for="toolTestArgsInput">RPC Args (JSON)</label>
-              <textarea id="toolTestArgsInput" class="textarea textarea-sm textarea-bordered font-mono min-h-[5.5rem]" .value=${this._toolTestArgs} @input=${this._handleToolTestArgsInput}></textarea>
-            </div>
-            <div class="flex gap-2 justify-end">
-              <button class="btn btn-xs btn-ghost" @click=${this._resetToolTestArgs}>Reset Args</button>
-              <button class="btn btn-xs btn-primary" .disabled=${this._toolTestRunning} @click=${() => this._runToolDebugCall()}>Run RPC Call</button>
-            </div>
-            <div class="text-xs font-semibold ${this._toolTestStatusClass}">${this._toolTestStatusText}</div>
-            <div class="flex flex-col gap-1">
-              <label class="label text-xs font-semibold" for="toolTestOutput">Output</label>
-              <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words min-h-[3rem]">${this._toolTestOutput}</pre>
-            </div>
-          </div>
-        `)}
-      </div>
-
-      <!-- Context Tab -->
-      <div class="tab-content ${classMap({ active: this._activeTab === "context" })} flex flex-col flex-1 min-h-0">
-        <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
-          <span class="text-xs font-bold uppercase tracking-wide opacity-60">Capability Context</span>
-          <button class="btn btn-xs btn-ghost ml-auto" @click=${() => this._loadContextManifest()}>Refresh</button>
-        </div>
-        <div class="grid grid-cols-[minmax(240px,320px)_1fr] flex-1 min-h-0">
-          <!-- Sidebar -->
-          <div class="border-r border-base-300 bg-base-100 overflow-auto">
-            <div class="border-b border-base-200 p-3">
-              <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">Manifest Summary</div>
-              <div class="grid grid-cols-2 gap-2">
-                <div class="stat bg-base-200 rounded-lg p-2">
-                  <div class="stat-title text-[10px]">App</div>
-                  <div class="stat-value text-sm font-bold">${this._contextAppValue}</div>
-                </div>
-                <div class="stat bg-base-200 rounded-lg p-2">
-                  <div class="stat-title text-[10px]">Scene</div>
-                  <div class="stat-value text-sm font-bold">${this._contextSceneValue}</div>
-                </div>
-                <div class="stat bg-base-200 rounded-lg p-2">
-                  <div class="stat-title text-[10px]">Tab</div>
-                  <div class="stat-value text-sm font-bold">${this._contextTabValue}</div>
-                </div>
-                <div class="stat bg-base-200 rounded-lg p-2">
-                  <div class="stat-title text-[10px]">Route</div>
-                  <div class="stat-value text-sm font-bold">${this._contextRouteValue}</div>
-                </div>
-              </div>
-            </div>
-            <div class="border-b border-base-200 p-3">
-              <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">Resources</div>
-              <div id="contextResourcesList" @click=${this._handleContextResourceClick}>
-                ${this._contextResourcesListHtml}
-              </div>
-            </div>
-            <div class="p-3">
-              <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">Skills</div>
-              <div id="contextSkillsList" @click=${this._handleContextSkillClick}>
-                ${this._contextSkillsListHtml}
-              </div>
-            </div>
-          </div>
-          <!-- Main -->
-          <div class="bg-base-200 overflow-auto p-3 flex flex-col gap-3">
-            <div class="card bg-base-100 border border-base-300 shadow-sm">
-              <div class="card-body p-3 gap-1">
-                <div class="flex items-center justify-between">
-                  <span class="font-bold text-sm">Manifest</span>
-                  <span class="text-xs font-semibold ${this._manifestStatusClass}">${this._manifestStatus}</span>
-                </div>
-                <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${this._manifestOutput}</pre>
-              </div>
-            </div>
-            <div class="card bg-base-100 border border-base-300 shadow-sm">
-              <div class="card-body p-3 gap-1">
-                <div class="flex items-center justify-between">
-                  <span class="font-bold text-sm">Namespace / Scene Diff</span>
-                  <span class="text-xs font-semibold ${this._diffStatusClass}">${this._diffStatus}</span>
-                </div>
-                <div id="contextDiffOutput" class="flex flex-col gap-2">
-                  ${this._diffOutput}
-                </div>
-              </div>
-            </div>
-            <div class="card bg-base-100 border border-base-300 shadow-sm">
-              <div class="card-body p-3 gap-1">
-                <div class="flex items-center justify-between">
-                  <span class="font-bold text-sm">Selected Resource</span>
-                  <span class="text-xs font-semibold ${this._resourceStatusClass}">${this._resourceStatus}</span>
-                </div>
-                <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${this._resourceOutput}</pre>
-              </div>
-            </div>
-            <div class="card bg-base-100 border border-base-300 shadow-sm">
-              <div class="card-body p-3 gap-1">
-                <div class="flex items-center justify-between">
-                  <span class="font-bold text-sm">Selected Skill Prompt</span>
-                  <span class="text-xs font-semibold ${this._skillStatusClass}">${this._skillStatus}</span>
-                </div>
-                <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${this._skillOutput}</pre>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      ${renderContextTab({
+        active: this._activeTab === "context",
+        contextAppValue: this._contextAppValue,
+        contextSceneValue: this._contextSceneValue,
+        contextTabValue: this._contextTabValue,
+        contextRouteValue: this._contextRouteValue,
+        contextResourcesListHtml: this._contextResourcesListHtml,
+        contextSkillsListHtml: this._contextSkillsListHtml,
+        manifestStatus: this._manifestStatus,
+        manifestStatusClass: this._manifestStatusClass,
+        manifestOutput: this._manifestOutput,
+        diffStatus: this._diffStatus,
+        diffStatusClass: this._diffStatusClass,
+        diffOutput: this._diffOutput,
+        resourceStatus: this._resourceStatus,
+        resourceStatusClass: this._resourceStatusClass,
+        resourceOutput: this._resourceOutput,
+        skillStatus: this._skillStatus,
+        skillStatusClass: this._skillStatusClass,
+        skillOutput: this._skillOutput,
+        onRefresh: () => void this._loadContextManifest(),
+        onResourceClick: this._handleContextResourceClick,
+        onSkillClick: this._handleContextSkillClick,
+      } as RenderContextTabInput)}
 
       <!-- Feedback Tab -->
-      <div class="tab-content ${classMap({ active: this._activeTab === "feedback" })} flex flex-col flex-1 min-h-0">
-        <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
-          <span class="text-xs font-bold uppercase tracking-wide opacity-60">Feedback</span>
-          <button class="btn btn-xs btn-ghost ml-auto" @click=${() => this._loadFeedbackSnapshot()}>Refresh</button>
-        </div>
-        <div class="flex-1 overflow-y-auto p-3 bg-base-200 flex flex-col gap-3">
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-2">
-              <div class="flex items-center gap-2">
-                <div class="font-bold text-sm">Auto Push Agent</div>
-                <span class="${this._feedbackPushAgentBadgeClass(feedbackPushAgentStatus)} ml-auto">${this._feedbackPushAgentBadgeText(feedbackPushAgentStatus)}</span>
-              </div>
-              ${!feedbackPushAgentStatus
-                ? html`<div class="text-xs opacity-60">Current snapshot does not contain push-agent status.</div>`
-                : html`
-                  <div class="text-xs opacity-70">
-                    enabled: <span class="font-mono">${String(feedbackPushAgentStatus.enabled)}</span>
-                    · readiness: <span class="font-mono">${feedbackPushAgentStatus.readiness}</span>
-                    · mode: <span class="font-mono">${feedbackPushAgentStatus.mode}</span>
-                  </div>
-                  ${feedbackPushAgentStatus.lastLaunch
-                    ? html`
-                      <div class="text-xs opacity-70">
-                        last launch: <span class="font-mono">${feedbackPushAgentStatus.lastLaunch.result}</span>
-                        · at ${this._formatFeedbackTime(feedbackPushAgentStatus.lastLaunch.attemptedAt)}
-                        · annotation ${feedbackPushAgentStatus.lastLaunch.annotationId}
-                      </div>
-                      ${feedbackPushAgentStatus.lastLaunch.failureReason
-                        ? html`<div class="text-xs text-error">failure: ${feedbackPushAgentStatus.lastLaunch.failureReason}</div>`
-                        : nothing}
-                    `
-                    : html`<div class="text-xs opacity-60">last launch: (no records yet)</div>`}
-                `}
-            </div>
-          </div>
-
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-2">
-              <div class="font-bold text-sm">Create Feedback</div>
-              <textarea
-                class="textarea textarea-sm textarea-bordered min-h-[6rem]"
-                placeholder="Describe the problem, expected behavior, reproduction steps"
-                .value=${this._feedbackBody}
-                @input=${this._handleFeedbackBodyInput}
-              ></textarea>
-              <div class="flex gap-2 items-center">
-                <label class="text-xs opacity-70" for="feedbackPriority">Priority</label>
-                <select
-                  id="feedbackPriority"
-                  class="select select-sm select-bordered w-36"
-                  .value=${this._feedbackPriority}
-                  @change=${this._handleFeedbackPriorityChange}
-                >
-                  <option value="low">low</option>
-                  <option value="normal">normal</option>
-                  <option value="high">high</option>
-                  <option value="critical">critical</option>
-                </select>
-                <button class="btn btn-sm btn-primary ml-auto" @click=${() => this._submitFeedback()}>Submit</button>
-              </div>
-              <div class="text-xs opacity-70">
-                ${currentFeedbackSession
-                  ? html`Active Tab: #${currentFeedbackSession.tabId} · ${currentFeedbackSession.title || currentFeedbackSession.url}`
-                  : html`Active Tab: (session not created)`}
-              </div>
-              ${feedbackAnnotations[0]?.target.textQuote
-                ? html`<div class="text-xs opacity-70">Selected Text: ${feedbackAnnotations[0].target.textQuote}</div>`
-                : nothing}
-              <div class="${this._feedbackCreateStatusClass}">${this._feedbackCreateStatus}</div>
-            </div>
-          </div>
-
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-2">
-              <div class="flex items-center justify-between">
-                <div class="font-bold text-sm">Current Session</div>
-                <div class="text-xs opacity-60">
-                  ${this._feedbackLoading ? "Loading..." : `${feedbackAnnotations.length} annotations`}
-                </div>
-              </div>
-              ${this._feedbackError
-                ? html`<div class="text-xs text-error">${this._feedbackError}</div>`
-                : nothing}
-              ${!currentFeedbackSession
-                ? html`<div class="text-xs opacity-60">No feedback records for current page yet.</div>`
-                : html`
-                  <div class="text-xs opacity-70">
-                    Session ${currentFeedbackSession.id} · seq ${currentFeedbackSession.lastEventSeq}
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    ${feedbackAnnotations.length === 0
-                      ? html`<div class="text-xs opacity-60">No annotations yet.</div>`
-                      : html`${feedbackAnnotations.map((annotation) => html`
-                        <div class="border border-base-300 rounded-lg p-2 bg-base-100 flex flex-col gap-1.5">
-                          <div class="flex items-center gap-2">
-                            <span class="${this._feedbackStatusBadgeClass(annotation.status)}">${annotation.status}</span>
-                            <span class="badge badge-outline badge-sm">${annotation.priority}</span>
-                            <span class="text-[11px] opacity-50 ml-auto">${this._formatFeedbackTime(annotation.updatedAt)}</span>
-                          </div>
-                          <div class="text-sm whitespace-pre-wrap break-words">${annotation.body}</div>
-                          <div class="text-xs opacity-70">
-                            #${annotation.id} · by ${annotation.author.displayName} ·
-                            created ${this._formatFeedbackTime(annotation.createdAt)}
-                          </div>
-                          ${annotation.target.textQuote
-                            ? html`<div class="text-xs opacity-80">Quote: ${annotation.target.textQuote}</div>`
-                            : nothing}
-                          ${annotation.claimedBy || annotation.resolvedBy || annotation.resolution || annotation.dismissReason
-                            ? html`
-                              <div class="text-xs opacity-70 flex flex-wrap gap-2">
-                                ${annotation.claimedBy ? html`<span>Claimed by: ${annotation.claimedBy.displayName}</span>` : nothing}
-                                ${annotation.resolvedBy ? html`<span>Resolved by: ${annotation.resolvedBy.displayName}</span>` : nothing}
-                                ${annotation.resolution ? html`<span>Resolution: ${annotation.resolution}</span>` : nothing}
-                                ${annotation.dismissReason ? html`<span>Dismiss reason: ${annotation.dismissReason}</span>` : nothing}
-                              </div>
-                            `
-                            : nothing}
-                          ${(annotation.linkedCapabilities.relatedToolNames.length
-                            + annotation.linkedCapabilities.relatedResourceIds.length
-                            + annotation.linkedCapabilities.relatedSkillIds.length) > 0
-                            ? html`
-                              <div class="flex flex-wrap gap-1">
-                                ${annotation.linkedCapabilities.relatedToolNames.map((tool) => html`<span class="badge badge-ghost badge-xs">tool:${tool}</span>`)}
-                                ${annotation.linkedCapabilities.relatedResourceIds.map((resource) => html`<span class="badge badge-ghost badge-xs">resource:${resource}</span>`)}
-                                ${annotation.linkedCapabilities.relatedSkillIds.map((skill) => html`<span class="badge badge-ghost badge-xs">skill:${skill}</span>`)}
-                              </div>
-                            `
-                            : html`<div class="text-xs opacity-50">No related capabilities</div>`}
-                          ${this._renderFeedbackActions(annotation)}
-                          ${this._renderFeedbackThread(annotation)}
-                        </div>
-                      `)}`
-                    }
-                  </div>
-                `}
-            </div>
-          </div>
-        </div>
-      </div>
+      ${this._activeTab === "feedback"
+        ? renderFeedbackTab({
+            snapshot: this._feedbackSnapshot,
+            loading: this._feedbackLoading,
+            error: this._feedbackError,
+            body: this._feedbackBody,
+            priority: this._feedbackPriority,
+            createStatus: this._feedbackCreateStatus,
+            createStatusClass: this._feedbackCreateStatusClass,
+            readActionState: (annotationId) => this._readFeedbackActionState(annotationId),
+            onRefresh: () => void this._loadFeedbackSnapshot(),
+            onBodyInput: this._handleFeedbackBodyInput,
+            onPriorityChange: this._handleFeedbackPriorityChange,
+            onSubmit: () => void this._submitFeedback(),
+            onToggleMode: (annotationId, mode) => this._setFeedbackActionMode(annotationId, mode),
+            onActionInput: (annotationId, field, event) => this._handleFeedbackActionInput(annotationId, field, event),
+            onClaim: (annotationId) => void this._claimFeedbackAnnotation(annotationId),
+            onReply: (annotationId) => void this._replyFeedbackAnnotation(annotationId),
+            onResolve: (annotationId) => void this._resolveFeedbackAnnotation(annotationId),
+            onDismiss: (annotationId) => void this._dismissFeedbackAnnotation(annotationId),
+          })
+        : html`<div class="tab-content flex flex-col flex-1 min-h-0"></div>`}
 
       <!-- Diagnosis Tab -->
       <div class="tab-content ${classMap({ active: this._activeTab === "diagnosis" })} flex flex-col flex-1 min-h-0">
