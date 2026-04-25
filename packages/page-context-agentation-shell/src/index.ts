@@ -1,33 +1,32 @@
-import type { FeedbackAnnotation, FeedbackAnnotationStatus, FeedbackPriority, FeedbackUiAnchor, FeedbackUiRect } from "@page-context/shared-protocol";
+import type {
+  FeedbackAnnotation,
+  FeedbackAnnotationStatus,
+  FeedbackPriority,
+  FeedbackStateDeltaResult,
+  FeedbackStateSnapshotResult,
+  FeedbackUiAdapter,
+  FeedbackUiAnchor,
+  FeedbackUiCreateInput,
+  FeedbackUiCreateResult,
+  FeedbackUiDismissInput,
+  FeedbackUiRect,
+  FeedbackUiUpdateInput,
+} from "@page-context/shared-protocol";
 
 import { extractElementContextMeta, extractReactAnchorMeta, identifyElement } from "./element-identification";
 import type {
-  AgentationShellBridgeAdapter,
-  AgentationShellCreateAnnotationInput,
-  AgentationShellCreateAnnotationResult,
   AgentationShellMountDeps,
   AgentationShellMountHandle,
-  AgentationShellFeedbackDelta,
-  AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
-  AgentationShellDismissAnnotationInput,
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
-  AgentationShellUpdateAnnotationInput,
 } from "./types";
 export type {
-  AgentationShellBridgeAdapter,
-  AgentationShellCreateAnnotationInput,
-  AgentationShellCreateAnnotationResult,
   AgentationShellMountDeps,
   AgentationShellMountHandle,
-  AgentationShellFeedbackDelta,
-  AgentationShellFeedbackSnapshot,
   AgentationShellDeps,
-  AgentationShellDismissAnnotationInput,
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
-  AgentationShellUpdateAnnotationInput,
 } from "./types";
 
 const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
@@ -92,7 +91,7 @@ interface MarkerRecord {
   priority: FeedbackPriority;
   selectedText?: string;
   elementName: string;
-  targetInput: AgentationShellCreateAnnotationInput["target"];
+  targetInput: FeedbackUiCreateInput["target"];
   // Aggregation semantics are only used in the shell's local rendering layer and not written back to the protocol structure.
   multiSelectMeta?: AgentationShellMultiSelectMeta;
   // Pixel coordinate cache for compatibility with current logic, for direct reuse by tooltip/popup.
@@ -113,7 +112,7 @@ interface PopupState {
   initialPriority?: FeedbackPriority;
   selectedText?: string;
   targetElement?: HTMLElement;
-  targetInput: AgentationShellCreateAnnotationInput["target"];
+  targetInput: FeedbackUiCreateInput["target"];
   multiSelectMeta?: AgentationShellMultiSelectMeta;
 }
 
@@ -121,7 +120,7 @@ interface MultiSelectTargetSnapshot {
   element: HTMLElement;
   elementName: string;
   elementPath: string;
-  rect: DOMRectReadOnly;
+  rect: FeedbackUiRect;
 }
 
 interface Point {
@@ -155,7 +154,7 @@ interface ReplayMarkerTarget {
   anchorX: number;
   anchorY: number;
   elementName: string;
-  targetInput: AgentationShellCreateAnnotationInput["target"];
+  targetInput: FeedbackUiCreateInput["target"];
 }
 
 interface FeedbackDeltaPlan {
@@ -303,7 +302,7 @@ function isTopWindow(win: Window): boolean {
 }
 
 class AgentationShellRuntime {
-  private readonly adapter: AgentationShellBridgeAdapter;
+  private readonly adapter: FeedbackUiAdapter;
   private readonly doc: Document;
   private readonly win: Window;
   private readonly logger?: AgentationShellDeps["logger"];
@@ -367,7 +366,7 @@ class AgentationShellRuntime {
   constructor(args: {
     host: HTMLDivElement;
     removeHostOnUnmount: boolean;
-    adapter: AgentationShellBridgeAdapter;
+    adapter: FeedbackUiAdapter;
     doc: Document;
     win: Window;
     logger?: AgentationShellDeps["logger"];
@@ -575,7 +574,7 @@ class AgentationShellRuntime {
   /**
    * Only overwrite remote markers; local temporary markers (without remote id) are retained to avoid interrupting current operations.
    */
-  private reconcileMarkersFromFeedbackSnapshot(snapshot: AgentationShellFeedbackSnapshot): void {
+  private reconcileMarkersFromFeedbackSnapshot(snapshot: FeedbackStateSnapshotResult): void {
     const replayedByRemoteId = new Map<string, MarkerRecord>();
     for (const annotation of snapshot.annotations) {
       if (!isReplayableFeedbackAnnotation(annotation)) {
@@ -1420,7 +1419,7 @@ class AgentationShellRuntime {
         multiSelectMeta: popupState.multiSelectMeta,
       },
     );
-    const payload: AgentationShellCreateAnnotationInput = {
+    const payload: FeedbackUiCreateInput = {
       body,
       priority,
       selectedText: popupState.selectedText,
@@ -1462,7 +1461,7 @@ class AgentationShellRuntime {
     if (!marker.remoteAnnotationId || !this.adapter.updateAnnotation) {
       return;
     }
-    const payload: AgentationShellUpdateAnnotationInput = {
+    const payload: FeedbackUiUpdateInput = {
       annotationId: marker.remoteAnnotationId,
       body,
       priority,
@@ -1475,7 +1474,7 @@ class AgentationShellRuntime {
     if (!marker.remoteAnnotationId || !this.adapter.dismissAnnotation) {
       return;
     }
-    const payload: AgentationShellDismissAnnotationInput = {
+    const payload: FeedbackUiDismissInput = {
       annotationId: marker.remoteAnnotationId,
       dismissReason: MARKER_DISMISS_REASON,
     };
@@ -1531,8 +1530,8 @@ class AgentationShellRuntime {
   }
 
   private applyAnnotationSuccess(
-    result: AgentationShellCreateAnnotationResult,
-    input: AgentationShellCreateAnnotationInput,
+    result: FeedbackUiCreateResult,
+    input: FeedbackUiCreateInput,
     popupState: PopupState,
   ): void {
     if (popupState.mode !== "create") {
@@ -1553,7 +1552,7 @@ class AgentationShellRuntime {
       targetInput: {
         elementName: input.target.elementName,
         elementPath: input.target.elementPath,
-        rect: snapshotRect(input.target.rect),
+        rect: input.target.rect,
       },
       multiSelectMeta,
       x: markerAnchor.x,
@@ -2295,7 +2294,7 @@ function collectAreaSelectionTargets(
   viewportWidth: number,
   viewportHeight: number,
 ): MultiSelectTargetSnapshot[] {
-  const matched: Array<{ element: HTMLElement; rect: DOMRectReadOnly }> = [];
+  const matched: Array<{ element: HTMLElement; rect: FeedbackUiRect }> = [];
 
   doc.querySelectorAll(AREA_SELECTION_ELEMENT_SELECTOR).forEach((candidate) => {
     if (!(candidate instanceof HTMLElement)) {
@@ -2337,8 +2336,8 @@ function collectAreaSelectionTargets(
   });
 }
 
-function isRectIntersecting(a: DOMRectReadOnly, b: DOMRectReadOnly): boolean {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+function isRectIntersecting(a: FeedbackUiRect, b: DOMRectReadOnly): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
 function readToolbarPersistedState(win: Window): ToolbarPersistedState | null {
@@ -2415,14 +2414,14 @@ function isMultiSelectChordPressed(event: Pick<MouseEvent | KeyboardEvent, "meta
   return event.shiftKey && (event.metaKey || event.ctrlKey);
 }
 
-function snapshotRect(rect: DOMRectReadOnly): DOMRectReadOnly {
-  return new DOMRect(rect.x, rect.y, rect.width, rect.height);
+function snapshotRect(rect: DOMRectReadOnly): FeedbackUiRect {
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
 /**
  * Combine multiple elements into a bounding box as the positioning rect for unified submission.
  */
-function unionRects(rects: readonly DOMRectReadOnly[]): DOMRectReadOnly | null {
+function unionRects(rects: readonly FeedbackUiRect[]): DOMRectReadOnly | null {
   if (rects.length === 0) {
     return null;
   }
@@ -2433,10 +2432,10 @@ function unionRects(rects: readonly DOMRectReadOnly[]): DOMRectReadOnly | null {
   let bottom = Number.NEGATIVE_INFINITY;
 
   for (const rect of rects) {
-    left = Math.min(left, rect.left);
-    top = Math.min(top, rect.top);
-    right = Math.max(right, rect.right);
-    bottom = Math.max(bottom, rect.bottom);
+    left = Math.min(left, rect.x);
+    top = Math.min(top, rect.y);
+    right = Math.max(right, rect.x + rect.width);
+    bottom = Math.max(bottom, rect.y + rect.height);
   }
 
   if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(right) || !Number.isFinite(bottom)) {
@@ -2476,7 +2475,7 @@ function normalizeSelectionText(value: string): string {
  * Adhere to a "conservatively usable" strategy: provide stable fields first, leave complex selector engine for future iterations.
  */
 function buildUiAnchorFromTarget(
-  target: AgentationShellCreateAnnotationInput["target"],
+  target: FeedbackUiCreateInput["target"],
   selectedText?: string,
   options?: {
     targetElement?: HTMLElement;
@@ -2525,7 +2524,7 @@ function normalizeUiTextQuote(value: string | undefined): string | undefined {
   return normalized.slice(0, 2_000);
 }
 
-function toUiRect(rect: DOMRectReadOnly): FeedbackUiAnchor["rect"] {
+function toUiRect(rect: Pick<FeedbackUiRect, "x" | "y" | "width" | "height">): FeedbackUiAnchor["rect"] {
   const x = Number(rect.x);
   const y = Number(rect.y);
   const width = Number(rect.width);
@@ -2577,7 +2576,7 @@ function isReplayableFeedbackAnnotation(annotation: FeedbackAnnotation): boolean
   return !NON_REPLAYABLE_ANNOTATION_STATUS.has(annotation.status);
 }
 
-function buildFeedbackDeltaPlan(delta: AgentationShellFeedbackDelta): FeedbackDeltaPlan {
+function buildFeedbackDeltaPlan(delta: FeedbackStateDeltaResult): FeedbackDeltaPlan {
   const plan: FeedbackDeltaPlan = {
     dismissedAnnotationIds: new Set<string>(),
     shouldReloadSnapshot: false,
@@ -2623,7 +2622,7 @@ function resolveReplayMarkerTarget(
   const selectorElement = selector ? queryReplayElementBySelector(doc, shellHost, selector) : null;
   const rect = toDomRectFromUiRect(uiAnchor?.rect)
     ?? readMultiSelectUnionRect(anchorMeta)
-    ?? (selectorElement ? snapshotRect(selectorElement.getBoundingClientRect()) : null);
+    ?? (selectorElement ? selectorElement.getBoundingClientRect() : null);
   if (!rect || rect.width < 1 || rect.height < 1) {
     return null;
   }
@@ -2632,13 +2631,13 @@ function resolveReplayMarkerTarget(
   const elementName = readRecordString(anchorMeta, "elementName") || identified?.name || "annotation";
   const elementPath = readRecordString(anchorMeta, "elementPath") || selector || identified?.path || "unknown path";
   return {
-    anchorX: clamp(rect.left + rect.width / 2, 0, Math.max(0, viewportWidth)),
-    anchorY: clamp(rect.top + rect.height / 2, 0, Math.max(0, viewportHeight)),
+    anchorX: clamp(rect.x + rect.width / 2, 0, Math.max(0, viewportWidth)),
+    anchorY: clamp(rect.y + rect.height / 2, 0, Math.max(0, viewportHeight)),
     elementName,
     targetInput: {
       elementName,
       elementPath,
-      rect: snapshotRect(rect),
+      rect: toUiRect(rect) ?? { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
     },
   };
 }
