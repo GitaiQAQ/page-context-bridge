@@ -6,7 +6,6 @@
  */
 
 import type { ContentScriptToolEnv } from "@page-context/shared-protocol";
-import { toCanonicalBuiltinRuntimeToolName } from "./runtime-tool-names.js";
 
 export { createConsoleCapture } from "./console-capture.js";
 
@@ -19,12 +18,12 @@ export function executeContentScriptTool(
   args: Record<string, unknown>,
   env: ContentScriptToolEnv,
 ): unknown {
-  const normalizedTool = toCanonicalBuiltinRuntimeToolName(tool);
   const win = env.win as Window;
   const doc = env.doc as Document;
   const { consoleEntries } = env;
 
-  switch (normalizedTool) {
+  // Historical (non-namespaced) aliases are intentionally NOT supported.
+  switch (tool) {
     case "builtin.get_page_info":
       return {
         url: win.location.href,
@@ -48,6 +47,16 @@ export function executeContentScriptTool(
       }
       element.click();
       return { clicked: true, selector };
+    }
+    case "builtin.scroll_into_view": {
+      const selector = String(args.selector ?? "");
+      const behavior = String(args.behavior ?? "auto");
+      const element = doc.querySelector<HTMLElement>(selector);
+      if (!element) {
+        throw new Error(`Element not found: ${selector}`);
+      }
+      element.scrollIntoView({ behavior: behavior === "smooth" ? "smooth" : "auto", block: "center", inline: "center" });
+      return { scrolled: true, selector };
     }
     case "builtin.get_element_text": {
       const selector = String(args.selector ?? "");
@@ -136,6 +145,55 @@ export function executeContentScriptTool(
         entries: filtered.slice(-limit),
         total: filtered.length,
       };
+    }
+    case "builtin.wait_for_selector": {
+      const selector = String(args.selector ?? "");
+      const state = String(args.state ?? "attached");
+      const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 10_000)));
+
+      const isVisible = (element: Element): boolean => {
+        const el = element as HTMLElement;
+        const style = win.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+          return false;
+        }
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+
+      const check = (): { ok: boolean; element?: Element } => {
+        const element = doc.querySelector(selector);
+        if (!element) {
+          return { ok: false };
+        }
+        if (state === "visible" && !isVisible(element)) {
+          return { ok: false, element };
+        }
+        return { ok: true, element };
+      };
+
+      const initial = check();
+      if (initial.ok) {
+        return { matched: true, selector, state: state === "visible" ? "visible" : "attached" };
+      }
+
+      return new Promise((resolve, reject) => {
+        const start = Date.now();
+        const tick = () => {
+          const now = Date.now();
+          const res = check();
+          if (res.ok) {
+            resolve({ matched: true, selector, state: state === "visible" ? "visible" : "attached", waitedMs: now - start });
+            return;
+          }
+          if (now - start >= timeoutMs) {
+            reject(new Error(`Timeout waiting for selector: ${selector} (state=${state})`));
+            return;
+          }
+          win.requestAnimationFrame(tick);
+        };
+        tick();
+      });
     }
     default:
       throw new Error(`Unknown content-script tool: ${tool}`);

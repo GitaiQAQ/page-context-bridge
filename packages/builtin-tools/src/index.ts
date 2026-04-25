@@ -8,7 +8,6 @@ export { BuiltinBridgeProvider } from "./bridge-provider.js";
 export { BuiltinExtensionProvider } from "./extension-provider.js";
 export {
   ExtensionControlBridgeProvider,
-  EXTENSION_CONTROL_LEGACY_TOOL_NAMES,
   EXTENSION_CONTROL_TOOL_SUFFIXES,
   type PageToolEnableUpdate,
   type ExtensionControlTool,
@@ -18,7 +17,6 @@ export {
 } from "./extension-control-bridge-provider.js";
 export {
   FeedbackControlBridgeProvider,
-  FEEDBACK_CONTROL_LEGACY_TOOL_NAMES,
   FEEDBACK_CONTROL_TOOL_SUFFIXES,
   type FeedbackControlBridgeRpc,
   type FeedbackControlBridgeProviderOptions,
@@ -26,12 +24,7 @@ export {
 export { collectBridgeControlToolSpecs, type BridgeControlToolSpec } from "./control-tool-specs.js";
 export {
   BUILTIN_RUNTIME_NAMESPACE,
-  BUILTIN_RUNTIME_LEGACY_TO_CANONICAL,
-  type BuiltinRuntimeLegacyToolName,
-  type BuiltinRuntimeCanonicalToolName,
-  toCanonicalBuiltinRuntimeToolName,
-  toLegacyBuiltinRuntimeToolName,
-  listBuiltinRuntimeToolPreferenceKeys,
+  builtinRuntimeToolName,
 } from "./runtime-tool-names.js";
 export { executeContentScriptTool } from "./content-script-tools.js";
 export { executeServiceWorkerTool } from "./service-worker-tools.js";

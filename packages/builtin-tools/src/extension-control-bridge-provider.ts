@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { toCanonicalBuiltinRuntimeToolName } from "./runtime-tool-names.js";
+import { builtinRuntimeToolName, BUILTIN_RUNTIME_NAMESPACE } from "./runtime-tool-names.js";
 
 function createTextResponse(text: string) {
   return { content: [{ type: "text" as const, text }] };
@@ -47,7 +47,6 @@ export interface ExtensionControlBridgeRpc {
 
 export interface ExtensionControlBridgeProviderOptions {
   namespace?: string;
-  includeLegacyAliases?: boolean;
 }
 
 export const EXTENSION_CONTROL_TOOL_SUFFIXES = {
@@ -63,18 +62,6 @@ export const EXTENSION_CONTROL_TOOL_SUFFIXES = {
   ensureAgentationMain: "ensure_agentation_main",
 } as const;
 
-export const EXTENSION_CONTROL_LEGACY_TOOL_NAMES = {
-  getRuntimeStatus: "extension_get_runtime_status",
-  reconnect: "extension_reconnect",
-  getContextManifestDebug: "extension_get_context_manifest_debug",
-  getToolTree: "extension_get_tool_tree",
-  setToolsEnabled: "extension_set_tools_enabled",
-  refreshPageTools: "extension_refresh_page_tools",
-  prepareTabForDebug: "extension_prepare_tab_for_debug",
-  toolDebugCall: "extension_tool_debug_call",
-  ensureMainWorldHost: "extension_ensure_main_world_host",
-  ensureAgentationMain: "extension_ensure_agentation_main",
-} as const;
 
 const pageToolEnableUpdateSchema = z.object({
   root: z.enum(["builtin", "page"]).optional(),
@@ -88,11 +75,9 @@ const pageToolEnableUpdateSchema = z.object({
 export class ExtensionControlBridgeProvider {
   readonly id = "extension-control";
   private readonly namespace: string;
-  private readonly includeLegacyAliases: boolean;
 
   constructor(options: ExtensionControlBridgeProviderOptions = {}) {
     this.namespace = options.namespace ?? "extension";
-    this.includeLegacyAliases = options.includeLegacyAliases ?? true;
   }
 
   getToolNames(): {
@@ -140,25 +125,6 @@ export class ExtensionControlBridgeProvider {
       handles.set(name, registerTool(name, config, handler));
     };
 
-    const registerAlias = (
-      alias: string,
-      primaryName: string,
-      config: { description: string; inputSchema: Record<string, z.ZodTypeAny> },
-      handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
-    ) => {
-      if (!this.includeLegacyAliases) {
-        return;
-      }
-      register(
-        alias,
-        {
-          ...config,
-          // Legacy names are for compatibility only, no longer the primary entry point.
-          description: `${config.description} (Deprecated alias. Use '${primaryName}' instead.)`,
-        },
-        handler,
-      );
-    };
 
     const getToolTreeConfig = {
       description: "Read extension tool tree (builtin + page tools) with enabled counters.",
@@ -559,34 +525,24 @@ export class ExtensionControlBridgeProvider {
     };
 
     register(names.getToolTree, getToolTreeConfig, getToolTreeHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree, names.getToolTree, getToolTreeConfig, getToolTreeHandler);
 
     register(names.getRuntimeStatus, getRuntimeStatusConfig, getRuntimeStatusHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getRuntimeStatus, names.getRuntimeStatus, getRuntimeStatusConfig, getRuntimeStatusHandler);
 
     register(names.reconnect, reconnectConfig, reconnectHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.reconnect, names.reconnect, reconnectConfig, reconnectHandler);
 
     register(names.getContextManifestDebug, getContextManifestDebugConfig, getContextManifestDebugHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getContextManifestDebug, names.getContextManifestDebug, getContextManifestDebugConfig, getContextManifestDebugHandler);
 
     register(names.setToolsEnabled, setToolsEnabledConfig, setToolsEnabledHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled, names.setToolsEnabled, setToolsEnabledConfig, setToolsEnabledHandler);
 
     register(names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools, names.refreshPageTools, refreshPageToolsConfig, refreshPageToolsHandler);
 
     register(names.prepareTabForDebug, prepareTabForDebugConfig, prepareTabForDebugHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.prepareTabForDebug, names.prepareTabForDebug, prepareTabForDebugConfig, prepareTabForDebugHandler);
 
     register(names.toolDebugCall, toolDebugCallConfig, toolDebugCallHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.toolDebugCall, names.toolDebugCall, toolDebugCallConfig, toolDebugCallHandler);
 
     register(names.ensureMainWorldHost, ensureMainWorldHostConfig, ensureMainWorldHostHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost, names.ensureMainWorldHost, ensureMainWorldHostConfig, ensureMainWorldHostHandler);
 
     register(names.ensureAgentationMain, ensureAgentationMainConfig, ensureAgentationMainHandler);
-    registerAlias(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureAgentationMain, names.ensureAgentationMain, ensureAgentationMainConfig, ensureAgentationMainHandler);
 
     return handles;
   }
@@ -720,7 +676,7 @@ function pickDebugTargetFromToolTree(
   toolName: string,
   preferredTabId?: number,
 ): DebugToolTreeCandidate | null {
-  const canonicalToolName = toCanonicalBuiltinRuntimeToolName(toolName);
+  const canonicalToolName = toolName.startsWith(`${BUILTIN_RUNTIME_NAMESPACE}.`) ? toolName : builtinRuntimeToolName(toolName);
   const builtinMatches = collectBuiltinToolMatches(tree, canonicalToolName);
   const pageMatches = collectPageToolMatches(tree, toolName, preferredTabId);
 

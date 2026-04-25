@@ -31,7 +31,7 @@ export function collectBridgeControlToolSpecs(): BridgeControlToolSpec[] {
 }
 
 function collectFromExtensionControlProvider(specsByName: Map<string, BridgeControlToolSpec>): void {
-  const provider = new ExtensionControlBridgeProvider({ includeLegacyAliases: false });
+  const provider = new ExtensionControlBridgeProvider();
   const noopRpc = createNoopRpc<ExtensionControlBridgeRpc>();
 
   provider.registerOnBridge(
@@ -44,7 +44,7 @@ function collectFromExtensionControlProvider(specsByName: Map<string, BridgeCont
 }
 
 function collectFromFeedbackControlProvider(specsByName: Map<string, BridgeControlToolSpec>): void {
-  const provider = new FeedbackControlBridgeProvider({ includeLegacyAliases: false });
+  const provider = new FeedbackControlBridgeProvider();
   const noopRpc = createNoopRpc<FeedbackControlBridgeRpc>();
 
   provider.registerOnBridge(

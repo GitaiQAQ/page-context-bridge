@@ -37,7 +37,6 @@ export interface FeedbackControlBridgeRpc {
 
 export interface FeedbackControlBridgeProviderOptions {
   namespace?: string;
-  includeLegacyAliases?: boolean;
 }
 
 export const FEEDBACK_CONTROL_TOOL_SUFFIXES = {
@@ -51,16 +50,6 @@ export const FEEDBACK_CONTROL_TOOL_SUFFIXES = {
   dismiss: "dismiss",
 } as const;
 
-export const FEEDBACK_CONTROL_LEGACY_TOOL_NAMES = {
-  getSnapshot: "feedback_get_snapshot",
-  watchEvents: "feedback_watch_events",
-  createAnnotation: "feedback_create_annotation",
-  updateAnnotation: "feedback_update_annotation",
-  claim: "feedback_claim_annotation",
-  reply: "feedback_reply_annotation",
-  resolve: "feedback_resolve_annotation",
-  dismiss: "feedback_dismiss_annotation",
-} as const;
 
 const feedbackPrioritySchema = z.enum(["low", "normal", "high", "critical"]);
 const feedbackActorSourceSchema = z.enum(["user", "agent", "bridge", "extension"]);
@@ -159,11 +148,9 @@ const feedbackDismissAnnotationSchema = z.object({
 export class FeedbackControlBridgeProvider {
   readonly id = "feedback-control";
   private readonly namespace: string;
-  private readonly includeLegacyAliases: boolean;
 
   constructor(options: FeedbackControlBridgeProviderOptions = {}) {
     this.namespace = options.namespace ?? "feedback";
-    this.includeLegacyAliases = options.includeLegacyAliases ?? true;
   }
 
   getToolNames(): {
@@ -205,26 +192,6 @@ export class FeedbackControlBridgeProvider {
       handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
     ) => {
       handles.set(name, registerTool(name, config, handler));
-    };
-
-    const registerAlias = (
-      alias: string,
-      primaryName: string,
-      config: { description: string; inputSchema: Record<string, z.ZodTypeAny>; annotations?: Record<string, unknown> },
-      handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
-    ) => {
-      if (!this.includeLegacyAliases) {
-        return;
-      }
-      register(
-        alias,
-        {
-          ...config,
-          // Legacy names maintain compatibility to reduce historical prompt/tool-list migration costs.
-          description: `${config.description} (Deprecated alias. Use '${primaryName}' instead.)`,
-        },
-        handler,
-      );
     };
 
     const getSnapshotConfig = {
@@ -393,29 +360,21 @@ export class FeedbackControlBridgeProvider {
     };
 
     register(names.getSnapshot, getSnapshotConfig, getSnapshotHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot, names.getSnapshot, getSnapshotConfig, getSnapshotHandler);
 
     register(names.watchEvents, watchEventsConfig, watchEventsHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents, names.watchEvents, watchEventsConfig, watchEventsHandler);
 
     register(names.createAnnotation, createAnnotationConfig, createAnnotationHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.createAnnotation, names.createAnnotation, createAnnotationConfig, createAnnotationHandler);
 
     register(names.updateAnnotation, updateAnnotationConfig, updateAnnotationHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation, names.updateAnnotation, updateAnnotationConfig, updateAnnotationHandler);
 
-    // Action-type entries uniformly use feedback.*, aliases are only for compatibility with legacy calls.
+    // Action-type entries uniformly use feedback.* namespace.
     register(names.claim, claimConfig, claimHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.claim, names.claim, claimConfig, claimHandler);
 
     register(names.reply, replyConfig, replyHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.reply, names.reply, replyConfig, replyHandler);
 
     register(names.resolve, resolveConfig, resolveHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.resolve, names.resolve, resolveConfig, resolveHandler);
 
     register(names.dismiss, dismissConfig, dismissHandler);
-    registerAlias(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.dismiss, names.dismiss, dismissConfig, dismissHandler);
 
     return handles;
   }
