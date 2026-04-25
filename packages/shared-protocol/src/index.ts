@@ -72,6 +72,18 @@ export {
 } from "./feedback";
 
 export {
+  type FeedbackUiTarget,
+  type FeedbackUiCreateInput,
+  type FeedbackUiCreateResult,
+  type FeedbackUiUpdateInput,
+  type FeedbackUiDismissInput,
+  type FeedbackUiAdapter,
+  type FeedbackRuntimeCreatePayload,
+  type FeedbackRuntimeUpdatePayload,
+  type FeedbackRuntimeDismissPayload,
+} from "./feedback-ui-contract";
+
+export {
   type ToolSpec,
   type ToolExecutionContext,
   type ToolDefinition,

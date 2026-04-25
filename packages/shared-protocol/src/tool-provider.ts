@@ -99,4 +99,24 @@ export interface ServiceWorkerToolContext {
   listTabs(): Promise<Array<{ id?: number; url?: string; title?: string; active?: boolean }>>;
   captureVisibleTab(format: string, quality?: number): Promise<string>;
   navigateTab(tabId: number, url: string): Promise<void>;
+
+  /** Reload a tab. If bypassCache is true, forces reload from network. */
+  reloadTab(tabId: number, bypassCache?: boolean): Promise<void>;
+
+  /** Navigate history. */
+  goBack(tabId: number): Promise<void>;
+  goForward(tabId: number): Promise<void>;
+
+  /** Create/close tabs. */
+  createTab(url: string, active?: boolean): Promise<{ tabId: number }>;
+  closeTab(tabId: number): Promise<void>;
+
+  /** Wait until the tab loading status matches. */
+  waitForTabStatus(tabId: number, status: "loading" | "complete", timeoutMs: number): Promise<void>;
+
+  /** Send a CDP command to the tab (requires extension 'debugger' permission). */
+  cdpSendCommand(tabId: number, method: string, params?: Record<string, unknown>): Promise<unknown>;
+
+  /** Detach CDP from the tab if attached. */
+  cdpDetach(tabId: number): Promise<void>;
 }
