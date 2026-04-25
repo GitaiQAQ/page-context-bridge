@@ -58,18 +58,49 @@ const ENTRIES: UserscriptBuildEntry[] = [
     description: "Expose read-only Redux DevTools recorder bridge.",
     runAt: "document-start",
   },
+  {
+    id: "nextjs",
+    entry: "src/entries/nextjs.user.ts",
+    fileName: "nextjs.user.js",
+    scriptName: "Next.js Inspector (Page Context Bridge)",
+    description: "Expose read-only Next.js runtime payload bridge.",
+    runAt: "document-idle",
+  },
+  {
+    id: "nuxt",
+    entry: "src/entries/nuxt.user.ts",
+    fileName: "nuxt.user.js",
+    scriptName: "Nuxt Inspector (Page Context Bridge)",
+    description: "Expose read-only Nuxt runtime payload bridge.",
+    runAt: "document-idle",
+  },
 ];
 
 function makeUserscriptBanner(entry: UserscriptBuildEntry, version: string): string {
+  const matches = readUserscriptCsvEnv("PAGE_CONTEXT_USERSCRIPT_MATCH") ?? ["*://*/*"];
+  const grants = readUserscriptCsvEnv("PAGE_CONTEXT_USERSCRIPT_GRANT") ?? ["none"];
+
   return `// ==UserScript==
 // @name         ${entry.scriptName}
 // @namespace    page-context.bridge
 // @version      ${version}
 // @description  ${entry.description}
-// @match        *://*/*
-// @grant        none
+${matches.map((pattern) => `// @match        ${pattern}`).join("\n")}
+${grants.map((grant) => `// @grant        ${grant}`).join("\n")}
 // @run-at       ${entry.runAt}
 // ==/UserScript==`;
+}
+
+function readUserscriptCsvEnv(key: string): string[] | undefined {
+  const raw = process.env[key];
+  if (!raw) {
+    return undefined;
+  }
+  const values = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return values.length > 0 ? values : undefined;
 }
 
 function formatVersionDate(filePath: string): string {

@@ -16,13 +16,13 @@ import type {
   UserscriptBridgeAdapter,
   UserscriptBridgeAdapterFactory,
 } from "./types";
+import { PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT } from "./bridge-host";
 import { safeRoute, toJsonResource } from "./utils";
 
 const HUB_VERSION = "userscript-hub/1.0.0";
 const HUB_SCENE = "userscript-adapter-hub";
 const HUB_KEY = "__pageContextUserscriptHub__";
 const HUB_SOURCE_ID = "userscript-adapter-hub";
-const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = "page-context-bridge-host:ready";
 
 export interface BrowserHost {
   window: Window;
@@ -42,6 +42,7 @@ export interface UserscriptBridgeHub {
   registerAdapter(adapter: UserscriptBridgeAdapter): void;
   listAdapterIds(): string[];
   listDiagnostics(): string[];
+  reportDiagnostic(message: string): void;
 }
 
 export function getOrCreateUserscriptBridgeHub(win: Window, doc: Document): UserscriptBridgeHub {
@@ -54,12 +55,13 @@ export function getOrCreateUserscriptBridgeHub(win: Window, doc: Document): User
     adaptersByNamespace: new Map(),
     adapterOrder: [],
     diagnostics: [],
+    // Userscripts are expected to rely on the extension injecting the host. Do not auto-install a host here.
     bridgeHost: getPageContextBridgeHost(win),
     unregisterHubSource: undefined,
   };
   const bridge = createHubBridge(win, doc, state);
   registerHubSourceOnHost(state, bridge);
-  // The host is injected by the extension's content-script. Userscripts only listen for ready events and register their own sources.
+  // If the host is installed by something else later (e.g. extension main-world injection), re-register on the new host.
   win.addEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, (event) => {
     const host = (event as CustomEvent<unknown>).detail;
     if (!isPageContextBridgeHost(host)) {
@@ -70,9 +72,22 @@ export function getOrCreateUserscriptBridgeHub(win: Window, doc: Document): User
   });
   const hub: UserscriptBridgeHub = {
     bridge,
-    registerAdapter: (adapter) => registerAdapterOnHub(adapter, bridge, state),
+    registerAdapter: (adapter) => {
+      try {
+        registerAdapterOnHub(adapter, bridge, state);
+      } catch (error) {
+        state.diagnostics.push(
+          `Adapter "${adapter.adapterId}" registration failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
     listAdapterIds: () => [...state.adapterOrder],
     listDiagnostics: () => [...state.diagnostics, ...(state.bridgeHost?.listDiagnostics() ?? [])],
+    reportDiagnostic: (message) => {
+      if (message) {
+        state.diagnostics.push(message);
+      }
+    },
   };
 
   (win as WindowWithUserscriptHub)[HUB_KEY] = hub;
@@ -83,11 +98,18 @@ export function autoRegisterUserscriptAdapter(
   createAdapter: UserscriptBridgeAdapterFactory,
   host: unknown = globalThis,
 ): UserscriptBridgeHub | undefined {
-  if (!isBrowserHost(host)) {
+  const resolved = resolveBrowserHost(host);
+  if (!resolved) {
     return undefined;
   }
-  const hub = getOrCreateUserscriptBridgeHub(host.window, host.document);
-  hub.registerAdapter(createAdapter(host.window, host.document));
+  const hub = getOrCreateUserscriptBridgeHub(resolved.window, resolved.document);
+  try {
+    hub.registerAdapter(createAdapter(resolved.window, resolved.document));
+  } catch (error) {
+    hub.reportDiagnostic(
+      `autoRegisterUserscriptAdapter failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   return hub;
 }
 
@@ -218,6 +240,24 @@ function isBrowserHost(value: unknown): value is BrowserHost {
   }
   const host = value as Partial<BrowserHost>;
   return typeof host.window !== "undefined" && typeof host.document !== "undefined";
+}
+
+function resolveBrowserHost(host: unknown): BrowserHost | undefined {
+  if (isBrowserHost(host)) {
+    return host;
+  }
+
+  // Userscript managers (Tampermonkey/Violentmonkey) may expose the real page window via unsafeWindow.
+  const unsafeWindowCandidate = (globalThis as unknown as Record<string, unknown>).unsafeWindow;
+  if (unsafeWindowCandidate && typeof unsafeWindowCandidate === "object") {
+    const win = unsafeWindowCandidate as Window;
+    const doc = (win as unknown as { document?: unknown }).document;
+    if (doc && typeof doc === "object") {
+      return { window: win, document: doc as Document };
+    }
+  }
+
+  return undefined;
 }
 
 interface WindowWithUserscriptHub extends Window {

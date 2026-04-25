@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApolloUserscriptAdapter } from "./adapters/apollo-adapter";
 import { createJotaiUserscriptAdapter } from "./adapters/jotai-adapter";
+import { createNextjsUserscriptAdapter } from "./adapters/nextjs-adapter";
+import { createNuxtUserscriptAdapter } from "./adapters/nuxt-adapter";
 import { createReactUserscriptAdapter } from "./adapters/react-adapter";
 import { createReduxDevtoolsUserscriptAdapter } from "./adapters/redux-devtools-adapter";
 import { createTanstackQueryUserscriptAdapter } from "./adapters/tanstack-query-adapter";
@@ -25,6 +27,8 @@ describe("userscript adapters", () => {
     delete (window as Window & { TANSTACK_QUERY_CLIENT?: unknown }).TANSTACK_QUERY_CLIENT;
     delete (globalThis as { __JOTAI_DEFAULT_STORE__?: unknown }).__JOTAI_DEFAULT_STORE__;
     delete (window as Window & { __REDUX_DEVTOOLS_EXTENSION__?: unknown }).__REDUX_DEVTOOLS_EXTENSION__;
+    delete (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__;
+    delete (window as Window & { __NUXT__?: unknown }).__NUXT__;
   });
 
   it("react adapter supports detect + degrade path", () => {
@@ -124,6 +128,50 @@ describe("userscript adapters", () => {
     };
     expect(actions.ok).toBe(true);
     expect(actions.actions.map((action) => action.type)).toContain("INCREMENT");
+  });
+
+  it("nextjs adapter reads __NEXT_DATA__ and degrades when missing", () => {
+    const adapter = createNextjsUserscriptAdapter(window, document);
+    const instance = adapter.listInstances()[0]!;
+
+    const missing = instance.callTool("getSummary", {}) as { detected: boolean };
+    expect(missing.detected).toBe(false);
+
+    (window as Window & { __NEXT_DATA__?: unknown }).__NEXT_DATA__ = {
+      buildId: "build-1",
+      page: "/demo",
+      query: { q: "x" },
+      props: { pageProps: { user: { id: 1, name: "Ada" } } },
+    };
+
+    const summary = instance.callTool("getSummary", {}) as { detected: boolean; page: string };
+    expect(summary.detected).toBe(true);
+    expect(summary.page).toBe("/demo");
+
+    const peek = instance.callTool("readNextData", { path: "props.pageProps.user.name" }) as { ok: boolean; preview: string };
+    expect(peek.ok).toBe(true);
+    expect(peek.preview).toContain("Ada");
+  });
+
+  it("nuxt adapter reads __NUXT__ and degrades when missing", () => {
+    const adapter = createNuxtUserscriptAdapter(window, document);
+    const instance = adapter.listInstances()[0]!;
+
+    const missing = instance.callTool("getSummary", {}) as { detected: boolean };
+    expect(missing.detected).toBe(false);
+
+    (window as Window & { __NUXT__?: unknown }).__NUXT__ = {
+      state: { auth: { user: { id: 1, name: "Ada" } } },
+      data: [{ route: "/" }],
+      serverRendered: true,
+    };
+
+    const summary = instance.callTool("getSummary", {}) as { detected: boolean };
+    expect(summary.detected).toBe(true);
+
+    const peek = instance.callTool("readNuxtPayload", { path: "state.auth.user.name" }) as { ok: boolean; preview: string };
+    expect(peek.ok).toBe(true);
+    expect(peek.preview).toContain("Ada");
   });
 });
 

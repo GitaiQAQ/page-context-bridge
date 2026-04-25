@@ -6,6 +6,8 @@ const entries = [
   "tanstack-query",
   "jotai-devtools",
   "redux-devtools",
+  "nextjs",
+  "nuxt",
 ];
 
 for (const entry of entries) {

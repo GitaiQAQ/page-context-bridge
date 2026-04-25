@@ -12,6 +12,16 @@ describe("userscript bridge hub", () => {
     delete window.__pageContextBridgeHost__;
   });
 
+  it("does not auto-install host and waits for extension injection", () => {
+    const hub = getOrCreateUserscriptBridgeHub(window, document);
+    hub.registerAdapter(createDummyAdapter("alpha", "alpha-adapter"));
+
+    expect(window.__pageContextBridgeHost__).toBeUndefined();
+    expect(window.__pageContextBridge__).toBeUndefined();
+    expect(window.__pageContextTools__).toBeUndefined();
+    expect(hub.listAdapterIds()).toEqual(["alpha-adapter"]);
+  });
+
   it("merges multiple adapters on one shared bridge without replacing bridge object", () => {
     getOrCreatePageContextBridgeHost(window, document);
     const hub = getOrCreateUserscriptBridgeHub(window, document);

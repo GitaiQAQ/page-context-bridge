@@ -23,3 +23,5 @@ export { createApolloUserscriptAdapter } from "./adapters/apollo-adapter";
 export { createTanstackQueryUserscriptAdapter } from "./adapters/tanstack-query-adapter";
 export { createJotaiUserscriptAdapter } from "./adapters/jotai-adapter";
 export { createReduxDevtoolsUserscriptAdapter } from "./adapters/redux-devtools-adapter";
+export { createNextjsUserscriptAdapter } from "./adapters/nextjs-adapter";
+export { createNuxtUserscriptAdapter } from "./adapters/nuxt-adapter";

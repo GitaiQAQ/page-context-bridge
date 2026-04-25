@@ -20,6 +20,7 @@ const HOST_VERSION = "page-context-bridge-host/1.0.0";
 const HOST_BRIDGE_MARKER = "__pageContextBridgeHostBridge__";
 // The host will adopt existing bridges before taking over window to avoid losing capabilities due to unstable loading order.
 const HOST_ADOPTED_SOURCE_ID = "adopted-window-bridge";
+const HOST_LEGACY_SOURCE_PREFIX = "legacy-window-bridge";
 const HOST_DEFAULT_SCENE = "page-context-host-idle";
 
 export const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = "page-context-bridge-host:ready";
@@ -28,6 +29,8 @@ interface HostState {
   sourcesById: Map<string, SourceEntry>;
   diagnostics: string[];
   registerOrderCursor: number;
+  bridgeSourceIdByRef: WeakMap<object, string>;
+  legacySourceCursor: number;
 }
 
 interface SourceEntry {
@@ -48,7 +51,7 @@ interface PageContextBridgeHostWindow extends Window {
 export function getOrCreatePageContextBridgeHost(win: Window, doc: Document): PageContextBridgeHost {
   const hostWindow = win as PageContextBridgeHostWindow;
   const existing = hostWindow[HOST_KEY];
-  if (existing) {
+  if (isPageContextBridgeHost(existing)) {
     return existing;
   }
 
@@ -56,6 +59,8 @@ export function getOrCreatePageContextBridgeHost(win: Window, doc: Document): Pa
     sourcesById: new Map(),
     diagnostics: [],
     registerOrderCursor: 0,
+    bridgeSourceIdByRef: new WeakMap<object, string>(),
+    legacySourceCursor: 0,
   };
   const bridge = createHostBridge(win, doc, state);
   const host: PageContextBridgeHost = {
@@ -72,7 +77,7 @@ export function getOrCreatePageContextBridgeHost(win: Window, doc: Document): Pa
   // Adopt the old bridge first, then attach the host bridge to window to ensure protocol readability remains continuous during the transition.
   adoptExistingPageBridge(state, hostWindow);
   hostWindow[HOST_KEY] = host;
-  attachHostBridge(hostWindow, bridge);
+  attachHostBridge(hostWindow, bridge, state);
   dispatchHostReadyEvent(win, host);
   return host;
 }
@@ -141,9 +146,38 @@ function adoptExistingPageBridge(state: HostState, win: PageContextBridgeHostWin
   state.diagnostics.push("Adopted existing page bridge before host attachment.");
 }
 
-function attachHostBridge(win: PageContextBridgeHostWindow, bridge: PageContextBridgeLike): void {
-  win.__pageContextBridge__ = bridge;
-  win.__pageContextTools__ = bridge;
+function attachHostBridge(win: PageContextBridgeHostWindow, bridge: PageContextBridgeLike, state: HostState): void {
+  // Maintain merge semantics via getter/setter: legacy plugins writing directly to window.__pageContextBridge__ will also be adopted as a source by the host.
+  Object.defineProperty(win, "__pageContextBridge__", {
+    configurable: true,
+    enumerable: false,
+    get: () => bridge,
+    set: (value: unknown) => {
+      adoptLegacyAssignedBridge(state, value, "__pageContextBridge__");
+    },
+  });
+  Object.defineProperty(win, "__pageContextTools__", {
+    configurable: true,
+    enumerable: false,
+    get: () => bridge,
+    set: (value: unknown) => {
+      adoptLegacyAssignedBridge(state, value, "__pageContextTools__");
+    },
+  });
+}
+
+function adoptLegacyAssignedBridge(state: HostState, candidate: unknown, key: string): void {
+  if (!isPageContextBridgeLike(candidate) || isHostBridge(candidate)) {
+    return;
+  }
+  const bridge = candidate as unknown as object;
+  let sourceId = state.bridgeSourceIdByRef.get(bridge);
+  if (!sourceId) {
+    state.legacySourceCursor += 1;
+    sourceId = `${HOST_LEGACY_SOURCE_PREFIX}:${state.legacySourceCursor}`;
+    state.bridgeSourceIdByRef.set(bridge, sourceId);
+  }
+  registerSource(state, sourceId, candidate, 70, ["legacy-assignment", key]);
 }
 
 function dispatchHostReadyEvent(win: Window, host: PageContextBridgeHost): void {
@@ -371,6 +405,11 @@ function uniqueStrings(values: string[]): string[] {
 
 function isHostBridge(value: unknown): boolean {
   return Boolean((value as Record<string, unknown> | undefined)?.[HOST_BRIDGE_MARKER]);
+}
+
+function isPageContextBridgeHost(value: unknown): value is PageContextBridgeHost {
+  const record = value as Partial<PageContextBridgeHost> | undefined;
+  return Boolean(record && typeof record.registerSource === "function");
 }
 
 function isPageContextBridgeLike(value: unknown): value is PageContextBridgeLike {
