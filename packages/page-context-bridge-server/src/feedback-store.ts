@@ -18,6 +18,14 @@ import type {
   FeedbackThreadMessage,
   FeedbackUiAnchor,
 } from "@page-context/shared-protocol";
+import {
+  cloneValue,
+  normalizeText,
+  normalizeUiAnchor,
+  normalizeUiRect,
+  normalizeUiTextRange,
+  uniqueStrings,
+} from "./feedback-normalizers";
 
 const DEFAULT_EVENT_RING_SIZE = 500;
 
@@ -498,95 +506,4 @@ export class FeedbackStore {
   private bumpSnapshotVersion(): void {
     this.state.snapshotVersion += 1;
   }
-}
-
-function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): FeedbackUiAnchor | undefined {
-  if (!anchor) {
-    return undefined;
-  }
-
-  // Anchor points only do "light cleaning + legality filtering", no recalculation, ensuring single responsibility for the store layer.
-  const framePath = Array.isArray(anchor.framePath)
-    ? anchor.framePath.filter((item) => Number.isInteger(item) && item >= 0)
-    : undefined;
-  const textRange = normalizeUiTextRange(anchor.textRange);
-  const rect = normalizeUiRect(anchor.rect);
-  const meta = anchor.meta && Object.keys(anchor.meta).length > 0 ? cloneValue(anchor.meta) : undefined;
-
-  const normalized: FeedbackUiAnchor = {
-    elementId: normalizeText(anchor.elementId),
-    cssSelector: normalizeText(anchor.cssSelector),
-    xpath: normalizeText(anchor.xpath),
-    textQuote: normalizeText(anchor.textQuote),
-    framePath: framePath?.length ? framePath : undefined,
-    textRange,
-    rect,
-    meta,
-  };
-
-  if (
-    normalized.elementId ||
-    normalized.cssSelector ||
-    normalized.xpath ||
-    normalized.textQuote ||
-    normalized.framePath ||
-    normalized.textRange ||
-    normalized.rect ||
-    normalized.meta
-  ) {
-    return normalized;
-  }
-  return undefined;
-}
-
-function normalizeUiRect(
-  rect: FeedbackUiAnchor["rect"] | undefined,
-): FeedbackUiAnchor["rect"] | undefined {
-  if (!rect) {
-    return undefined;
-  }
-  // Invalid geometric data is directly discarded to avoid NaN/negative dimensions in subsequent playback chains.
-  const x = Number(rect.x);
-  const y = Number(rect.y);
-  const width = Number(rect.width);
-  const height = Number(rect.height);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
-    return undefined;
-  }
-  if (width < 0 || height < 0) {
-    return undefined;
-  }
-  return { x, y, width, height };
-}
-
-function normalizeUiTextRange(
-  range: FeedbackUiAnchor["textRange"] | undefined,
-): FeedbackUiAnchor["textRange"] | undefined {
-  if (!range) {
-    return undefined;
-  }
-
-  // Text range must satisfy [start, end] with start/end being non-negative integers.
-  const start = Number(range.start);
-  const end = Number(range.end);
-  if (!Number.isInteger(start) || !Number.isInteger(end)) {
-    return undefined;
-  }
-  if (start < 0 || end < start) {
-    return undefined;
-  }
-  return { start, end };
-}
-
-function normalizeText(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values));
-}
-
-function cloneValue<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
 }

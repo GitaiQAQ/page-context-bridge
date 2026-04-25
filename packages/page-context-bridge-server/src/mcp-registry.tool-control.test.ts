@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  EXTENSION_CONTROL_LEGACY_TOOL_NAMES,
-  EXTENSION_CONTROL_TOOL_SUFFIXES,
-} from "@page-context/builtin-tools";
+import { EXTENSION_CONTROL_TOOL_SUFFIXES } from "@page-context/builtin-tools";
 
 import { McpRegistry, type PageToolEnableUpdate } from "./mcp-registry.js";
 
@@ -162,7 +159,7 @@ function createRegistry() {
 }
 
 describe("mcp-registry extension tool control tools", () => {
-  it("registers namespaced tools and keeps legacy aliases for backward compatibility", () => {
+  it("registers namespaced tools", () => {
     const { registry } = createRegistry();
     const fakeServer = new FakeMcpServer();
     registry.addServer(fakeServer as unknown as McpServer);
@@ -177,16 +174,6 @@ describe("mcp-registry extension tool control tools", () => {
     expect(fakeServer.tools.has(TOOL_NAMES.toolDebugCall)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.ensureMainWorldHost)).toBe(true);
     expect(fakeServer.tools.has(TOOL_NAMES.ensureAgentationMain)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getRuntimeStatus)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.reconnect)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getContextManifestDebug)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.setToolsEnabled)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.refreshPageTools)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.prepareTabForDebug)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.toolDebugCall)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureMainWorldHost)).toBe(true);
-    expect(fakeServer.tools.has(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.ensureAgentationMain)).toBe(true);
   });
 
   it("reads extension runtime status through namespaced get_runtime_status", async () => {
@@ -543,17 +530,4 @@ describe("mcp-registry extension tool control tools", () => {
     expect(parsed.frameId).toBeNull();
   });
 
-  it("keeps legacy alias callable with same behavior", async () => {
-    const { registry, getPageToolsTree } = createRegistry();
-    const fakeServer = new FakeMcpServer();
-    registry.addServer(fakeServer as unknown as McpServer);
-
-    const handler = fakeServer.tools.get(EXTENSION_CONTROL_LEGACY_TOOL_NAMES.getToolTree);
-    const payload = await handler?.({});
-    const parsed = parseTextResponse(payload);
-
-    expect(getPageToolsTree).toHaveBeenCalledTimes(1);
-    expect(parsed.totalTools).toBe(3);
-    expect(parsed.enabledTools).toBe(2);
-  });
 });

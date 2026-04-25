@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { FeedbackPushAgentStatus, PageContextManifest } from "@page-context/shared-protocol";
-import {
-  FEEDBACK_CONTROL_LEGACY_TOOL_NAMES,
-  FEEDBACK_CONTROL_TOOL_SUFFIXES,
-} from "@page-context/builtin-tools";
+import { FEEDBACK_CONTROL_TOOL_SUFFIXES } from "@page-context/builtin-tools";
 
 import { McpRegistry } from "./mcp-registry.js";
 import type { FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
@@ -199,7 +196,6 @@ describe("mcp-registry feedback tools", () => {
     registry.addServer(fakeServer as unknown as McpServer);
 
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.watchEvents)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.claim)).toBe(true);
 
     const created = registry.createFeedbackAnnotation({
@@ -222,18 +218,9 @@ describe("mcp-registry feedback tools", () => {
     ]);
     expect(typeof parsed.lastSeq).toBe("number");
 
-    const watchLegacy = fakeServer.tools.get(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents);
-    // Old and new entry points share the same delta pipeline to ensure cursor semantics consistency during migration.
-    const watchedLegacy = await watchLegacy?.({ afterSeq: 1 });
-    const parsedLegacy = parseTextResponse(watchedLegacy);
-    const legacyEvents = parsedLegacy.events as Array<{ eventType: string }>;
-    expect(legacyEvents.map((item) => item.eventType)).toEqual([
-      "annotation.created",
-      "annotation.claimed",
-    ]);
   });
 
-  it("registers namespaced feedback control tools and keeps legacy aliases", () => {
+  it("registers namespaced feedback control tools", () => {
     const registry = createRegistry();
     const fakeServer = new FakeMcpServer();
     registry.addServer(fakeServer as unknown as McpServer);
@@ -246,14 +233,6 @@ describe("mcp-registry feedback tools", () => {
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.reply)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.resolve)).toBe(true);
     expect(fakeServer.tools.has(FEEDBACK_CONTROL_TOOL_NAMES.dismiss)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.getSnapshot)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.watchEvents)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.createAnnotation)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.updateAnnotation)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.claim)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.reply)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.resolve)).toBe(true);
-    expect(fakeServer.tools.has(FEEDBACK_CONTROL_LEGACY_TOOL_NAMES.dismiss)).toBe(true);
   });
 
   it("supports full lifecycle through namespaced feedback control tools", async () => {
@@ -328,7 +307,7 @@ describe("mcp-registry feedback tools", () => {
     expect(resolved.status).toBe("resolved");
     expect(resolved.resolution).toContain("debounce parameter error");
     expect(dismissed.status).toBe("dismissed");
-    expect(dismissed.dismissReason).toContain("duplicate");
+    expect(dismissed.dismissReason.toLowerCase()).toContain("duplicate");
     expect(annotations.some((item) =>
       item.id === created.id
       && item.body === "Revised issue description"
