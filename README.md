@@ -419,6 +419,7 @@ Not yet completed:
 
 ## Documentation
 
+- [Documentation Index](./docs/README.md)
 - [Architecture: Browser Extension ↔ MCP Bridge](./docs/architecture/browser-extension-mcp-bridge.md)
 - [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
 - [Capability Pipeline Design](./docs/page-context-capability-pipeline.md)

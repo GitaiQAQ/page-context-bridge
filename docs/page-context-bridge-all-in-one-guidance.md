@@ -105,7 +105,7 @@ Definition of done:
 - What changed between two runtime snapshots?
 2. Answers must be reproducible from resources/tool outputs, not guesswork.
 
-## 5. Proven Blueprint From `campaign-creation`
+## 5. Proven Blueprint From A Complex Business Page
 
 A proven namespace layout is:
 
@@ -168,12 +168,12 @@ Use a private project-scoped registry key. Do not use `window.__pageContextBridg
 
 ```ts
 const PAGE_CONTEXT_BRIDGE_VERSION = "2.0.0"
-const PAGE_CONTEXT_SOURCE_ID = "campaign-selector-page-runtime"
-const PAGE_CONTEXT_BRIDGE_REGISTRY_KEY = "__campaignSelectorPageContextBridgeRegistry__"
+const PAGE_CONTEXT_SOURCE_ID = "example-page-runtime"
+const PAGE_CONTEXT_BRIDGE_REGISTRY_KEY = "__examplePageContextBridgeRegistry__"
 
 type MountedInstance = {
   instanceId: string
-  model: CampaignSelectorModelModule
+  model: BusinessPageModelModule
   api: PageContextInstanceApi
 }
 
@@ -186,7 +186,7 @@ declare global {
   interface Window {
     __pageContextBridgeHost__?: PageContextBridgeHost
     __pageContextBridge__?: PageContextBridgeLike
-    __campaignSelectorPageContextBridgeRegistry__?: MutablePageContextBridge
+    __examplePageContextBridgeRegistry__?: MutablePageContextBridge
   }
 }
 
@@ -273,7 +273,7 @@ function bindBridgeToPageContextHost(bridge: PageContextBridgeLike): () => void 
       sourceId: PAGE_CONTEXT_SOURCE_ID,
       bridge,
       priority: 120,
-      tags: ["page", "campaign-selector"],
+      tags: ["page", "example-app"],
     })
 
     stopListeningHostReadyEvent()
@@ -315,7 +315,7 @@ Use one source bridge and many mounted instances.
 ```ts
 export function mountPageContextInstance(input: {
   instanceId: string
-  model: CampaignSelectorModelModule
+  model: BusinessPageModelModule
   api: PageContextInstanceApi
 }): () => void {
   if (typeof window === "undefined") {
