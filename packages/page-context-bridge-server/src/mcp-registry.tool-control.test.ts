@@ -103,7 +103,7 @@ function createRegistry() {
                   kind: 'builtin-tool',
                   namespace: 'builtin',
                   instanceId: 'default',
-                  toolName: 'builtin.list_tabs',
+                  toolName: 'builtin.tabs.list_tabs',
                   enabled: true,
                   readOnly: true,
                 },
@@ -111,7 +111,7 @@ function createRegistry() {
                   kind: 'builtin-tool',
                   namespace: 'builtin',
                   instanceId: 'default',
-                  toolName: 'builtin.execute_js',
+                  toolName: 'builtin.dom.execute_js',
                   enabled: true,
                   readOnly: false,
                 },
@@ -119,7 +119,7 @@ function createRegistry() {
                   kind: 'builtin-tool',
                   namespace: 'builtin',
                   instanceId: 'default',
-                  toolName: 'builtin.get_console_logs',
+                  toolName: 'builtin.console.get_console_logs',
                   enabled: false,
                   readOnly: true,
                 },
@@ -281,16 +281,16 @@ describe('mcp-registry extension tool control tools', () => {
 
     const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
     const payload = await handler?.({
-      toolName: 'builtin.list_tabs',
+      toolName: 'builtin.tabs.list_tabs',
       args: { limit: 5 },
     });
     const parsed = parseTextResponse(payload);
 
     expect(getPageToolsTree).toHaveBeenCalledTimes(1);
     expect(debugToolCall).toHaveBeenCalledTimes(1);
-    expect(debugToolCall).toHaveBeenCalledWith('builtin.list_tabs', { limit: 5 }, undefined);
+    expect(debugToolCall).toHaveBeenCalledWith('builtin.tabs.list_tabs', { limit: 5 }, undefined);
     expect(parsed.ok).toBe(true);
-    expect(parsed.toolName).toBe('builtin.list_tabs');
+    expect(parsed.toolName).toBe('builtin.tabs.list_tabs');
   });
 
   it('blocks non-readonly tools in namespaced tool_debug_call', async () => {
@@ -300,7 +300,7 @@ describe('mcp-registry extension tool control tools', () => {
 
     const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
     const payload = await handler?.({
-      toolName: 'builtin.execute_js',
+      toolName: 'builtin.dom.execute_js',
       args: { expression: 'window.location.href' },
     });
     const parsed = parseTextResponse(payload);
@@ -317,7 +317,7 @@ describe('mcp-registry extension tool control tools', () => {
 
     const handler = fakeServer.tools.get(TOOL_NAMES.toolDebugCall);
     const payload = await handler?.({
-      toolName: 'builtin.get_console_logs',
+      toolName: 'builtin.console.get_console_logs',
     });
     const parsed = parseTextResponse(payload);
 
@@ -334,7 +334,7 @@ describe('mcp-registry extension tool control tools', () => {
     const handler = fakeServer.tools.get(TOOL_NAMES.setToolsEnabled);
     const payload = await handler?.({
       updates: [
-        { root: 'builtin', toolName: 'builtin.list_tabs', enabled: false },
+        { root: 'builtin', toolName: 'builtin.tabs.list_tabs', enabled: false },
         { root: 'page', tabId: 88, namespace: 'crm', toolName: 'crm.inspect', enabled: true },
       ],
     });
@@ -343,7 +343,7 @@ describe('mcp-registry extension tool control tools', () => {
     // Batch switching should only issue one batch call to avoid agent side writing manual loops.
     expect(setPageToolsEnabledBatch).toHaveBeenCalledTimes(1);
     expect(setPageToolsEnabledBatch).toHaveBeenCalledWith([
-      { root: 'builtin', toolName: 'builtin.list_tabs', enabled: false },
+      { root: 'builtin', toolName: 'builtin.tabs.list_tabs', enabled: false },
       { root: 'page', tabId: 88, namespace: 'crm', toolName: 'crm.inspect', enabled: true },
     ]);
     expect(parsed.applied).toBe(2);
@@ -421,7 +421,7 @@ describe('mcp-registry extension tool control tools', () => {
                     kind: 'builtin-tool',
                     namespace: 'builtin',
                     instanceId: 'default',
-                    toolName: 'builtin.list_tabs',
+                    toolName: 'builtin.tabs.list_tabs',
                     enabled: true,
                     readOnly: true,
                   },
@@ -429,7 +429,7 @@ describe('mcp-registry extension tool control tools', () => {
                     kind: 'builtin-tool',
                     namespace: 'builtin',
                     instanceId: 'default',
-                    toolName: 'builtin.execute_js',
+                    toolName: 'builtin.dom.execute_js',
                     enabled: true,
                     readOnly: false,
                   },
@@ -437,7 +437,7 @@ describe('mcp-registry extension tool control tools', () => {
                     kind: 'builtin-tool',
                     namespace: 'builtin',
                     instanceId: 'default',
-                    toolName: 'builtin.get_console_logs',
+                    toolName: 'builtin.console.get_console_logs',
                     enabled: false,
                     readOnly: true,
                   },
@@ -494,7 +494,7 @@ describe('mcp-registry extension tool control tools', () => {
     expect(getPageToolsTree).toHaveBeenCalledTimes(1);
     expect(setPageToolsEnabledBatch).toHaveBeenCalledTimes(1);
     expect(setPageToolsEnabledBatch).toHaveBeenCalledWith([
-      { root: 'builtin', toolName: 'builtin.get_console_logs', enabled: true },
+      { root: 'builtin', toolName: 'builtin.console.get_console_logs', enabled: true },
       {
         root: 'page',
         tabId: 88,

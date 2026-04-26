@@ -1,5 +1,10 @@
 node_modules
 dist
+packages/*/src/*.js
+packages/*/src/*.js.map
+packages/*/src/*.d.ts
+tsconfig.tsbuildinfo
+vite.config.*.js
 *.pem
 .tmp
 .env

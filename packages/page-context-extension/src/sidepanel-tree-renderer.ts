@@ -95,7 +95,12 @@ function normalizeBuiltinNamespaces(builtins: ToolTreeBuiltins): ToolTreeBuiltin
   // Compatible with old flat structure to avoid blank sidepanel during version transitions.
   const byNamespace = new Map<string, ToolTreeBuiltinTool[]>();
   for (const tool of builtins.tools ?? []) {
-    const namespace = tool.namespace || tool.toolName.split('.')[0] || 'builtin';
+    // Extract semantic category from 3-segment names: builtin.<category>.<action>
+    const parts = tool.toolName.split('.');
+    const namespace =
+      tool.namespace ||
+      (parts.length >= 3 && parts[0] === 'builtin' ? parts[1] : parts[0]) ||
+      'builtin';
     const normalizedTool = {
       ...tool,
       namespace,

@@ -7,7 +7,11 @@
  */
 
 import { z } from 'zod';
-import { builtinRuntimeToolName, BUILTIN_RUNTIME_NAMESPACE } from './runtime-tool-names.js';
+import {
+  builtinToolName,
+  BUILTIN_CATEGORY,
+  BUILTIN_RUNTIME_NAMESPACE,
+} from './runtime-tool-names.js';
 
 function createTextResponse(text: string) {
   return { content: [{ type: 'text' as const, text }] };
@@ -866,7 +870,7 @@ function pickDebugTargetFromToolTree(
 ): DebugToolTreeCandidate | null {
   const canonicalToolName = toolName.startsWith(`${BUILTIN_RUNTIME_NAMESPACE}.`)
     ? toolName
-    : builtinRuntimeToolName(toolName);
+    : builtinToolName(BUILTIN_CATEGORY.tabs, toolName);
   const builtinMatches = collectBuiltinToolMatches(tree, canonicalToolName);
   const pageMatches = collectPageToolMatches(tree, toolName, preferredTabId);
 

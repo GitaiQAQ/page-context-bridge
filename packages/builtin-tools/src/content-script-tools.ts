@@ -24,7 +24,7 @@ export function executeContentScriptTool(
 
   // Historical (non-namespaced) aliases are intentionally NOT supported.
   switch (tool) {
-    case 'builtin.get_page_info':
+    case 'builtin.page.get_page_info':
       return {
         url: win.location.href,
         title: doc.title,
@@ -35,11 +35,11 @@ export function executeContentScriptTool(
             content: element.getAttribute('content') || '',
           })),
       };
-    case 'builtin.get_selected_text': {
+    case 'builtin.dom.get_selected_text': {
       const selection = win.getSelection();
       return { text: selection ? selection.toString() : '' };
     }
-    case 'builtin.click_element': {
+    case 'builtin.dom.click_element': {
       const selector = String(args.selector ?? '');
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -48,7 +48,7 @@ export function executeContentScriptTool(
       element.click();
       return { clicked: true, selector };
     }
-    case 'builtin.scroll_into_view': {
+    case 'builtin.dom.scroll_into_view': {
       const selector = String(args.selector ?? '');
       const behavior = String(args.behavior ?? 'auto');
       const element = doc.querySelector<HTMLElement>(selector);
@@ -62,7 +62,7 @@ export function executeContentScriptTool(
       });
       return { scrolled: true, selector };
     }
-    case 'builtin.get_element_text': {
+    case 'builtin.dom.get_element_text': {
       const selector = String(args.selector ?? '');
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -70,7 +70,7 @@ export function executeContentScriptTool(
       }
       return { text: element.textContent, selector };
     }
-    case 'builtin.get_element_html': {
+    case 'builtin.dom.get_element_html': {
       const selector = String(args.selector ?? '');
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -86,7 +86,7 @@ export function executeContentScriptTool(
       }
       return { html, selector };
     }
-    case 'builtin.query_elements': {
+    case 'builtin.dom.query_elements': {
       const selector = String(args.selector ?? '');
       const limit = Number(args.limit ?? 20);
       const matches = Array.from(doc.querySelectorAll<HTMLElement>(selector));
@@ -106,7 +106,7 @@ export function executeContentScriptTool(
         })),
       };
     }
-    case 'builtin.fill_input': {
+    case 'builtin.dom.fill_input': {
       const selector = String(args.selector ?? '');
       const value = String(args.value ?? '');
       const element = doc.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
@@ -126,7 +126,7 @@ export function executeContentScriptTool(
       element.dispatchEvent(new Event('change', { bubbles: true }));
       return { filled: true, selector, value };
     }
-    case 'builtin.execute_js': {
+    case 'builtin.dom.execute_js': {
       // SECURITY: This eval executes arbitrary JavaScript in the page context.
       // This is intentional — the execute_js MCP tool allows deep page inspection.
       // The MCP bridge server runs locally and relies on local network isolation.
@@ -146,7 +146,7 @@ export function executeContentScriptTool(
         };
       }
     }
-    case 'builtin.get_console_logs': {
+    case 'builtin.console.get_console_logs': {
       const limit = Number(args.limit ?? 50);
       const level = String(args.level ?? 'all');
       const filtered =
@@ -158,7 +158,7 @@ export function executeContentScriptTool(
         total: filtered.length,
       };
     }
-    case 'builtin.wait_for_selector': {
+    case 'builtin.dom.wait_for_selector': {
       const selector = String(args.selector ?? '');
       const state = String(args.state ?? 'attached');
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 10_000)));

@@ -24,8 +24,8 @@ vi.mock('./runtime-rpc', () => ({
 describe('side-panel-app tools tree interactions', () => {
   const originalChrome = globalThis.chrome;
   const builtinTools: PageToolSpec[] = [
-    { name: 'builtin.get_page_info', description: 'Get page info' },
-    { name: 'builtin.navigate', description: 'Navigate tab' },
+    { name: 'builtin.page.get_page_info', description: 'Get page info' },
+    { name: 'builtin.page.navigate', description: 'Navigate tab' },
     {
       name: 'extension.get_runtime_status',
       description: 'Get runtime status',
@@ -221,9 +221,9 @@ describe('side-panel-app tools tree interactions', () => {
     });
 
     // Built-in structure should be rendered as a namespace/instance tree, not a flat list.
-    expect(findCheckbox(element, { scope: 'builtin', namespace: 'builtin' })).not.toBeNull();
+    expect(findCheckbox(element, { scope: 'builtin', namespace: 'page' })).not.toBeNull();
     expect(
-      findCheckbox(element, { scope: 'builtin', namespace: 'builtin', instanceId: 'default' }),
+      findCheckbox(element, { scope: 'builtin', namespace: 'page', instanceId: 'default' }),
     ).not.toBeNull();
     expect(findCheckbox(element, { scope: 'builtin', namespace: 'extension' })?.disabled).toBe(
       true,
@@ -483,10 +483,11 @@ describe('side-panel-app tools tree interactions', () => {
       expect(findCheckbox(element, { scope: 'builtin' })?.checked).toBe(false);
       // Regular builtin can be disabled; bridge control builtin remains read-only visible, not participating in toggle.
       expect(
-        findCheckbox(element, { scope: 'builtin', toolName: 'builtin.get_page_info' })?.checked,
+        findCheckbox(element, { scope: 'builtin', toolName: 'builtin.page.get_page_info' })
+          ?.checked,
       ).toBe(false);
       expect(
-        findCheckbox(element, { scope: 'builtin', toolName: 'builtin.navigate' })?.checked,
+        findCheckbox(element, { scope: 'builtin', toolName: 'builtin.page.navigate' })?.checked,
       ).toBe(false);
       expect(
         findCheckbox(element, { scope: 'builtin', toolName: 'extension.get_runtime_status' })
@@ -518,14 +519,14 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       expect(
-        findCheckbox(element, { root: 'builtin', scope: 'builtin', namespace: 'builtin' }),
+        findCheckbox(element, { root: 'builtin', scope: 'builtin', namespace: 'page' }),
       ).not.toBeNull();
     });
 
     const builtinNamespaceCheckbox = findCheckbox(element, {
       root: 'builtin',
       scope: 'builtin',
-      namespace: 'builtin',
+      namespace: 'page',
     });
     expect(builtinNamespaceCheckbox).not.toBeNull();
     builtinNamespaceCheckbox!.checked = false;
@@ -536,12 +537,15 @@ describe('side-panel-app tools tree interactions', () => {
         findCheckbox(element, {
           root: 'builtin',
           scope: 'builtin',
-          toolName: 'builtin.get_page_info',
+          toolName: 'builtin.page.get_page_info',
         })?.checked,
       ).toBe(false);
       expect(
-        findCheckbox(element, { root: 'builtin', scope: 'builtin', toolName: 'builtin.navigate' })
-          ?.checked,
+        findCheckbox(element, {
+          root: 'builtin',
+          scope: 'builtin',
+          toolName: 'builtin.page.navigate',
+        })?.checked,
       ).toBe(false);
       expect(
         findCheckbox(element, {
@@ -557,7 +561,7 @@ describe('side-panel-app tools tree interactions', () => {
       {
         root: 'builtin',
         tabId: undefined,
-        namespace: 'builtin',
+        namespace: 'page',
         instanceId: undefined,
         toolName: undefined,
         enabled: false,
@@ -578,7 +582,7 @@ describe('side-panel-app tools tree interactions', () => {
     });
 
     const regularBuiltinTestButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
-      'button[data-action="test-tool"][data-root="builtin"][data-tool-name="builtin.get_page_info"]',
+      'button[data-action="test-tool"][data-root="builtin"][data-tool-name="builtin.page.get_page_info"]',
     );
     const bridgeControlTestButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
       'button[data-action="test-tool"][data-root="builtin"][data-tool-name="extension.get_runtime_status"]',

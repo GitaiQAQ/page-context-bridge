@@ -11,13 +11,13 @@ import { BUILTIN_RUNTIME_NAMESPACE } from '@page-context/builtin-tools';
  * All other builtin runtime tools are disabled unless explicitly enabled in preferences.
  */
 const DEFAULT_ENABLED_BUILTIN_RUNTIME_TOOLS = new Set<string>([
-  'builtin.list_tabs',
-  'builtin.get_page_info',
-  'builtin.get_selected_text',
-  'builtin.get_element_text',
-  'builtin.get_element_html',
-  'builtin.query_elements',
-  'builtin.get_console_logs',
+  'builtin.tabs.list_tabs',
+  'builtin.page.get_page_info',
+  'builtin.dom.get_selected_text',
+  'builtin.dom.get_element_text',
+  'builtin.dom.get_element_html',
+  'builtin.dom.query_elements',
+  'builtin.console.get_console_logs',
 ]);
 
 export interface PageToolPreferences {
@@ -538,6 +538,17 @@ function parseBuiltinToolPath(toolName: string): {
   instanceId: string;
   label: string;
 } {
+  // Support 3-segment canonical names: builtin.<category>.<action>
+  // Extract <category> as the semantic namespace.
+  const parts = toolName.split('.');
+  if (parts.length >= 3 && parts[0] === BUILTIN_RUNTIME_NAMESPACE) {
+    return {
+      namespace: parts[1],
+      instanceId: 'default',
+      label: parts.slice(2).join('.'),
+    };
+  }
+  // Legacy 2-segment or flat names
   const firstDot = toolName.indexOf('.');
   if (firstDot < 0) {
     return { namespace: 'builtin', instanceId: 'default', label: toolName };

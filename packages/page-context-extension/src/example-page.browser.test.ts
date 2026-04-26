@@ -107,26 +107,26 @@ describe('example page', () => {
     bootstrapExamplePage(window, document);
 
     const environment = { win: window, doc: document, consoleEntries: [] };
-    expect(executeContentScriptTool('builtin.get_page_info', {}, environment)).toMatchObject({
+    expect(executeContentScriptTool('builtin.page.get_page_info', {}, environment)).toMatchObject({
       title: 'Page Context Bridge - Test Page',
     });
     expect(
       executeContentScriptTool(
-        'builtin.query_elements',
+        'builtin.dom.query_elements',
         { selector: '#items-list li' },
         environment,
       ),
     ).toMatchObject({ count: 2 });
     expect(
       executeContentScriptTool(
-        'builtin.fill_input',
+        'builtin.dom.fill_input',
         { selector: '#full-name-input', value: 'Trae QA' },
         environment,
       ),
     ).toMatchObject({ filled: true });
     expect(
       executeContentScriptTool(
-        'builtin.get_element_text',
+        'builtin.dom.get_element_text',
         { selector: '#selection-target' },
         environment,
       ),

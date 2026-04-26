@@ -20,9 +20,9 @@ describe('BuiltinBridgeProvider', () => {
     expect(Array.isArray(specs)).toBe(true);
     expect(specs.length).toBeGreaterThan(20);
 
-    // All specs should use canonical namespaced names
+    // All specs should use canonical namespaced names with category
     for (const spec of specs) {
-      expect(spec.name).toMatch(/^builtin\./);
+      expect(spec.name).toMatch(/^builtin\.[a-z]+\./);
     }
   });
 
@@ -34,8 +34,8 @@ describe('BuiltinBridgeProvider', () => {
 
     const handles = provider.registerOnBridge(registerTool, rpc);
 
-    // Should register canonical names only
-    expect(handles.has('builtin.list_tabs')).toBe(true);
-    expect(handles.has('builtin.navigate')).toBe(true);
+    // Should register semantic category names
+    expect(handles.has('builtin.tabs.list_tabs')).toBe(true);
+    expect(handles.has('builtin.page.navigate')).toBe(true);
   });
 });

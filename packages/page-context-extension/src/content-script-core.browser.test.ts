@@ -19,11 +19,11 @@ describe('executeContentScriptTool', () => {
 
   it('returns page info and queries elements', () => {
     const environment = { win: window, doc: document, consoleEntries: [] };
-    expect(executeContentScriptTool('builtin.get_page_info', {}, environment)).toMatchObject({
+    expect(executeContentScriptTool('builtin.page.get_page_info', {}, environment)).toMatchObject({
       title: 'Demo',
     });
     expect(
-      executeContentScriptTool('builtin.query_elements', { selector: '.item' }, environment),
+      executeContentScriptTool('builtin.dom.query_elements', { selector: '.item' }, environment),
     ).toMatchObject({ count: 2 });
   });
 
@@ -33,7 +33,7 @@ describe('executeContentScriptTool', () => {
     document.getElementById('name')?.addEventListener('change', () => events.push('change'));
 
     const result = executeContentScriptTool(
-      'builtin.fill_input',
+      'builtin.dom.fill_input',
       { selector: '#name', value: 'Trae' },
       { win: window, doc: document, consoleEntries: [] },
     );

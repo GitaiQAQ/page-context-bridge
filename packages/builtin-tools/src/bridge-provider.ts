@@ -7,7 +7,7 @@
 
 import type { BridgeToolProvider, BridgeToolCallFn, ToolSpec } from '@page-context/shared-protocol';
 import { z } from 'zod';
-import { builtinRuntimeToolName } from './runtime-tool-names.js';
+import { builtinToolName, BUILTIN_CATEGORY } from './runtime-tool-names.js';
 
 const MAX_TEXT_CHARS = 50_000;
 
@@ -78,72 +78,25 @@ interface ConsoleLogsResult {
  * All builtin tool specs for discovery by the extension side.
  */
 const TOOL_SPECS: ToolSpec[] = [
+  // --- tabs ---
   {
-    name: builtinRuntimeToolName('list_tabs'),
+    name: builtinToolName(BUILTIN_CATEGORY.tabs, 'list_tabs'),
     description: 'List all open browser tabs',
     inputSchema: {},
     annotations: { readOnlyHint: true },
   },
   {
-    name: builtinRuntimeToolName('get_page_info'),
-    description: 'Get the current page URL, title, and metadata',
+    name: builtinToolName(BUILTIN_CATEGORY.tabs, 'open_tab'),
+    description: 'Open a new tab',
+    inputSchema: { url: z.string(), active: z.boolean().optional() },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.tabs, 'close_tab'),
+    description: 'Close a tab',
     inputSchema: { tabId: z.number().optional() },
-    annotations: { readOnlyHint: true },
   },
   {
-    name: builtinRuntimeToolName('get_selected_text'),
-    description: 'Get the currently selected text on the page',
-    inputSchema: { tabId: z.number().optional() },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: builtinRuntimeToolName('click_element'),
-    description: 'Click an element on the page by CSS selector',
-    inputSchema: { selector: z.string(), tabId: z.number().optional() },
-  },
-  {
-    name: builtinRuntimeToolName('scroll_into_view'),
-    description: 'Scroll an element into view by CSS selector',
-    inputSchema: {
-      selector: z.string(),
-      behavior: z.enum(['auto', 'smooth']).optional(),
-      tabId: z.number().optional(),
-    },
-  },
-  {
-    name: builtinRuntimeToolName('get_element_text'),
-    description: 'Get text content of an element',
-    inputSchema: { selector: z.string(), tabId: z.number().optional() },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: builtinRuntimeToolName('get_element_html'),
-    description: 'Get outer HTML of an element',
-    inputSchema: { selector: z.string(), tabId: z.number().optional() },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: builtinRuntimeToolName('query_elements'),
-    description: 'Query elements by CSS selector',
-    inputSchema: {
-      selector: z.string(),
-      limit: z.number().optional(),
-      tabId: z.number().optional(),
-    },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: builtinRuntimeToolName('fill_input'),
-    description: 'Fill an input field with a value',
-    inputSchema: { selector: z.string(), value: z.string(), tabId: z.number().optional() },
-  },
-  {
-    name: builtinRuntimeToolName('execute_js'),
-    description: 'Execute JavaScript expression in page context',
-    inputSchema: { expression: z.string(), tabId: z.number().optional() },
-  },
-  {
-    name: builtinRuntimeToolName('screenshot_tab'),
+    name: builtinToolName(BUILTIN_CATEGORY.tabs, 'screenshot_tab'),
     description: 'Take a screenshot of the current tab',
     inputSchema: {
       format: z.enum(['png', 'jpeg']).optional(),
@@ -152,8 +105,58 @@ const TOOL_SPECS: ToolSpec[] = [
     },
     annotations: { readOnlyHint: true },
   },
+  // --- page ---
   {
-    name: builtinRuntimeToolName('screenshot_page'),
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'get_page_info'),
+    description: 'Get the current page URL, title, and metadata',
+    inputSchema: { tabId: z.number().optional() },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'navigate'),
+    description: 'Navigate the current tab to a URL',
+    inputSchema: {
+      url: z.string(),
+      waitUntil: z.enum(['load', 'none']).optional(),
+      timeoutMs: z.number().optional(),
+      tabId: z.number().optional(),
+    },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'reload'),
+    description: 'Reload the tab',
+    inputSchema: {
+      bypassCache: z.boolean().optional(),
+      waitUntil: z.enum(['load', 'none']).optional(),
+      timeoutMs: z.number().optional(),
+      tabId: z.number().optional(),
+    },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'go_back'),
+    description: 'Go back in history',
+    inputSchema: {
+      waitUntil: z.enum(['load', 'none']).optional(),
+      timeoutMs: z.number().optional(),
+      tabId: z.number().optional(),
+    },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'go_forward'),
+    description: 'Go forward in history',
+    inputSchema: {
+      waitUntil: z.enum(['load', 'none']).optional(),
+      timeoutMs: z.number().optional(),
+      tabId: z.number().optional(),
+    },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'wait_for_navigation'),
+    description: 'Wait for the tab navigation to complete',
+    inputSchema: { timeoutMs: z.number().optional(), tabId: z.number().optional() },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.page, 'screenshot_page'),
     description: 'Capture a screenshot via CDP (supports fullPage)',
     inputSchema: {
       format: z.enum(['png', 'jpeg']).optional(),
@@ -164,71 +167,61 @@ const TOOL_SPECS: ToolSpec[] = [
     },
     annotations: { readOnlyHint: true },
   },
+  // --- dom ---
   {
-    name: builtinRuntimeToolName('get_console_logs'),
-    description: 'Get recent console log entries from the page',
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'get_selected_text'),
+    description: 'Get the currently selected text on the page',
+    inputSchema: { tabId: z.number().optional() },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'click_element'),
+    description: 'Click an element on the page by CSS selector',
+    inputSchema: { selector: z.string(), tabId: z.number().optional() },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'scroll_into_view'),
+    description: 'Scroll an element into view by CSS selector',
     inputSchema: {
+      selector: z.string(),
+      behavior: z.enum(['auto', 'smooth']).optional(),
+      tabId: z.number().optional(),
+    },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'get_element_text'),
+    description: 'Get text content of an element',
+    inputSchema: { selector: z.string(), tabId: z.number().optional() },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'get_element_html'),
+    description: 'Get outer HTML of an element',
+    inputSchema: { selector: z.string(), tabId: z.number().optional() },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'query_elements'),
+    description: 'Query elements by CSS selector',
+    inputSchema: {
+      selector: z.string(),
       limit: z.number().optional(),
-      level: z.enum(['all', 'log', 'warn', 'error', 'info']).optional(),
       tabId: z.number().optional(),
     },
     annotations: { readOnlyHint: true },
   },
   {
-    name: builtinRuntimeToolName('navigate'),
-    description: 'Navigate the current tab to a URL',
-    inputSchema: {
-      url: z.string(),
-      waitUntil: z.enum(['load', 'none']).optional(),
-      timeoutMs: z.number().optional(),
-      tabId: z.number().optional(),
-    },
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'fill_input'),
+    description: 'Fill an input field with a value',
+    inputSchema: { selector: z.string(), value: z.string(), tabId: z.number().optional() },
   },
   {
-    name: builtinRuntimeToolName('wait_for_navigation'),
-    description: 'Wait for the tab navigation to complete',
-    inputSchema: { timeoutMs: z.number().optional(), tabId: z.number().optional() },
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'execute_js'),
+    description: 'Execute JavaScript expression in page context',
+    inputSchema: { expression: z.string(), tabId: z.number().optional() },
   },
   {
-    name: builtinRuntimeToolName('reload'),
-    description: 'Reload the tab',
-    inputSchema: {
-      bypassCache: z.boolean().optional(),
-      waitUntil: z.enum(['load', 'none']).optional(),
-      timeoutMs: z.number().optional(),
-      tabId: z.number().optional(),
-    },
-  },
-  {
-    name: builtinRuntimeToolName('go_back'),
-    description: 'Go back in history',
-    inputSchema: {
-      waitUntil: z.enum(['load', 'none']).optional(),
-      timeoutMs: z.number().optional(),
-      tabId: z.number().optional(),
-    },
-  },
-  {
-    name: builtinRuntimeToolName('go_forward'),
-    description: 'Go forward in history',
-    inputSchema: {
-      waitUntil: z.enum(['load', 'none']).optional(),
-      timeoutMs: z.number().optional(),
-      tabId: z.number().optional(),
-    },
-  },
-  {
-    name: builtinRuntimeToolName('open_tab'),
-    description: 'Open a new tab',
-    inputSchema: { url: z.string(), active: z.boolean().optional() },
-  },
-  {
-    name: builtinRuntimeToolName('close_tab'),
-    description: 'Close a tab',
-    inputSchema: { tabId: z.number().optional() },
-  },
-  {
-    name: builtinRuntimeToolName('wait_for_selector'),
+    name: builtinToolName(BUILTIN_CATEGORY.dom, 'wait_for_selector'),
     description: 'Wait for an element to appear',
     inputSchema: {
       selector: z.string(),
@@ -237,8 +230,20 @@ const TOOL_SPECS: ToolSpec[] = [
       tabId: z.number().optional(),
     },
   },
+  // --- console ---
   {
-    name: builtinRuntimeToolName('press_key'),
+    name: builtinToolName(BUILTIN_CATEGORY.console, 'get_console_logs'),
+    description: 'Get recent console log entries from the page',
+    inputSchema: {
+      limit: z.number().optional(),
+      level: z.enum(['all', 'log', 'warn', 'error', 'info']).optional(),
+      tabId: z.number().optional(),
+    },
+    annotations: { readOnlyHint: true },
+  },
+  // --- input ---
+  {
+    name: builtinToolName(BUILTIN_CATEGORY.input, 'press_key'),
     description: 'Press a key via CDP',
     inputSchema: {
       key: z.string(),
@@ -247,7 +252,7 @@ const TOOL_SPECS: ToolSpec[] = [
     },
   },
   {
-    name: builtinRuntimeToolName('type_text'),
+    name: builtinToolName(BUILTIN_CATEGORY.input, 'type_text'),
     description: 'Type text via CDP',
     inputSchema: { text: z.string(), tabId: z.number().optional() },
   },
@@ -288,7 +293,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // list_tabs
     const listTabsName = registerRuntimeTool(
-      builtinRuntimeToolName('list_tabs'),
+      builtinToolName(BUILTIN_CATEGORY.tabs, 'list_tabs'),
       {
         description: 'List all open browser tabs',
         inputSchema: {},
@@ -315,7 +320,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // get_page_info
     const getPageInfoName = registerRuntimeTool(
-      builtinRuntimeToolName('get_page_info'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'get_page_info'),
       {
         description: 'Get the current page URL, title, and metadata',
         inputSchema: { tabId: z.number().optional() },
@@ -334,7 +339,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // get_selected_text
     const getSelectedTextName = registerRuntimeTool(
-      builtinRuntimeToolName('get_selected_text'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'get_selected_text'),
       {
         description: 'Get the currently selected text on the page',
         inputSchema: { tabId: z.number().optional() },
@@ -357,7 +362,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // click_element
     const clickElementName = registerRuntimeTool(
-      builtinRuntimeToolName('click_element'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'click_element'),
       {
         description: 'Click an element on the page by CSS selector',
         inputSchema: { selector: z.string(), tabId: z.number().optional() },
@@ -380,7 +385,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // scroll_into_view
     const scrollIntoViewName = registerRuntimeTool(
-      builtinRuntimeToolName('scroll_into_view'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'scroll_into_view'),
       {
         description: 'Scroll an element into view by CSS selector',
         inputSchema: {
@@ -407,7 +412,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // get_element_text
     const getElementTextName = registerRuntimeTool(
-      builtinRuntimeToolName('get_element_text'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'get_element_text'),
       {
         description: 'Get text content of an element',
         inputSchema: { selector: z.string(), tabId: z.number().optional() },
@@ -430,7 +435,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // get_element_html
     const getElementHtmlName = registerRuntimeTool(
-      builtinRuntimeToolName('get_element_html'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'get_element_html'),
       {
         description: 'Get outer HTML of an element',
         inputSchema: { selector: z.string(), tabId: z.number().optional() },
@@ -453,7 +458,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // query_elements
     const queryElementsName = registerRuntimeTool(
-      builtinRuntimeToolName('query_elements'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'query_elements'),
       {
         description: 'Query elements by CSS selector',
         inputSchema: {
@@ -484,7 +489,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // fill_input
     const fillInputName = registerRuntimeTool(
-      builtinRuntimeToolName('fill_input'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'fill_input'),
       {
         description: 'Fill an input field with a value',
         inputSchema: { selector: z.string(), value: z.string(), tabId: z.number().optional() },
@@ -507,7 +512,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // execute_js
     const executeJsName = registerRuntimeTool(
-      builtinRuntimeToolName('execute_js'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'execute_js'),
       {
         description: 'Execute JavaScript expression in page context',
         inputSchema: { expression: z.string(), tabId: z.number().optional() },
@@ -534,7 +539,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // screenshot_tab
     const screenshotTabName = registerRuntimeTool(
-      builtinRuntimeToolName('screenshot_tab'),
+      builtinToolName(BUILTIN_CATEGORY.tabs, 'screenshot_tab'),
       {
         description: 'Take a screenshot of the current tab',
         inputSchema: {
@@ -574,7 +579,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // screenshot_page (CDP)
     const screenshotPageName = registerRuntimeTool(
-      builtinRuntimeToolName('screenshot_page'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'screenshot_page'),
       {
         description: 'Capture a screenshot via CDP (supports fullPage)',
         inputSchema: {
@@ -615,7 +620,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // get_console_logs
     const getConsoleLogsName = registerRuntimeTool(
-      builtinRuntimeToolName('get_console_logs'),
+      builtinToolName(BUILTIN_CATEGORY.console, 'get_console_logs'),
       {
         description: 'Get recent console log entries from the page',
         inputSchema: {
@@ -649,7 +654,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // navigate
     const navigateName = registerRuntimeTool(
-      builtinRuntimeToolName('navigate'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'navigate'),
       {
         description: 'Navigate the current tab to a URL',
         inputSchema: {
@@ -677,7 +682,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // wait_for_navigation
     const waitForNavigationName = registerRuntimeTool(
-      builtinRuntimeToolName('wait_for_navigation'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'wait_for_navigation'),
       {
         description: 'Wait for the tab navigation to complete',
         inputSchema: { timeoutMs: z.number().optional(), tabId: z.number().optional() },
@@ -696,7 +701,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // reload
     const reloadName = registerRuntimeTool(
-      builtinRuntimeToolName('reload'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'reload'),
       {
         description: 'Reload the tab',
         inputSchema: {
@@ -724,7 +729,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // go_back
     const goBackName = registerRuntimeTool(
-      builtinRuntimeToolName('go_back'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'go_back'),
       {
         description: 'Go back in history',
         inputSchema: {
@@ -747,7 +752,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // go_forward
     const goForwardName = registerRuntimeTool(
-      builtinRuntimeToolName('go_forward'),
+      builtinToolName(BUILTIN_CATEGORY.page, 'go_forward'),
       {
         description: 'Go forward in history',
         inputSchema: {
@@ -774,7 +779,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // open_tab
     const openTabName = registerRuntimeTool(
-      builtinRuntimeToolName('open_tab'),
+      builtinToolName(BUILTIN_CATEGORY.tabs, 'open_tab'),
       {
         description: 'Open a new tab',
         inputSchema: { url: z.string(), active: z.boolean().optional() },
@@ -796,7 +801,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // close_tab
     const closeTabName = registerRuntimeTool(
-      builtinRuntimeToolName('close_tab'),
+      builtinToolName(BUILTIN_CATEGORY.tabs, 'close_tab'),
       { description: 'Close a tab', inputSchema: { tabId: z.number().optional() } },
       async ({ tabId }) => {
         try {
@@ -812,7 +817,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // wait_for_selector
     const waitForSelectorName = registerRuntimeTool(
-      builtinRuntimeToolName('wait_for_selector'),
+      builtinToolName(BUILTIN_CATEGORY.dom, 'wait_for_selector'),
       {
         description: 'Wait for an element to appear',
         inputSchema: {
@@ -840,7 +845,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // press_key
     const pressKeyName = registerRuntimeTool(
-      builtinRuntimeToolName('press_key'),
+      builtinToolName(BUILTIN_CATEGORY.input, 'press_key'),
       {
         description: 'Press a key via CDP',
         inputSchema: {
@@ -867,7 +872,7 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
 
     // type_text
     const typeTextName = registerRuntimeTool(
-      builtinRuntimeToolName('type_text'),
+      builtinToolName(BUILTIN_CATEGORY.input, 'type_text'),
       {
         description: 'Type text via CDP',
         inputSchema: { text: z.string(), tabId: z.number().optional() },

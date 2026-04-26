@@ -118,11 +118,11 @@ export async function executeServiceWorkerTool(
 ): Promise<unknown> {
   // Historical (non-namespaced) aliases are intentionally NOT supported.
   switch (tool) {
-    case 'builtin.list_tabs': {
+    case 'builtin.tabs.list_tabs': {
       const tabs = await ctx.listTabs();
       return { tabs };
     }
-    case 'builtin.screenshot_tab': {
+    case 'builtin.tabs.screenshot_tab': {
       // Default: jpeg with moderate quality to reduce payload size and latency.
       const format = (args.format as 'png' | 'jpeg' | undefined) ?? 'jpeg';
       const quality = clampNumber(args.quality, 70, 0, 100);
@@ -136,7 +136,7 @@ export async function executeServiceWorkerTool(
         sizeHint: dataUrl.length,
       };
     }
-    case 'builtin.screenshot_page': {
+    case 'builtin.page.screenshot_page': {
       const tabId = await toTargetTabId(args, ctx);
       // Default: jpeg + quality + maxPixels to keep capture & transport fast.
       const format = (args.format as 'png' | 'jpeg' | undefined) ?? 'jpeg';
@@ -215,7 +215,7 @@ export async function executeServiceWorkerTool(
         return { tabId, format, dataBase64: clipped.data, clipped: true, width, height };
       }
     }
-    case 'builtin.navigate': {
+    case 'builtin.page.navigate': {
       const targetTabId = await toTargetTabId(args, ctx);
       const url = String(args.url ?? '');
       await ctx.navigateTab(targetTabId, url);
@@ -226,13 +226,13 @@ export async function executeServiceWorkerTool(
       }
       return { navigating: true, tabId: targetTabId, url, waitUntil };
     }
-    case 'builtin.wait_for_navigation': {
+    case 'builtin.page.wait_for_navigation': {
       const targetTabId = await toTargetTabId(args, ctx);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));
       await ctx.waitForTabStatus(targetTabId, 'complete', timeoutMs);
       return { ok: true, tabId: targetTabId, status: 'complete' };
     }
-    case 'builtin.reload': {
+    case 'builtin.page.reload': {
       const targetTabId = await toTargetTabId(args, ctx);
       const bypassCache = Boolean(args.bypassCache ?? false);
       await ctx.reloadTab(targetTabId, bypassCache);
@@ -243,7 +243,7 @@ export async function executeServiceWorkerTool(
       }
       return { reloaded: true, tabId: targetTabId, bypassCache, waitUntil };
     }
-    case 'builtin.go_back': {
+    case 'builtin.page.go_back': {
       const targetTabId = await toTargetTabId(args, ctx);
       await ctx.goBack(targetTabId);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
@@ -253,7 +253,7 @@ export async function executeServiceWorkerTool(
       }
       return { ok: true, tabId: targetTabId, action: 'back', waitUntil };
     }
-    case 'builtin.go_forward': {
+    case 'builtin.page.go_forward': {
       const targetTabId = await toTargetTabId(args, ctx);
       await ctx.goForward(targetTabId);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
@@ -263,7 +263,7 @@ export async function executeServiceWorkerTool(
       }
       return { ok: true, tabId: targetTabId, action: 'forward', waitUntil };
     }
-    case 'builtin.open_tab': {
+    case 'builtin.tabs.open_tab': {
       const url = String(args.url ?? '');
       if (!url) {
         throw new Error('Missing url');
@@ -272,12 +272,12 @@ export async function executeServiceWorkerTool(
       const created = await ctx.createTab(url, active);
       return { opened: true, url, active, tabId: created.tabId };
     }
-    case 'builtin.close_tab': {
+    case 'builtin.tabs.close_tab': {
       const targetTabId = await toTargetTabId(args, ctx);
       await ctx.closeTab(targetTabId);
       return { closed: true, tabId: targetTabId };
     }
-    case 'builtin.press_key': {
+    case 'builtin.input.press_key': {
       const targetTabId = await toTargetTabId(args, ctx);
       const key = String(args.key ?? '');
       if (!key) {
@@ -297,7 +297,7 @@ export async function executeServiceWorkerTool(
       });
       return { ok: true, tabId: targetTabId, key };
     }
-    case 'builtin.type_text': {
+    case 'builtin.input.type_text': {
       const targetTabId = await toTargetTabId(args, ctx);
       const text = String(args.text ?? '');
       await ctx.cdpSendCommand(targetTabId, 'Input.insertText', { text });

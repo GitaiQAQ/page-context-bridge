@@ -10,8 +10,8 @@ import {
 } from '@page-context/tool-visibility';
 
 const builtinTools = [
-  { name: 'builtin.get_page_info', description: 'Get page info' },
-  { name: 'builtin.navigate', description: 'Navigate tab' },
+  { name: 'builtin.page.get_page_info', description: 'Get page info' },
+  { name: 'builtin.page.navigate', description: 'Navigate tab' },
 ];
 
 const sampleEntries = new Map<number, PageToolEntry[]>([
@@ -69,17 +69,21 @@ describe('page tool visibility', () => {
     expect(tree.enabledTools).toBe(3);
     expect(tree.builtins.totalTools).toBe(2);
     expect(tree.builtins.enabledTools).toBe(1);
-    expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(['builtin']);
+    expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual(['page']);
     expect(tree.builtins.namespaces[0]?.instances[0]?.tools.map((tool) => tool.toolName)).toEqual([
-      'builtin.get_page_info',
-      'builtin.navigate',
+      'builtin.page.get_page_info',
+      'builtin.page.navigate',
     ]);
     expect(tree.tabs[0]?.namespaces[1]?.enabledTools).toBe(0);
     expect(tree.tabs[0]?.namespaces[1]?.instances).toHaveLength(2);
   });
 
   it('filters built-in tools independently from page tools', () => {
-    let preferences = setScopeEnabled({}, { root: 'builtin', toolName: 'builtin.navigate' }, false);
+    let preferences = setScopeEnabled(
+      {},
+      { root: 'builtin', toolName: 'builtin.page.navigate' },
+      false,
+    );
     preferences = setScopeEnabled(preferences, { root: 'builtin' }, true);
 
     const enabledBuiltins = getEnabledBuiltinTools(builtinTools, preferences).map(
@@ -87,7 +91,7 @@ describe('page tool visibility', () => {
     );
     // Default policy only enables read-only builtin runtime tools.
     // Enabling the builtin root does not automatically enable non-read tools.
-    expect(enabledBuiltins).toEqual(['builtin.get_page_info']);
+    expect(enabledBuiltins).toEqual(['builtin.page.get_page_info']);
   });
 
   it('marks extension/feedback control tools as bridge-control builtins for sidepanel display hints', () => {
@@ -101,7 +105,7 @@ describe('page tool visibility', () => {
           _bridgeControlTool: true,
         },
         { name: 'feedback.get_snapshot', description: 'bridge control' },
-        { name: 'builtin.get_page_info', description: 'builtin runtime tool' },
+        { name: 'builtin.page.get_page_info', description: 'builtin runtime tool' },
       ],
       {},
     );
@@ -114,26 +118,27 @@ describe('page tool visibility', () => {
       tree.builtins.tools.find((tool) => tool.toolName === 'feedback.get_snapshot')?.bridgeControl,
     ).toBe(true);
     expect(
-      tree.builtins.tools.find((tool) => tool.toolName === 'builtin.get_page_info')?.bridgeControl,
+      tree.builtins.tools.find((tool) => tool.toolName === 'builtin.page.get_page_info')
+        ?.bridgeControl,
     ).toBe(false);
     expect(tree.builtins.namespaces.map((namespace) => namespace.namespace)).toEqual([
-      'builtin',
       'extension',
       'feedback',
+      'page',
     ]);
   });
 
   it('keeps bridge control builtins enabled even when builtin root is disabled', () => {
     const preferences = setScopeEnabled({}, { root: 'builtin' }, false, {
       builtinTools: [
-        { name: 'builtin.get_page_info' },
+        { name: 'builtin.page.get_page_info' },
         { name: 'extension.get_tool_tree', _bridgeControlTool: true },
       ],
     });
 
     const enabledBuiltins = getEnabledBuiltinTools(
       [
-        { name: 'builtin.get_page_info' },
+        { name: 'builtin.page.get_page_info' },
         { name: 'extension.get_tool_tree', _bridgeControlTool: true },
       ],
       preferences,
@@ -147,16 +152,17 @@ describe('page tool visibility', () => {
       [],
       new Map(),
       [
-        { name: 'builtin.navigate', description: 'canonical builtin' },
-        { name: 'builtin.get_page_info', description: 'builtin runtime tool' },
+        { name: 'builtin.page.navigate', description: 'canonical builtin' },
+        { name: 'builtin.page.get_page_info', description: 'builtin runtime tool' },
         { name: 'extension.get_tool_tree', description: 'bridge control' },
       ],
       {},
     );
 
-    expect(tree.builtins.tools.map((tool) => tool.toolName)).toEqual([
-      'builtin.get_page_info',
-      'builtin.navigate',
+    const toolNames = tree.builtins.tools.map((tool) => tool.toolName);
+    expect(toolNames.sort()).toEqual([
+      'builtin.page.get_page_info',
+      'builtin.page.navigate',
       'extension.get_tool_tree',
     ]);
   });

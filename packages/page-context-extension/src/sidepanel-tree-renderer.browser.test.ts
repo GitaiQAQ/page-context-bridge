@@ -12,22 +12,22 @@ describe('sidepanel builtin filtering', () => {
       namespaces: [
         {
           kind: 'builtin-namespace',
-          namespace: 'builtin',
+          namespace: 'page',
           totalTools: 1,
           enabledTools: 1,
           instances: [
             {
               kind: 'builtin-instance',
-              namespace: 'builtin',
+              namespace: 'page',
               instanceId: 'default',
               totalTools: 1,
               enabledTools: 1,
               tools: [
                 {
                   kind: 'builtin-tool',
-                  namespace: 'builtin',
+                  namespace: 'page',
                   instanceId: 'default',
-                  toolName: 'builtin.get_page_info',
+                  toolName: 'builtin.page.get_page_info',
                   label: 'get_page_info',
                   enabled: true,
                   readOnly: true,
@@ -95,9 +95,9 @@ describe('sidepanel builtin filtering', () => {
       tools: [
         {
           kind: 'builtin-tool',
-          namespace: 'builtin',
+          namespace: 'page',
           instanceId: 'default',
-          toolName: 'builtin.get_page_info',
+          toolName: 'builtin.page.get_page_info',
           label: 'get_page_info',
           enabled: true,
           readOnly: true,
@@ -140,22 +140,22 @@ describe('sidepanel builtin filtering', () => {
       namespaces: [
         {
           kind: 'builtin-namespace',
-          namespace: 'builtin',
+          namespace: 'page',
           totalTools: 1,
           enabledTools: 1,
           instances: [
             {
               kind: 'builtin-instance',
-              namespace: 'builtin',
+              namespace: 'page',
               instanceId: 'default',
               totalTools: 1,
               enabledTools: 1,
               tools: [
                 {
                   kind: 'builtin-tool',
-                  namespace: 'builtin',
+                  namespace: 'page',
                   instanceId: 'default',
-                  toolName: 'builtin.navigate',
+                  toolName: 'builtin.page.navigate',
                   label: 'navigate',
                   enabled: true,
                   readOnly: false,
@@ -196,9 +196,9 @@ describe('sidepanel builtin filtering', () => {
       tools: [
         {
           kind: 'builtin-tool',
-          namespace: 'builtin',
+          namespace: 'page',
           instanceId: 'default',
-          toolName: 'builtin.navigate',
+          toolName: 'builtin.page.navigate',
           label: 'navigate',
           enabled: true,
           readOnly: false,
@@ -220,7 +220,7 @@ describe('sidepanel builtin filtering', () => {
     const filtered = filterBuiltins(builtins, '');
     expect(filtered.totalTools).toBe(2);
     expect(filtered.tools.map((tool) => tool.toolName)).toEqual([
-      'builtin.navigate',
+      'builtin.page.navigate',
       'extension.reconnect',
     ]);
     expect(filtered.namespaces).toHaveLength(2);
