@@ -1,11 +1,12 @@
 /**
- * Context manifest panel rendering for the sidepanel.
- * Uses daisyUI/Tailwind utility classes with lit-html templates.
+ * Context manifest 面板渲染模块。
+ * 提供 namespace / resource / skill 卡片组件和 diff 面板的纯渲染函数。
  */
 
 import { html, nothing, type TemplateResult } from 'lit';
 
 import type {
+  ContextNamespaceDescriptor,
   ContextResourceDescriptor,
   ContextSkillDescriptor,
   PageContextManifest,
@@ -21,7 +22,8 @@ export { buildContextManifestDiff } from './context-manifest-diff';
 import { formatJson } from './sidepanel-tree-renderer';
 
 /**
- * Renders the complete context manifest panel content.
+ * 渲染完整 context manifest 面板（旧版内联模板，保留兼容）。
+ * 当前主入口已迁移至 renderContextTab()，此函数仅作降级/测试用途。
  */
 export function renderContextManifestPanel(
   rawManifest: PageContextManifest,
@@ -37,22 +39,20 @@ export function renderContextManifestPanel(
       ${effectiveManifest.resources.length > 0
         ? effectiveManifest.resources.map((resource) => renderContextResourceCard(resource))
         : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
-            <p class="text-xs">No resources declared.</p>
+            <p class="text-xs">This page does not expose any readable data yet.</p>
           </div>`}
     </div>
     <div class="context-skills-list">
       ${effectiveManifest.skills.length > 0
         ? effectiveManifest.skills.map((skill) => renderContextSkillCard(skill))
         : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
-            <p class="text-xs">No skills declared.</p>
+            <p class="text-xs">This page does not expose any runnable skills yet.</p>
           </div>`}
     </div>
   `;
 }
 
-/**
- * Renders an empty state panel when no manifest is available.
- */
+/** 渲染空状态面板（无 manifest 可用时显示占位内容） */
 export function renderContextEmptyPanel(
   message: string,
   currentTabId: number | null,
@@ -88,15 +88,13 @@ ${isError ? formatJson({ error: message }) : '(manifest not loaded)'}</pre
       </div>
     </div>
     <div class="context-resource-status text-xs font-semibold opacity-60">Idle</div>
-    <pre class="context-resource-output">(select a resource to read)</pre>
+    <pre class="context-resource-output">(select a data card to inspect its payload)</pre>
     <div class="context-skill-status text-xs font-semibold opacity-60">Idle</div>
-    <pre class="context-skill-output">(select a skill to render its prompt)</pre>
+    <pre class="context-skill-output">(select a skill card to preview its prompt)</pre>
   `;
 }
 
-/**
- * Renders the context manifest diff panel.
- */
+/** 渲染 manifest diff 面板（原始 vs 过滤后的差异对比） */
 export function renderContextDiffPanel(
   rawManifest: PageContextManifest | null,
   effectiveManifest: PageContextManifest | null,
@@ -147,9 +145,7 @@ export function renderContextDiffPanel(
   `;
 }
 
-/**
- * Renders a diff card showing comparison between raw and effective counts.
- */
+/** 渲染单个 diff 分类卡片（原始/有效计数 + 隐藏项列表） */
 function renderDiffCard(
   title: string,
   rawCount: number,
@@ -174,9 +170,7 @@ function renderDiffCard(
   `;
 }
 
-/**
- * Renders a card showing trimmed skill tools information.
- */
+/** 渲染 skill 工具裁剪卡片（被过滤掉的推荐工具列表） */
 function renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): TemplateResult {
   const trimmed: ContextSkillToolTrimDebug[] = debug?.trimmedSkillTools ?? [];
   return html`
@@ -199,9 +193,10 @@ function renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): Templ
 }
 
 /**
- * Formats a filter reason into human-readable text.
+ * 将过滤原因码转译为人类可读文案。
+ * 统一出口，避免在 side-panel-app 和 panel 中各写一份。
  */
-function formatReason(reason: string): string {
+export function formatReason(reason: string): string {
   switch (reason) {
     case 'namespace_disabled':
       return 'disabled by namespace';
@@ -216,10 +211,34 @@ function formatReason(reason: string): string {
   }
 }
 
-/**
- * Renders a resource descriptor as a card component.
- */
+/** 渲染 namespace 描述为紧凑的业务域卡片 */
+export function renderContextNamespaceCard(namespace: ContextNamespaceDescriptor): TemplateResult {
+  const tags = namespace.tags ?? [];
+
+  return html`
+    <div class="card card-compact bg-base-100 border border-base-300 shadow-sm mb-2">
+      <div class="card-body p-2.5 gap-1">
+        <div class="flex items-start justify-between gap-2">
+          <div class="card-title text-xs font-bold">${namespace.title}</div>
+          <span class="badge badge-xs badge-primary">${namespace.namespace}</span>
+        </div>
+        <p class="text-xs opacity-60 break-words">
+          ${namespace.description ?? `Declared namespace ${namespace.namespace}.`}
+        </p>
+        ${tags.length > 0
+          ? html`<div class="flex gap-1 flex-wrap mt-0.5">
+              ${tags.map((tag) => html`<span class="badge badge-xs badge-ghost">${tag}</span>`)}
+            </div>`
+          : nothing}
+      </div>
+    </div>
+  `;
+}
+
+/** 渲染 resource 描述为数据卡片（含 "Inspect Payload" 按钮） */
 export function renderContextResourceCard(resource: ContextResourceDescriptor): TemplateResult {
+  const tags = resource.tags ?? [];
+
   return html`
     <div class="card card-compact bg-base-100 border border-base-300 shadow-sm mb-2">
       <div class="card-body p-2.5 gap-1">
@@ -228,7 +247,18 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
         <div class="flex gap-1.5 flex-wrap">
           <span class="badge badge-xs badge-primary">${resource.namespace}</span>
           <span class="badge badge-xs badge-ghost">${resource.kind ?? 'resource'}</span>
+          ${resource.mimeType
+            ? html`<span class="badge badge-xs badge-outline">${resource.mimeType}</span>`
+            : nothing}
         </div>
+        ${tags.length > 0
+          ? html`<div class="flex gap-1 flex-wrap mt-0.5">
+              ${tags.map((tag) => html`<span class="badge badge-xs badge-ghost">${tag}</span>`)}
+            </div>`
+          : nothing}
+        <p class="text-[11px] opacity-55">
+          Agents can inspect this payload directly from the current page state.
+        </p>
         <div class="card-actions mt-1">
           <button
             class="btn btn-xs btn-primary"
@@ -236,7 +266,7 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
             data-action="read-resource"
             data-resource-id="${resource.id}"
           >
-            Read Resource
+            Inspect Payload
           </button>
         </div>
       </div>
@@ -244,10 +274,12 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
   `;
 }
 
-/**
- * Renders a skill descriptor as a card component.
- */
+/** 渲染 skill 描述为工作流卡片（含 "Inspect Skill" 按钮） */
 export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateResult {
+  const intentTags = skill.intentTags ?? [];
+  const linkedResourceCount = skill.resourceIds?.length ?? 0;
+  const linkedToolCount = skill.toolNames?.length ?? 0;
+
   return html`
     <div class="card card-compact bg-base-100 border border-base-300 shadow-sm mb-2">
       <div class="card-body p-2.5 gap-1">
@@ -256,7 +288,23 @@ export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateR
         <div class="flex gap-1.5 flex-wrap">
           <span class="badge badge-xs badge-primary">${skill.namespace}</span>
           <span class="badge badge-xs badge-ghost">${skill.mode ?? 'analysis'}</span>
+          <span class="badge badge-xs badge-outline">
+            ${linkedResourceCount} ${linkedResourceCount === 1 ? 'resource' : 'resources'}
+          </span>
+          <span class="badge badge-xs badge-outline">
+            ${linkedToolCount} ${linkedToolCount === 1 ? 'tool' : 'tools'}
+          </span>
         </div>
+        ${intentTags.length > 0
+          ? html`<div class="flex gap-1 flex-wrap mt-0.5">
+              ${intentTags.map(
+                (tag) => html`<span class="badge badge-xs badge-ghost">${tag}</span>`,
+              )}
+            </div>`
+          : nothing}
+        <p class="text-[11px] opacity-55">
+          Uses page-grounded context before the agent expands into tools or workflows.
+        </p>
         <div class="card-actions mt-1">
           <button
             class="btn btn-xs btn-primary"
@@ -264,7 +312,7 @@ export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateR
             data-action="preview-skill"
             data-skill-id="${skill.id}"
           >
-            Preview Prompt
+            Inspect Skill
           </button>
         </div>
       </div>

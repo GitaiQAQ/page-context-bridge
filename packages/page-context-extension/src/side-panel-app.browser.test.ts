@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BRIDGE_METHODS } from '@page-context/shared-protocol';
+import {
+  BRIDGE_METHODS,
+  type ContextResourcePayload,
+  type ContextSkillPrompt,
+  type PageContextManifest,
+} from '@page-context/shared-protocol';
+import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
 
-// 直接从真实包导入，不再经过 re-export shim
+// Import directly from real package, not through re-export shim
 import type { PageToolEntry, PageToolSpec } from '@page-context/tool-visibility';
 import {
   buildToolTree,
@@ -54,6 +60,126 @@ describe('side-panel-app tools tree interactions', () => {
       ],
     ],
   ]);
+  const contextManifest: PageContextManifest = {
+    version: '0.1.0',
+    app: 'example',
+    route: '/fixtures/catalog',
+    scene: 'example-fixture',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    namespaces: [
+      {
+        namespace: 'catalog',
+        title: 'Catalog',
+        description: 'Catalog manipulation and seed fixtures',
+        tags: ['mutation', 'items'],
+      },
+      {
+        namespace: 'qa',
+        title: 'QA',
+        description: 'Smoke suite and fixture reset workflows',
+        tags: ['macro', 'qa'],
+      },
+    ],
+    resources: [
+      {
+        id: 'catalog.items',
+        namespace: 'catalog',
+        title: 'Catalog Items',
+        description: 'Current item list and counts for the catalog fixture',
+        mimeType: 'application/json',
+        kind: 'json',
+        tags: ['items'],
+      },
+    ],
+    skills: [
+      {
+        id: 'catalog.manage-items',
+        namespace: 'catalog',
+        title: 'Manage Catalog Items',
+        description:
+          'Inspect, add, remove, or seed catalog fixture items using instance-specific tools.',
+        intentTags: ['catalog', 'items', 'mutation'],
+        resourceIds: ['catalog.items'],
+        toolNames: [
+          'catalog.primary.getItems',
+          'catalog.primary.addItem',
+          'catalog.primary.removeItem',
+        ],
+        mode: 'mutation',
+      },
+    ],
+  };
+  const rawContextManifest: PageContextManifest = {
+    ...contextManifest,
+    namespaces: [
+      ...contextManifest.namespaces,
+      {
+        namespace: 'metrics',
+        title: 'Metrics',
+        description: 'Read-only dashboard and recent logs',
+        tags: ['readonly', 'logs'],
+      },
+    ],
+    resources: [
+      ...contextManifest.resources,
+      {
+        id: 'metrics.logs',
+        namespace: 'metrics',
+        title: 'Recent Logs',
+        description: 'Most recent action logs emitted by the page',
+        mimeType: 'application/json',
+        kind: 'json',
+        tags: ['logs'],
+      },
+    ],
+    skills: [
+      ...contextManifest.skills,
+      {
+        id: 'qa.run-smoke-suite',
+        namespace: 'qa',
+        title: 'Run Smoke Suite',
+        description: 'Execute the example smoke suite and interpret its results.',
+        intentTags: ['qa', 'smoke', 'verify'],
+        resourceIds: ['metrics.logs'],
+        toolNames: ['qa.smoke.runSuite', 'get_console_logs'],
+        mode: 'macro',
+      },
+    ],
+  };
+  const contextDebug: ContextManifestFilterDebug = {
+    hiddenNamespaces: [{ id: 'metrics', reason: 'namespace_disabled' }],
+    hiddenResources: [{ id: 'metrics.logs', reason: 'namespace_disabled' }],
+    hiddenSkills: [{ id: 'qa.run-smoke-suite', reason: 'page_tool_disabled' }],
+    trimmedSkillTools: [
+      {
+        skillId: 'catalog.manage-items',
+        removedTools: [{ id: 'catalog.primary.removeItem', reason: 'page_tool_disabled' }],
+      },
+    ],
+  };
+  const contextResourcePayloads = new Map<string, ContextResourcePayload>([
+    [
+      'catalog.items',
+      {
+        id: 'catalog.items',
+        mimeType: 'application/json',
+        text: JSON.stringify(
+          { items: [{ id: 'A-1', name: 'Fixture Item' }], itemCount: 1 },
+          null,
+          2,
+        ),
+      },
+    ],
+  ]);
+  const contextSkillPrompts = new Map<string, ContextSkillPrompt>([
+    [
+      'catalog.manage-items',
+      {
+        skill: contextManifest.skills[0]!,
+        text: 'Use catalog resources before mutating the fixture.',
+      },
+    ],
+  ]);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,7 +189,16 @@ describe('side-panel-app tools tree interactions', () => {
       1 as unknown as ReturnType<typeof setInterval>,
     );
     vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => undefined);
-    installRuntimeRequestMock({ builtinTools, tabs, pageEntries });
+    installRuntimeRequestMock({
+      builtinTools,
+      tabs,
+      pageEntries,
+      contextManifest,
+      rawContextManifest,
+      contextDebug,
+      contextResourcePayloads,
+      contextSkillPrompts,
+    });
   });
 
   afterEach(() => {
@@ -452,6 +587,76 @@ describe('side-panel-app tools tree interactions', () => {
     expect(regularBuiltinTestButton).not.toBeNull();
     expect(bridgeControlTestButton).toBeNull();
   });
+
+  it('renders the redesigned context tab and loads resource and skill previews', async () => {
+    await import('./side-panel-app');
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('button[role="tab"][title="Context"]'),
+      ).not.toBeNull();
+    });
+
+    const contextTabButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[role="tab"][title="Context"]',
+    );
+    contextTabButton!.click();
+
+    await vi.waitFor(() => {
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('Page Capabilities');
+      expect(text).toContain('Agent Briefing');
+      expect(text).toContain('Business Domains');
+      expect(text).toContain(
+        'Bridge sees 1 data resource and 1 runnable skill across 2 namespaces.',
+      );
+      expect(text).toContain('Catalog');
+      expect(text).toContain('Catalog Items');
+      expect(text).toContain('Manage Catalog Items');
+      expect(text).toContain('Capability Filters');
+      expect(text).toContain('catalog.primary.removeItem');
+    });
+
+    const resourceButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[data-action="read-resource"][data-resource-id="catalog.items"]',
+    );
+    expect(resourceButton).not.toBeNull();
+    resourceButton!.click();
+
+    await vi.waitFor(() => {
+      expect(element.shadowRoot?.textContent ?? '').toContain('Fixture Item');
+    });
+
+    const skillButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[data-action="preview-skill"][data-skill-id="catalog.manage-items"]',
+    );
+    expect(skillButton).not.toBeNull();
+    skillButton!.click();
+
+    await vi.waitFor(() => {
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('Use catalog resources before mutating the fixture.');
+    });
+
+    expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.extensionContextManifestGet,
+      {
+        tabId: 11,
+      },
+    );
+    expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
+      BRIDGE_METHODS.extensionContextResourceRead,
+      { tabId: 11, resourceId: 'catalog.items' },
+    );
+    expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionContextSkillGet, {
+      tabId: 11,
+      skillId: 'catalog.manage-items',
+      input: { goal: 'Explain how the agent should use this business skill safely.' },
+    });
+  });
 });
 
 function installRuntimeRequestMock(input: {
@@ -459,6 +664,11 @@ function installRuntimeRequestMock(input: {
   tabs: Array<{ id: number; title: string; url: string; active: boolean }>;
   pageEntries: Map<number, PageToolEntry[]>;
   initialPreferences?: PageToolPreferences;
+  contextManifest?: PageContextManifest | null;
+  rawContextManifest?: PageContextManifest | null;
+  contextDebug?: ContextManifestFilterDebug | null;
+  contextResourcePayloads?: Map<string, ContextResourcePayload>;
+  contextSkillPrompts?: Map<string, ContextSkillPrompt>;
 }): void {
   let preferences: PageToolPreferences = input.initialPreferences ?? {};
 
@@ -495,6 +705,27 @@ function installRuntimeRequestMock(input: {
           pageEntries: scopedEntries,
         });
         return buildToolTree(input.tabs, input.pageEntries, input.builtinTools, preferences);
+      }
+      case BRIDGE_METHODS.extensionContextManifestGet:
+        return {
+          manifest: input.contextManifest ?? null,
+          rawManifest: input.rawContextManifest ?? input.contextManifest ?? null,
+          debug: input.contextDebug ?? null,
+        };
+      case BRIDGE_METHODS.extensionContextResourceRead: {
+        const payload = params as { resourceId: string };
+        return (
+          input.contextResourcePayloads?.get(payload.resourceId) ?? {
+            id: payload.resourceId,
+            text: JSON.stringify({ error: 'missing test payload' }, null, 2),
+          }
+        );
+      }
+      case BRIDGE_METHODS.extensionContextSkillGet: {
+        const payload = params as { skillId: string };
+        return {
+          prompt: input.contextSkillPrompts?.get(payload.skillId),
+        };
       }
       default:
         return null;

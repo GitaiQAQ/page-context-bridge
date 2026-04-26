@@ -29,6 +29,8 @@ import {
 } from './sidepanel-tree-renderer';
 import {
   buildContextManifestDiff,
+  formatReason,
+  renderContextNamespaceCard,
   renderContextResourceCard,
   renderContextSkillCard,
 } from './sidepanel-context-panel';
@@ -144,6 +146,10 @@ export class SidePanelApp extends LitElement {
   @state() private _contextSceneValue = '-';
   @state() private _contextTabValue = '-';
   @state() private _contextRouteValue = '-';
+  @state() private _contextNamespaceCount = '0';
+  @state() private _contextResourceCount = '0';
+  @state() private _contextSkillCount = '0';
+  @state() private _contextNamespacesListHtml: TemplateResult = html``;
   @state() private _contextResourcesListHtml: TemplateResult = html``;
   @state() private _contextSkillsListHtml: TemplateResult = html``;
   @state() private _toolTestArgs = '{}';
@@ -338,7 +344,9 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  // ─── Context Manifest ──────────────────────────────────────────
+  // ─── Context Manifest（页面能力清单） ──────────────────────
+
+  /** 加载当前 tab 的上下文清单，填充左侧摘要 + 右侧详情面板 */
   private async _loadContextManifest(): Promise<void> {
     this._currentTabId = await this._getCurrentTabId();
     if (!this._currentTabId) {
@@ -375,7 +383,16 @@ export class SidePanelApp extends LitElement {
       this._contextSceneValue = manifest.scene;
       this._contextTabValue = String(this._currentTabId);
       this._contextRouteValue = manifest.route || '/';
+      this._contextNamespaceCount = String(manifest.namespaces.length);
+      this._contextResourceCount = String(manifest.resources.length);
+      this._contextSkillCount = String(manifest.skills.length);
 
+      this._contextNamespacesListHtml =
+        manifest.namespaces.length > 0
+          ? html`${manifest.namespaces.map((namespace) => renderContextNamespaceCard(namespace))}`
+          : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
+              <p class="text-xs">No business domains declared.</p>
+            </div>`;
       this._contextResourcesListHtml =
         manifest.resources.length > 0
           ? html`${manifest.resources.map((resource) => renderContextResourceCard(resource))}`
@@ -401,6 +418,10 @@ export class SidePanelApp extends LitElement {
     }
   }
 
+  /**
+   * 清空所有 context 面板状态，显示占位消息。
+   * 在无活跃 tab 或清单加载失败时调用。
+   */
   private _renderContextEmpty(
     message: string,
     currentTabId: number | null,
@@ -410,6 +431,14 @@ export class SidePanelApp extends LitElement {
     this._contextSceneValue = '-';
     this._contextTabValue = currentTabId != null ? String(currentTabId) : '-';
     this._contextRouteValue = '-';
+    this._contextNamespaceCount = '0';
+    this._contextResourceCount = '0';
+    this._contextSkillCount = '0';
+    this._contextNamespacesListHtml = html`<div
+      class="flex flex-col items-center justify-center p-4 text-base-content/40"
+    >
+      <p class="text-xs">${message}</p>
+    </div>`;
     this._contextResourcesListHtml = html`<div
       class="flex flex-col items-center justify-center p-4 text-base-content/40"
     >
@@ -431,10 +460,10 @@ export class SidePanelApp extends LitElement {
     </div>`;
     this._resourceStatus = 'Idle';
     this._resourceStatusClass = 'text-xs font-semibold opacity-60';
-    this._resourceOutput = '(select a resource to read)';
+    this._resourceOutput = '(select a data card to inspect its payload)';
     this._skillStatus = 'Idle';
     this._skillStatusClass = 'text-xs font-semibold opacity-60';
-    this._skillOutput = '(select a skill to render its prompt)';
+    this._skillOutput = '(select a skill card to preview its prompt)';
     this.requestUpdate();
   }
 
@@ -442,6 +471,9 @@ export class SidePanelApp extends LitElement {
   @state() private _resourceStatusClass = 'text-xs font-semibold opacity-60';
   @state() private _skillStatusClass = 'text-xs font-semibold opacity-60';
 
+  /**
+   * 构建原始清单与过滤后清单的 diff 卡片（隐藏项 + 裁剪工具）。
+   */
   private _renderContextDiff(
     rawManifest: PageContextManifest | null,
     effectiveManifest: PageContextManifest,
@@ -489,26 +521,15 @@ export class SidePanelApp extends LitElement {
     `;
   }
 
+  /**
+   * 渲染单个 diff 分类卡片（Namespaces / Resources / Skills）。
+   */
   private _renderDiffCard(
     title: string,
     rawCount: number,
     effectiveCount: number,
     hiddenItems: Array<{ id: string; reason: string }>,
   ): TemplateResult {
-    const formatReason = (reason: string): string => {
-      switch (reason) {
-        case 'namespace_disabled':
-          return 'disabled by namespace';
-        case 'builtin_tool_disabled':
-          return 'disabled by built-in tool filter';
-        case 'page_tool_disabled':
-          return 'disabled by page tool filter';
-        case 'scene_filtered':
-          return 'filtered by scene';
-        default:
-          return 'unknown reason';
-      }
-    };
     return html`
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
         <h4 class="text-xs font-bold mb-1">${title}</h4>
@@ -527,22 +548,9 @@ export class SidePanelApp extends LitElement {
     `;
   }
 
+  /** 渲染 skill 工具裁剪卡片（被过滤掉的推荐工具列表） */
   private _renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): TemplateResult {
     const trimmed = debug?.trimmedSkillTools ?? [];
-    const formatReason = (reason: string): string => {
-      switch (reason) {
-        case 'namespace_disabled':
-          return 'disabled by namespace';
-        case 'builtin_tool_disabled':
-          return 'disabled by built-in tool filter';
-        case 'page_tool_disabled':
-          return 'disabled by page tool filter';
-        case 'scene_filtered':
-          return 'filtered by scene';
-        default:
-          return 'unknown reason';
-      }
-    };
     return html`
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
         <h4 class="text-xs font-bold mb-1">Skill Tool Trimming</h4>
@@ -564,6 +572,7 @@ export class SidePanelApp extends LitElement {
     `;
   }
 
+  /** 通过 RPC 读取指定资源 payload，填充右侧 Data Payload 卡片 */
   private async _loadContextResource(resourceId: string): Promise<void> {
     if (!this._currentTabId) return;
 
@@ -587,6 +596,7 @@ export class SidePanelApp extends LitElement {
     }
   }
 
+  /** 通过 RPC 获取 skill 的 prompt 合同文本，填充右侧 Skill Prompt 卡片 */
   private async _loadContextSkillPrompt(skillId: string): Promise<void> {
     if (!this._currentTabId) return;
 
@@ -1009,6 +1019,7 @@ export class SidePanelApp extends LitElement {
     });
   }
 
+  /** 响应侧栏 "Inspect Payload" 按钮点击，委托给 _loadContextResource */
   private _handleContextResourceClick(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'read-resource') return;
@@ -1018,6 +1029,7 @@ export class SidePanelApp extends LitElement {
     }
   }
 
+  /** 响应侧栏 "Inspect Skill" 按钮点击，委托给 _loadContextSkillPrompt */
   private _handleContextSkillClick(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'preview-skill') return;
@@ -1228,6 +1240,10 @@ export class SidePanelApp extends LitElement {
         contextSceneValue: this._contextSceneValue,
         contextTabValue: this._contextTabValue,
         contextRouteValue: this._contextRouteValue,
+        contextNamespaceCount: this._contextNamespaceCount,
+        contextResourceCount: this._contextResourceCount,
+        contextSkillCount: this._contextSkillCount,
+        contextNamespacesListHtml: this._contextNamespacesListHtml,
         contextResourcesListHtml: this._contextResourcesListHtml,
         contextSkillsListHtml: this._contextSkillsListHtml,
         manifestStatus: this._manifestStatus,
