@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock("./bg-ws-connection", () => ({
+vi.mock('./bg-ws-connection', () => ({
   connectWebSocket: vi.fn(async () => undefined),
   forceReconnect: vi.fn(async () => undefined),
   getWsReady: vi.fn(() => false),
@@ -28,13 +28,15 @@ function installChromeMock(): void {
     storage: {
       // Mirror Chrome behavior: when passing an object, missing keys resolve to provided defaults.
       local: {
-        get: vi.fn(async (defaults?: unknown) => (defaults && typeof defaults === "object" ? defaults : {})),
+        get: vi.fn(async (defaults?: unknown) =>
+          defaults && typeof defaults === 'object' ? defaults : {},
+        ),
         set: vi.fn().mockResolvedValue(undefined),
       },
     },
     runtime: {
-      id: "test-ext",
-      getManifest: () => ({ version: "0.0.0" }),
+      id: 'test-ext',
+      getManifest: () => ({ version: '0.0.0' }),
       getURL: (path: string) => `http://localhost/${path}`,
       sendMessage: vi.fn(),
       onMessage: { addListener: vi.fn() },
@@ -45,7 +47,7 @@ function installChromeMock(): void {
   };
 }
 
-describe("background.ts (module-level wiring)", () => {
+describe('background.ts (module-level wiring)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetModules();
@@ -56,25 +58,25 @@ describe("background.ts (module-level wiring)", () => {
     vi.useRealTimers();
   });
 
-  it("wires wsHandlers, runtime handler, and lifecycle listeners without throwing", async () => {
+  it('wires wsHandlers, runtime handler, and lifecycle listeners without throwing', async () => {
     // background.ts executes at module level; importing it should trigger
     // all the wiring without errors.
     // We just need to verify it doesn't throw during import.
     expect(async () => {
-      await import("./background.js");
+      await import('./background.js');
     }).not.toThrow();
   });
 
-  it("calls connectWebSocket on registration", async () => {
+  it('calls connectWebSocket on registration', async () => {
     // Smoke check only: importing background should not throw.
     // (Detailed websocket wiring is covered by bg-ws-connection/browser tests)
-    await import("./background.js");
+    await import('./background.js');
     expect(true).toBe(true);
   });
 
-  it("creates pageToolState singleton", async () => {
+  it('creates pageToolState singleton', async () => {
     // Verify the module can be loaded
-    await import("./background.js");
+    await import('./background.js');
     // The pageToolState is created at module level and used by handlers
     // We can't easily inspect it without exporting, but we can verify
     // no errors occur during initialization

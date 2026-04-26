@@ -33,12 +33,12 @@ Implement bidirectional communication between the browser extension and the loca
 
 ### 2.2 Component Responsibilities
 
-| Component | File Path | Responsibility |
-|-----------|-----------|----------------|
-| MCP Server | `src/companion/mcp-server.ts` | Node.js HTTP server, handles MCP protocol, manages SSE connections |
-| MCP Client | `src/service-worker/mcp-server-client.ts` | Extension-side client, maintains SSE connection, handles relay requests |
-| Message Handler | `src/service-worker/companion-message-handler.ts` | Routes messages from MCP server |
-| Launcher | `scripts/mcp-server.mjs` | MCP server startup script |
+| Component       | File Path                                         | Responsibility                                                          |
+| --------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| MCP Server      | `src/companion/mcp-server.ts`                     | Node.js HTTP server, handles MCP protocol, manages SSE connections      |
+| MCP Client      | `src/service-worker/mcp-server-client.ts`         | Extension-side client, maintains SSE connection, handles relay requests |
+| Message Handler | `src/service-worker/companion-message-handler.ts` | Routes messages from MCP server                                         |
+| Launcher        | `scripts/mcp-server.mjs`                          | MCP server startup script                                               |
 
 ## 3. Communication Protocol
 
@@ -73,6 +73,7 @@ Extension                                          MCP Server
 ### 3.3 MCP JSON-RPC Message Format
 
 **Request Example:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -83,6 +84,7 @@ Extension                                          MCP Server
 ```
 
 **Response Example:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -101,22 +103,22 @@ Extension                                          MCP Server
 
 ### 3.4 Relay Request Types
 
-| Type | Description | Direction |
-|------|-------------|-----------|
+| Type                     | Description                   | Direction          |
+| ------------------------ | ----------------------------- | ------------------ |
 | `browser-mcp.list-tools` | Get page debugging tools list | Server → Extension |
-| `browser-mcp.call-tool` | Call specified debugging tool | Server → Extension |
-| `browser-mcp/status` | Get connection status | Server → Extension |
+| `browser-mcp.call-tool`  | Call specified debugging tool | Server → Extension |
+| `browser-mcp/status`     | Get connection status         | Server → Extension |
 
 ## 4. API Endpoints
 
 ### 4.1 HTTP Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check, returns server status and extension registration status |
-| GET | `/mcp?sessionId=<id>` | SSE connection endpoint |
-| POST | `/register` | Extension registration endpoint |
-| POST | `/mcp?sessionId=<id>` | MCP JSON-RPC request endpoint |
+| Method | Path                  | Description                                                           |
+| ------ | --------------------- | --------------------------------------------------------------------- |
+| GET    | `/health`             | Health check, returns server status and extension registration status |
+| GET    | `/mcp?sessionId=<id>` | SSE connection endpoint                                               |
+| POST   | `/register`           | Extension registration endpoint                                       |
+| POST   | `/mcp?sessionId=<id>` | MCP JSON-RPC request endpoint                                         |
 
 ### 4.2 Health Check Response
 
@@ -247,10 +249,12 @@ When "tool not found", "tool disabled", or "context mismatch" occurs:
 1. `extension.get_runtime_status`
 2. `extension.get_tool_tree`
 3. Branch by symptom:
+
 - Missing expected page tool: `extension.refresh_page_tools(tabId)` -> `extension.get_tool_tree`
 - Tool exists but `enabled=false`: `extension.set_tools_enabled({ "updates": [...] })` -> `extension.get_tool_tree`
 - Manifest/filter looks wrong: `extension.get_context_manifest_debug(tabId)` and inspect `manifest/rawManifest/debug`
 - Suspected MAIN world injection issue: `extension.ensure_main_world_host` + `extension.ensure_agentation_main` -> `extension.refresh_page_tools(tabId)`
+
 4. Retry target tool call only after the above evidence is consistent.
 
 #### When to use `feedback.get_snapshot` vs `feedback.watch_events`

@@ -6,4 +6,4 @@
  * This JS is injected into the page main world via chrome.scripting.executeScript({ world: "MAIN", files: ["agentation-main.js"] }),
  * allowing react-detection.ts's Object.keys(element) to directly see __reactFiber$xxx properties.
  */
-import "./agentation-main";
+import './agentation-main';

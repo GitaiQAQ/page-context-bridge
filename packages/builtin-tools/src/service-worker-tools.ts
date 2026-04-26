@@ -5,24 +5,27 @@
  * where they have access to extension APIs (tabs, etc.) but not the DOM.
  */
 
-import type { ServiceWorkerToolContext } from "@page-context/shared-protocol";
+import type { ServiceWorkerToolContext } from '@page-context/shared-protocol';
 
-function toTargetTabId(args: Record<string, unknown>, ctx: ServiceWorkerToolContext): Promise<number> {
+function toTargetTabId(
+  args: Record<string, unknown>,
+  ctx: ServiceWorkerToolContext,
+): Promise<number> {
   const explicit = Number(args.tabId ?? 0);
   if (explicit) {
     return Promise.resolve(explicit);
   }
   return ctx.getActiveTabId().then((id: number | undefined) => {
     if (!id) {
-      throw new Error("No active tab available");
+      throw new Error('No active tab available');
     }
     return id;
   });
 }
 
-function normalizeWaitUntil(value: unknown): "load" | "none" {
-  const v = String(value ?? "load");
-  return v === "none" ? "none" : "load";
+function normalizeWaitUntil(value: unknown): 'load' | 'none' {
+  const v = String(value ?? 'load');
+  return v === 'none' ? 'none' : 'load';
 }
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
@@ -38,38 +41,59 @@ function modifierMask(modifiers: unknown): number {
   let mask = 0;
   for (const m of list) {
     switch (m) {
-      case "Alt": mask |= 1; break;
-      case "Control": mask |= 2; break;
-      case "Meta": mask |= 4; break;
-      case "Shift": mask |= 8; break;
-      default: break;
+      case 'Alt':
+        mask |= 1;
+        break;
+      case 'Control':
+        mask |= 2;
+        break;
+      case 'Meta':
+        mask |= 4;
+        break;
+      case 'Shift':
+        mask |= 8;
+        break;
+      default:
+        break;
     }
   }
   return mask;
 }
 
-function keyToCdp(key: string): { key: string; code?: string; windowsVirtualKeyCode?: number; nativeVirtualKeyCode?: number; text?: string } {
+function keyToCdp(key: string): {
+  key: string;
+  code?: string;
+  windowsVirtualKeyCode?: number;
+  nativeVirtualKeyCode?: number;
+  text?: string;
+} {
   const k = key;
   const special: Record<string, { code: string; vk: number }> = {
-    Enter: { code: "Enter", vk: 13 },
-    Tab: { code: "Tab", vk: 9 },
-    Escape: { code: "Escape", vk: 27 },
-    Backspace: { code: "Backspace", vk: 8 },
-    Delete: { code: "Delete", vk: 46 },
-    ArrowUp: { code: "ArrowUp", vk: 38 },
-    ArrowDown: { code: "ArrowDown", vk: 40 },
-    ArrowLeft: { code: "ArrowLeft", vk: 37 },
-    ArrowRight: { code: "ArrowRight", vk: 39 },
-    Home: { code: "Home", vk: 36 },
-    End: { code: "End", vk: 35 },
-    PageUp: { code: "PageUp", vk: 33 },
-    PageDown: { code: "PageDown", vk: 34 },
-    Space: { code: "Space", vk: 32 },
+    Enter: { code: 'Enter', vk: 13 },
+    Tab: { code: 'Tab', vk: 9 },
+    Escape: { code: 'Escape', vk: 27 },
+    Backspace: { code: 'Backspace', vk: 8 },
+    Delete: { code: 'Delete', vk: 46 },
+    ArrowUp: { code: 'ArrowUp', vk: 38 },
+    ArrowDown: { code: 'ArrowDown', vk: 40 },
+    ArrowLeft: { code: 'ArrowLeft', vk: 37 },
+    ArrowRight: { code: 'ArrowRight', vk: 39 },
+    Home: { code: 'Home', vk: 36 },
+    End: { code: 'End', vk: 35 },
+    PageUp: { code: 'PageUp', vk: 33 },
+    PageDown: { code: 'PageDown', vk: 34 },
+    Space: { code: 'Space', vk: 32 },
   };
 
   const hit = special[k];
   if (hit) {
-    return { key: k === "Space" ? " " : k, code: hit.code, windowsVirtualKeyCode: hit.vk, nativeVirtualKeyCode: hit.vk, text: k === "Space" ? " " : undefined };
+    return {
+      key: k === 'Space' ? ' ' : k,
+      code: hit.code,
+      windowsVirtualKeyCode: hit.vk,
+      nativeVirtualKeyCode: hit.vk,
+      text: k === 'Space' ? ' ' : undefined,
+    };
   }
 
   if (k.length === 1) {
@@ -94,25 +118,28 @@ export async function executeServiceWorkerTool(
 ): Promise<unknown> {
   // Historical (non-namespaced) aliases are intentionally NOT supported.
   switch (tool) {
-    case "builtin.list_tabs": {
+    case 'builtin.list_tabs': {
       const tabs = await ctx.listTabs();
       return { tabs };
     }
-    case "builtin.screenshot_tab": {
+    case 'builtin.screenshot_tab': {
       // Default: jpeg with moderate quality to reduce payload size and latency.
-      const format = (args.format as "png" | "jpeg" | undefined) ?? "jpeg";
+      const format = (args.format as 'png' | 'jpeg' | undefined) ?? 'jpeg';
       const quality = clampNumber(args.quality, 70, 0, 100);
-      const dataUrl = await ctx.captureVisibleTab(format, format === "jpeg" ? Math.round(quality) : undefined);
+      const dataUrl = await ctx.captureVisibleTab(
+        format,
+        format === 'jpeg' ? Math.round(quality) : undefined,
+      );
       return {
         format,
         dataUrl,
         sizeHint: dataUrl.length,
       };
     }
-    case "builtin.screenshot_page": {
+    case 'builtin.screenshot_page': {
       const tabId = await toTargetTabId(args, ctx);
       // Default: jpeg + quality + maxPixels to keep capture & transport fast.
-      const format = (args.format as "png" | "jpeg" | undefined) ?? "jpeg";
+      const format = (args.format as 'png' | 'jpeg' | undefined) ?? 'jpeg';
       const quality = clampNumber(args.quality, 70, 0, 100);
       const fullPage = Boolean(args.fullPage ?? false);
 
@@ -121,16 +148,18 @@ export async function executeServiceWorkerTool(
 
       // CDP returns base64 without data URL prefix.
       // Determine capture area and optional scaling.
-      let clip: { x: number; y: number; width: number; height: number; scale: number } | null = null;
+      let clip: { x: number; y: number; width: number; height: number; scale: number } | null =
+        null;
       try {
-        const metrics = (await ctx.cdpSendCommand(tabId, "Page.getLayoutMetrics")) as any;
+        const metrics = (await ctx.cdpSendCommand(tabId, 'Page.getLayoutMetrics')) as any;
         const contentSize = metrics?.contentSize;
         const visualViewport = metrics?.visualViewport;
         const width = Number(fullPage ? contentSize?.width : visualViewport?.clientWidth);
         const height = Number(fullPage ? contentSize?.height : visualViewport?.clientHeight);
         if (width > 0 && height > 0) {
           const pixels = width * height;
-          const scale = pixels > maxPixels ? Math.max(0.1, Math.min(1, Math.sqrt(maxPixels / pixels))) : 1;
+          const scale =
+            pixels > maxPixels ? Math.max(0.1, Math.min(1, Math.sqrt(maxPixels / pixels))) : 1;
           if (scale < 1 || fullPage) {
             clip = { x: 0, y: 0, width, height, scale };
           }
@@ -144,7 +173,7 @@ export async function executeServiceWorkerTool(
         fromSurface: true,
         ...(clip ? { clip } : null),
       };
-      if (format === "jpeg") {
+      if (format === 'jpeg') {
         params.quality = quality;
       }
       if (fullPage) {
@@ -152,9 +181,11 @@ export async function executeServiceWorkerTool(
       }
 
       try {
-        const result = (await ctx.cdpSendCommand(tabId, "Page.captureScreenshot", params)) as { data?: string };
+        const result = (await ctx.cdpSendCommand(tabId, 'Page.captureScreenshot', params)) as {
+          data?: string;
+        };
         if (!result?.data) {
-          throw new Error("CDP Page.captureScreenshot returned no data");
+          throw new Error('CDP Page.captureScreenshot returned no data');
         }
         return {
           tabId,
@@ -167,14 +198,14 @@ export async function executeServiceWorkerTool(
         if (!fullPage) {
           throw error;
         }
-        const metrics = (await ctx.cdpSendCommand(tabId, "Page.getLayoutMetrics")) as any;
+        const metrics = (await ctx.cdpSendCommand(tabId, 'Page.getLayoutMetrics')) as any;
         const size = metrics?.contentSize;
         const width = Number(size?.width ?? 0);
         const height = Number(size?.height ?? 0);
         if (!width || !height) {
           throw error;
         }
-        const clipped = (await ctx.cdpSendCommand(tabId, "Page.captureScreenshot", {
+        const clipped = (await ctx.cdpSendCommand(tabId, 'Page.captureScreenshot', {
           ...params,
           clip: { x: 0, y: 0, width, height, scale: 1 },
         })) as { data?: string };
@@ -184,84 +215,92 @@ export async function executeServiceWorkerTool(
         return { tabId, format, dataBase64: clipped.data, clipped: true, width, height };
       }
     }
-    case "builtin.navigate": {
+    case 'builtin.navigate': {
       const targetTabId = await toTargetTabId(args, ctx);
-      const url = String(args.url ?? "");
+      const url = String(args.url ?? '');
       await ctx.navigateTab(targetTabId, url);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));
-      if (waitUntil !== "none") {
-        await ctx.waitForTabStatus(targetTabId, "complete", timeoutMs);
+      if (waitUntil !== 'none') {
+        await ctx.waitForTabStatus(targetTabId, 'complete', timeoutMs);
       }
       return { navigating: true, tabId: targetTabId, url, waitUntil };
     }
-    case "builtin.wait_for_navigation": {
+    case 'builtin.wait_for_navigation': {
       const targetTabId = await toTargetTabId(args, ctx);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));
-      await ctx.waitForTabStatus(targetTabId, "complete", timeoutMs);
-      return { ok: true, tabId: targetTabId, status: "complete" };
+      await ctx.waitForTabStatus(targetTabId, 'complete', timeoutMs);
+      return { ok: true, tabId: targetTabId, status: 'complete' };
     }
-    case "builtin.reload": {
+    case 'builtin.reload': {
       const targetTabId = await toTargetTabId(args, ctx);
       const bypassCache = Boolean(args.bypassCache ?? false);
       await ctx.reloadTab(targetTabId, bypassCache);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));
-      if (waitUntil !== "none") {
-        await ctx.waitForTabStatus(targetTabId, "complete", timeoutMs);
+      if (waitUntil !== 'none') {
+        await ctx.waitForTabStatus(targetTabId, 'complete', timeoutMs);
       }
       return { reloaded: true, tabId: targetTabId, bypassCache, waitUntil };
     }
-    case "builtin.go_back": {
+    case 'builtin.go_back': {
       const targetTabId = await toTargetTabId(args, ctx);
       await ctx.goBack(targetTabId);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));
-      if (waitUntil !== "none") {
-        await ctx.waitForTabStatus(targetTabId, "complete", timeoutMs);
+      if (waitUntil !== 'none') {
+        await ctx.waitForTabStatus(targetTabId, 'complete', timeoutMs);
       }
-      return { ok: true, tabId: targetTabId, action: "back", waitUntil };
+      return { ok: true, tabId: targetTabId, action: 'back', waitUntil };
     }
-    case "builtin.go_forward": {
+    case 'builtin.go_forward': {
       const targetTabId = await toTargetTabId(args, ctx);
       await ctx.goForward(targetTabId);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));
-      if (waitUntil !== "none") {
-        await ctx.waitForTabStatus(targetTabId, "complete", timeoutMs);
+      if (waitUntil !== 'none') {
+        await ctx.waitForTabStatus(targetTabId, 'complete', timeoutMs);
       }
-      return { ok: true, tabId: targetTabId, action: "forward", waitUntil };
+      return { ok: true, tabId: targetTabId, action: 'forward', waitUntil };
     }
-    case "builtin.open_tab": {
-      const url = String(args.url ?? "");
+    case 'builtin.open_tab': {
+      const url = String(args.url ?? '');
       if (!url) {
-        throw new Error("Missing url");
+        throw new Error('Missing url');
       }
       const active = args.active == null ? true : Boolean(args.active);
       const created = await ctx.createTab(url, active);
       return { opened: true, url, active, tabId: created.tabId };
     }
-    case "builtin.close_tab": {
+    case 'builtin.close_tab': {
       const targetTabId = await toTargetTabId(args, ctx);
       await ctx.closeTab(targetTabId);
       return { closed: true, tabId: targetTabId };
     }
-    case "builtin.press_key": {
+    case 'builtin.press_key': {
       const targetTabId = await toTargetTabId(args, ctx);
-      const key = String(args.key ?? "");
+      const key = String(args.key ?? '');
       if (!key) {
-        throw new Error("Missing key");
+        throw new Error('Missing key');
       }
       const modifiers = modifierMask(args.modifiers);
       const def = keyToCdp(key);
-      await ctx.cdpSendCommand(targetTabId, "Input.dispatchKeyEvent", { type: "rawKeyDown", modifiers, ...def });
-      await ctx.cdpSendCommand(targetTabId, "Input.dispatchKeyEvent", { type: "keyUp", modifiers, ...def });
+      await ctx.cdpSendCommand(targetTabId, 'Input.dispatchKeyEvent', {
+        type: 'rawKeyDown',
+        modifiers,
+        ...def,
+      });
+      await ctx.cdpSendCommand(targetTabId, 'Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        modifiers,
+        ...def,
+      });
       return { ok: true, tabId: targetTabId, key };
     }
-    case "builtin.type_text": {
+    case 'builtin.type_text': {
       const targetTabId = await toTargetTabId(args, ctx);
-      const text = String(args.text ?? "");
-      await ctx.cdpSendCommand(targetTabId, "Input.insertText", { text });
+      const text = String(args.text ?? '');
+      await ctx.cdpSendCommand(targetTabId, 'Input.insertText', { text });
       return { ok: true, tabId: targetTabId, length: text.length };
     }
     default:

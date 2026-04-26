@@ -3,9 +3,9 @@ import type {
   ContextResourceDescriptor,
   ContextSkillDescriptor,
   ToolSpec,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import type { PageToolInstance, ToolInput, UserscriptBridgeAdapter } from "../types";
+import type { PageToolInstance, ToolInput, UserscriptBridgeAdapter } from '../types';
 import {
   buildSkillPrompt,
   isObjectRecord,
@@ -15,7 +15,7 @@ import {
   READONLY_ANNOTATION,
   toErrorMessage,
   toJsonResource,
-} from "../utils";
+} from '../utils';
 
 interface NextSnapshot {
   detected: boolean;
@@ -32,48 +32,48 @@ interface NextAdapterState {
   lastSnapshot: NextSnapshot | null;
 }
 
-const NS = "next";
-const INSTANCE = "primary";
+const NS = 'next';
+const INSTANCE = 'primary';
 
 const RESOURCE_IDS = {
-  summary: "next.summary",
-  nextData: "next.nextData",
-  diagnostics: "next.diagnostics",
+  summary: 'next.summary',
+  nextData: 'next.nextData',
+  diagnostics: 'next.diagnostics',
 } as const;
 
 const SKILL_IDS = {
-  analyze: "next.analyze-next-data",
+  analyze: 'next.analyze-next-data',
 } as const;
 
 const NAMESPACE: ContextNamespaceDescriptor = {
   namespace: NS,
-  title: "Next.js",
-  description: "Read-only Next.js runtime inspection based on window.__NEXT_DATA__.",
-  tags: ["nextjs", "readonly", "ssr", "app"],
+  title: 'Next.js',
+  description: 'Read-only Next.js runtime inspection based on window.__NEXT_DATA__.',
+  tags: ['nextjs', 'readonly', 'ssr', 'app'],
 };
 
 const TOOLS: ToolSpec[] = [
   {
-    name: "getSummary",
-    description: "Get detection summary for Next.js globals on the current page.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    name: 'getSummary',
+    description: 'Get detection summary for Next.js globals on the current page.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "readNextData",
+    name: 'readNextData',
     description:
-      "Read window.__NEXT_DATA__. Optionally provide a simple path (dot + [index]) to select a sub-value.",
+      'Read window.__NEXT_DATA__. Optionally provide a simple path (dot + [index]) to select a sub-value.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
         path: {
-          type: "string",
+          type: 'string',
           description:
             "Optional path, e.g. 'props.pageProps', 'query', 'props.pageProps.user[0].name'. If omitted, returns the whole payload (may be large).",
         },
         maxPreviewLength: {
-          type: "number",
-          description: "Max preview length for the returned selection (default: 2000).",
+          type: 'number',
+          description: 'Max preview length for the returned selection (default: 2000).',
         },
       },
       additionalProperties: false,
@@ -86,29 +86,29 @@ const RESOURCES: ContextResourceDescriptor[] = [
   {
     id: RESOURCE_IDS.summary,
     namespace: NS,
-    title: "Next Summary",
-    description: "Next.js detection summary for window.__NEXT_DATA__.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["summary"],
+    title: 'Next Summary',
+    description: 'Next.js detection summary for window.__NEXT_DATA__.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['summary'],
   },
   {
     id: RESOURCE_IDS.nextData,
     namespace: NS,
-    title: "__NEXT_DATA__",
-    description: "Raw window.__NEXT_DATA__ payload (may be large).",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["payload"],
+    title: '__NEXT_DATA__',
+    description: 'Raw window.__NEXT_DATA__ payload (may be large).',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['payload'],
   },
   {
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
-    title: "Next Diagnostics",
-    description: "Diagnostics for Next.js detection and payload extraction.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["diagnostics"],
+    title: 'Next Diagnostics',
+    description: 'Diagnostics for Next.js detection and payload extraction.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['diagnostics'],
   },
 ];
 
@@ -116,16 +116,19 @@ const SKILLS: ContextSkillDescriptor[] = [
   {
     id: SKILL_IDS.analyze,
     namespace: NS,
-    title: "Analyze Next Data",
-    description: "Analyze Next.js runtime payload and highlight useful inspection pivots.",
-    intentTags: ["analysis", "nextjs", "routing", "ssr"],
+    title: 'Analyze Next Data',
+    description: 'Analyze Next.js runtime payload and highlight useful inspection pivots.',
+    intentTags: ['analysis', 'nextjs', 'routing', 'ssr'],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.nextData, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, TOOLS),
-    mode: "analysis",
+    mode: 'analysis',
   },
 ];
 
-export function createNextjsUserscriptAdapter(win: Window, _doc: Document): UserscriptBridgeAdapter {
+export function createNextjsUserscriptAdapter(
+  win: Window,
+  _doc: Document,
+): UserscriptBridgeAdapter {
   const state: NextAdapterState = { lastSnapshot: null };
 
   const primaryInstance: PageToolInstance = {
@@ -135,33 +138,41 @@ export function createNextjsUserscriptAdapter(win: Window, _doc: Document): User
   };
 
   return {
-    adapterId: "nextjs",
+    adapterId: 'nextjs',
     namespace: NAMESPACE,
     listInstances: () => [primaryInstance],
     listResources: () => RESOURCES,
     readResource: (id) => readNextResource(win, id, state),
     listSkills: () => SKILLS,
     getSkill: (id, input) => getNextSkillPrompt(win, id, input ?? {}, state),
-    getSceneHint: () => "next",
+    getSceneHint: () => 'next',
   };
 }
 
-function callNextTool(win: Window, name: string, input: ToolInput, state: NextAdapterState): unknown {
+function callNextTool(
+  win: Window,
+  name: string,
+  input: ToolInput,
+  state: NextAdapterState,
+): unknown {
   const snapshot = collectNextSnapshot(win);
   state.lastSnapshot = snapshot;
 
-  if (name === "getSummary") {
+  if (name === 'getSummary') {
     return snapshot;
   }
 
-  if (name === "readNextData") {
+  if (name === 'readNextData') {
     const nextData = readNextData(win);
     if (!nextData) {
-      return { ok: false, detected: false, reason: "window.__NEXT_DATA__ is not available." };
+      return { ok: false, detected: false, reason: 'window.__NEXT_DATA__ is not available.' };
     }
-    const path = typeof input.path === "string" ? input.path.trim() : "";
+    const path = typeof input.path === 'string' ? input.path.trim() : '';
     const selected = path ? selectByPath(nextData, path) : nextData;
-    const maxPreviewLength = typeof input.maxPreviewLength === "number" && input.maxPreviewLength > 0 ? input.maxPreviewLength : 2000;
+    const maxPreviewLength =
+      typeof input.maxPreviewLength === 'number' && input.maxPreviewLength > 0
+        ? input.maxPreviewLength
+        : 2000;
     const preview = safeStringifyTruncated(selected, maxPreviewLength);
     return {
       ok: true,
@@ -188,7 +199,7 @@ function readNextResource(win: Window, id: string, state: NextAdapterState) {
   }
   if (id === RESOURCE_IDS.nextData) {
     const nextData = readNextData(win);
-    return toJsonResource(id, nextData ?? { error: "window.__NEXT_DATA__ is not available." });
+    return toJsonResource(id, nextData ?? { error: 'window.__NEXT_DATA__ is not available.' });
   }
   return toJsonResource(id, { error: `Unknown resource id: ${id}` });
 }
@@ -206,9 +217,9 @@ function getNextSkillPrompt(win: Window, id: string, input: ToolInput, state: Ne
     focus: normalized.focus,
     facts: [
       `nextDetected=${snapshot.detected}`,
-      `page=${snapshot.page ?? "(unknown)"}`,
-      `buildId=${snapshot.buildId ?? "(unknown)"}`,
-      `runtime=${snapshot.runtime ?? "(unknown)"}`,
+      `page=${snapshot.page ?? '(unknown)'}`,
+      `buildId=${snapshot.buildId ?? '(unknown)'}`,
+      `runtime=${snapshot.runtime ?? '(unknown)'}`,
       `hasProps=${snapshot.hasProps}`,
     ],
   });
@@ -225,16 +236,18 @@ function collectNextSnapshot(win: Window): NextSnapshot {
       buildId: null,
       runtime: null,
       hasProps: false,
-      payloadPreview: "(missing)",
-      diagnostics: ["window.__NEXT_DATA__ not found"],
+      payloadPreview: '(missing)',
+      diagnostics: ['window.__NEXT_DATA__ not found'],
     };
   }
 
   const keys = isObjectRecord(nextData) ? Object.keys(nextData) : [];
-  const page = isObjectRecord(nextData) && typeof nextData.page === "string" ? nextData.page : null;
-  const buildId = isObjectRecord(nextData) && typeof nextData.buildId === "string" ? nextData.buildId : null;
-  const runtime = isObjectRecord(nextData) && typeof nextData.runtimeConfig === "object" ? "runtimeConfig" : null;
-  const hasProps = isObjectRecord(nextData) && "props" in nextData;
+  const page = isObjectRecord(nextData) && typeof nextData.page === 'string' ? nextData.page : null;
+  const buildId =
+    isObjectRecord(nextData) && typeof nextData.buildId === 'string' ? nextData.buildId : null;
+  const runtime =
+    isObjectRecord(nextData) && typeof nextData.runtimeConfig === 'object' ? 'runtimeConfig' : null;
+  const hasProps = isObjectRecord(nextData) && 'props' in nextData;
 
   return {
     detected: true,
@@ -262,7 +275,7 @@ function safeStringifyTruncated(value: unknown, maxLen: number): string {
   try {
     text = JSON.stringify(value, null, 2);
   } catch {
-    text = JSON.stringify({ error: "Unable to stringify payload" }, null, 2);
+    text = JSON.stringify({ error: 'Unable to stringify payload' }, null, 2);
   }
   return text.length > maxLen ? `${text.slice(0, Math.max(0, maxLen - 3))}...` : text;
 }
@@ -277,7 +290,7 @@ function selectByPath(root: unknown, path: string): unknown {
     if (cursor == null) {
       return null;
     }
-    if (typeof token === "number") {
+    if (typeof token === 'number') {
       if (!Array.isArray(cursor)) {
         return null;
       }
@@ -294,7 +307,10 @@ function selectByPath(root: unknown, path: string): unknown {
 
 function tokenizePath(path: string): Array<string | number> {
   const tokens: Array<string | number> = [];
-  const parts = path.split(".").map((p) => p.trim()).filter(Boolean);
+  const parts = path
+    .split('.')
+    .map((p) => p.trim())
+    .filter(Boolean);
   for (const part of parts) {
     // e.g. "props[0][1]" or "pageProps"
     const regex = /([^[\]]+)|(\[(\d+)\])/g;
@@ -309,4 +325,3 @@ function tokenizePath(path: string): Array<string | number> {
   }
   return tokens;
 }
-

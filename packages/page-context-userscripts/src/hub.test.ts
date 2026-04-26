@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { getOrCreatePageContextBridgeHost } from "./bridge-host";
-import { getOrCreateUserscriptBridgeHub } from "./hub";
-import type { UserscriptBridgeAdapter } from "./types";
+import { getOrCreatePageContextBridgeHost } from './bridge-host';
+import { getOrCreateUserscriptBridgeHub } from './hub';
+import type { UserscriptBridgeAdapter } from './types';
 
-describe("userscript bridge hub", () => {
+describe('userscript bridge hub', () => {
   beforeEach(() => {
     delete window.__pageContextBridge__;
     delete window.__pageContextTools__;
@@ -12,21 +12,21 @@ describe("userscript bridge hub", () => {
     delete window.__pageContextBridgeHost__;
   });
 
-  it("does not auto-install host and waits for extension injection", () => {
+  it('does not auto-install host and waits for extension injection', () => {
     const hub = getOrCreateUserscriptBridgeHub(window, document);
-    hub.registerAdapter(createDummyAdapter("alpha", "alpha-adapter"));
+    hub.registerAdapter(createDummyAdapter('alpha', 'alpha-adapter'));
 
     expect(window.__pageContextBridgeHost__).toBeUndefined();
     expect(window.__pageContextBridge__).toBeUndefined();
     expect(window.__pageContextTools__).toBeUndefined();
-    expect(hub.listAdapterIds()).toEqual(["alpha-adapter"]);
+    expect(hub.listAdapterIds()).toEqual(['alpha-adapter']);
   });
 
-  it("merges multiple adapters on one shared bridge without replacing bridge object", () => {
+  it('merges multiple adapters on one shared bridge without replacing bridge object', () => {
     getOrCreatePageContextBridgeHost(window, document);
     const hub = getOrCreateUserscriptBridgeHub(window, document);
-    const alpha = createDummyAdapter("alpha", "alpha-adapter");
-    const beta = createDummyAdapter("beta", "beta-adapter");
+    const alpha = createDummyAdapter('alpha', 'alpha-adapter');
+    const beta = createDummyAdapter('beta', 'beta-adapter');
 
     hub.registerAdapter(alpha);
     const firstBridgeRef = window.__pageContextBridge__;
@@ -34,42 +34,70 @@ describe("userscript bridge hub", () => {
 
     expect(window.__pageContextBridge__).toBe(firstBridgeRef);
     expect(window.__pageContextTools__).toBe(firstBridgeRef);
-    expect(firstBridgeRef?.listNamespaces()).toEqual(["alpha", "beta"]);
-    expect(firstBridgeRef?.getNamespace("alpha")?.getInstance("primary")?.listTools().map((tool) => tool.name)).toEqual(["read"]);
+    expect(firstBridgeRef?.listNamespaces()).toEqual(['alpha', 'beta']);
+    expect(
+      firstBridgeRef
+        ?.getNamespace('alpha')
+        ?.getInstance('primary')
+        ?.listTools()
+        .map((tool) => tool.name),
+    ).toEqual(['read']);
 
-    const betaResource = firstBridgeRef?.readResource("beta.summary");
-    expect(betaResource?.id).toBe("beta.summary");
-    expect(JSON.parse(betaResource?.text ?? "{}")).toMatchObject({ namespace: "beta" });
+    const betaResource = firstBridgeRef?.readResource('beta.summary');
+    expect(betaResource?.id).toBe('beta.summary');
+    expect(JSON.parse(betaResource?.text ?? '{}')).toMatchObject({ namespace: 'beta' });
   });
 
-  it("adopts existing page bridge and composes namespaces", () => {
+  it('adopts existing page bridge and composes namespaces', () => {
     const foreignBridge = {
-      version: "foreign",
-      listNamespaces: () => ["foreign", "alpha"],
+      version: 'foreign',
+      listNamespaces: () => ['foreign', 'alpha'],
       getNamespace: (namespace: string) => {
-        if (namespace !== "foreign" && namespace !== "alpha") {
+        if (namespace !== 'foreign' && namespace !== 'alpha') {
           return undefined;
         }
         return {
           namespace,
-          listInstances: () => ["primary"],
+          listInstances: () => ['primary'],
           getInstance: () => ({
-            instanceId: "primary",
-            listTools: () => [{ name: "foreignRead", description: "foreignRead", inputSchema: { type: "object", properties: {}, additionalProperties: false } }],
+            instanceId: 'primary',
+            listTools: () => [
+              {
+                name: 'foreignRead',
+                description: 'foreignRead',
+                inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+              },
+            ],
             callTool: () => ({ ok: true }),
           }),
         };
       },
-      getScene: () => "foreign",
-      listResources: () => [{ id: "foreign.summary", namespace: "foreign", title: "Summary", mimeType: "application/json", kind: "json" as const }],
-      readResource: () => ({ id: "foreign.summary", mimeType: "application/json", text: "{}" }),
-      listSkills: () => [{ id: "foreign.analyze", namespace: "foreign", title: "Analyze", description: "Analyze foreign", mode: "analysis" as const }],
+      getScene: () => 'foreign',
+      listResources: () => [
+        {
+          id: 'foreign.summary',
+          namespace: 'foreign',
+          title: 'Summary',
+          mimeType: 'application/json',
+          kind: 'json' as const,
+        },
+      ],
+      readResource: () => ({ id: 'foreign.summary', mimeType: 'application/json', text: '{}' }),
+      listSkills: () => [
+        {
+          id: 'foreign.analyze',
+          namespace: 'foreign',
+          title: 'Analyze',
+          description: 'Analyze foreign',
+          mode: 'analysis' as const,
+        },
+      ],
       getSkill: () => undefined,
       getManifest: () => ({
-        version: "foreign",
-        app: "foreign",
-        route: "/",
-        scene: "foreign",
+        version: 'foreign',
+        app: 'foreign',
+        route: '/',
+        scene: 'foreign',
         namespaces: [],
         resources: [],
         skills: [],
@@ -80,14 +108,14 @@ describe("userscript bridge hub", () => {
     getOrCreatePageContextBridgeHost(window, document);
 
     const hub = getOrCreateUserscriptBridgeHub(window, document);
-    hub.registerAdapter(createDummyAdapter("alpha", "alpha-adapter"));
+    hub.registerAdapter(createDummyAdapter('alpha', 'alpha-adapter'));
 
     const activeBridge = window.__pageContextBridge__;
     expect(activeBridge).toBeDefined();
     expect(activeBridge).not.toBe(foreignBridge);
-    expect(activeBridge?.listNamespaces()).toEqual(["alpha", "foreign"]);
-    expect(activeBridge?.readResource("foreign.summary").id).toBe("foreign.summary");
-    expect(activeBridge?.listSkills().map((skill) => skill.id)).toContain("foreign.analyze");
+    expect(activeBridge?.listNamespaces()).toEqual(['alpha', 'foreign']);
+    expect(activeBridge?.readResource('foreign.summary').id).toBe('foreign.summary');
+    expect(activeBridge?.listSkills().map((skill) => skill.id)).toContain('foreign.analyze');
   });
 });
 
@@ -98,12 +126,18 @@ function createDummyAdapter(namespace: string, adapterId: string): UserscriptBri
       namespace,
       title: namespace.toUpperCase(),
       description: `${namespace} test adapter`,
-      tags: ["test"],
+      tags: ['test'],
     },
     listInstances: () => [
       {
-        instanceId: "primary",
-        listTools: () => [{ name: "read", description: "read", inputSchema: { type: "object", properties: {}, additionalProperties: false } }],
+        instanceId: 'primary',
+        listTools: () => [
+          {
+            name: 'read',
+            description: 'read',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          },
+        ],
         callTool: () => ({ ok: true }),
       },
     ],
@@ -111,41 +145,41 @@ function createDummyAdapter(namespace: string, adapterId: string): UserscriptBri
       {
         id: `${namespace}.summary`,
         namespace,
-        title: "Summary",
-        mimeType: "application/json",
-        kind: "json",
+        title: 'Summary',
+        mimeType: 'application/json',
+        kind: 'json',
       },
       {
         id: `${namespace}.diagnostics`,
         namespace,
-        title: "Diagnostics",
-        mimeType: "application/json",
-        kind: "json",
+        title: 'Diagnostics',
+        mimeType: 'application/json',
+        kind: 'json',
       },
     ],
     readResource: (id) => ({
       id,
-      mimeType: "application/json",
+      mimeType: 'application/json',
       text: JSON.stringify({ namespace }),
     }),
     listSkills: () => [
       {
         id: `${namespace}.analyze`,
         namespace,
-        title: "Analyze",
-        description: "Analyze adapter",
-        mode: "analysis",
+        title: 'Analyze',
+        description: 'Analyze adapter',
+        mode: 'analysis',
       },
     ],
     getSkill: (id) => ({
       skill: {
         id,
         namespace,
-        title: "Analyze",
-        description: "Analyze adapter",
-        mode: "analysis",
+        title: 'Analyze',
+        description: 'Analyze adapter',
+        mode: 'analysis',
       },
-      text: "test prompt",
+      text: 'test prompt',
     }),
     getSceneHint: () => namespace,
   };

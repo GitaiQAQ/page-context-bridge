@@ -35,7 +35,10 @@ export function buildCLICommand(parsed: ParsedURL, bin: string): string {
     }
 
     if (config.arrayParams?.includes(urlParam)) {
-      const values = value.split(',').map((v) => v.trim()).filter(Boolean);
+      const values = value
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
       for (const v of values) {
         parts.push(`-${cliFlag}`, v);
       }

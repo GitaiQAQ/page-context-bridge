@@ -11,77 +11,86 @@ import type {
   FeedbackUiDismissInput,
   FeedbackUiRect,
   FeedbackUiUpdateInput,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import { extractElementContextMeta, extractReactAnchorMeta, identifyElement } from "./element-identification";
+import {
+  extractElementContextMeta,
+  extractReactAnchorMeta,
+  identifyElement,
+} from './element-identification';
 import type {
   AgentationShellMountDeps,
   AgentationShellMountHandle,
   AgentationShellDeps,
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
-} from "./types";
+} from './types';
 export type {
   AgentationShellMountDeps,
   AgentationShellMountHandle,
   AgentationShellDeps,
   AgentationShellMultiSelectItem,
   AgentationShellMultiSelectMeta,
-} from "./types";
+} from './types';
 
-const AGENTATION_SHELL_HOST_ID = "__page_context_agentation_shell_host__";
-const TOOLBAR_STATE_STORAGE_KEY = "__page_context_agentation_shell_toolbar_state_v1__";
+const AGENTATION_SHELL_HOST_ID = '__page_context_agentation_shell_host__';
+const TOOLBAR_STATE_STORAGE_KEY = '__page_context_agentation_shell_toolbar_state_v1__';
 const TOOLBAR_STATE_VERSION = 1;
-const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
-const PRIORITY_ORDER: FeedbackPriority[] = ["low", "normal", "high", "critical"];
+const SUPPORTED_PROTOCOLS = new Set(['http:', 'https:']);
+const PRIORITY_ORDER: FeedbackPriority[] = ['low', 'normal', 'high', 'critical'];
 const DRAG_SELECTION_THRESHOLD_PX = 6;
 const AREA_SELECTION_MIN_SIZE_PX = 20;
-const DEFAULT_ANNOTATING_HINT = "Click page elements to open annotation popup, Cmd/Ctrl+Shift+Click for multi-select, Esc to exit.";
-const MARKER_DISMISS_REASON = "marker deleted from agentation shell";
+const DEFAULT_ANNOTATING_HINT =
+  'Click page elements to open annotation popup, Cmd/Ctrl+Shift+Click for multi-select, Esc to exit.';
+const MARKER_DISMISS_REASON = 'marker deleted from agentation shell';
 const POPUP_ENTER_DURATION_MS = 120;
 const POPUP_EXIT_DURATION_MS = 140;
 const POPUP_SHAKE_DURATION_MS = 280;
-const AREA_SELECTION_ELEMENT_SELECTOR = "button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th";
+const AREA_SELECTION_ELEMENT_SELECTOR =
+  'button, a, input, img, p, h1, h2, h3, h4, h5, h6, li, label, td, th';
 const DRAG_SELECTION_TEXT_TAGS = new Set([
-  "P",
-  "SPAN",
-  "H1",
-  "H2",
-  "H3",
-  "H4",
-  "H5",
-  "H6",
-  "LI",
-  "TD",
-  "TH",
-  "LABEL",
-  "BLOCKQUOTE",
-  "FIGCAPTION",
-  "CAPTION",
-  "LEGEND",
-  "DT",
-  "DD",
-  "PRE",
-  "CODE",
-  "EM",
-  "STRONG",
-  "B",
-  "I",
-  "U",
-  "S",
-  "A",
-  "TIME",
-  "ADDRESS",
-  "CITE",
-  "Q",
-  "ABBR",
-  "DFN",
-  "MARK",
-  "SMALL",
-  "SUB",
-  "SUP",
+  'P',
+  'SPAN',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'LI',
+  'TD',
+  'TH',
+  'LABEL',
+  'BLOCKQUOTE',
+  'FIGCAPTION',
+  'CAPTION',
+  'LEGEND',
+  'DT',
+  'DD',
+  'PRE',
+  'CODE',
+  'EM',
+  'STRONG',
+  'B',
+  'I',
+  'U',
+  'S',
+  'A',
+  'TIME',
+  'ADDRESS',
+  'CITE',
+  'Q',
+  'ABBR',
+  'DFN',
+  'MARK',
+  'SMALL',
+  'SUB',
+  'SUP',
 ]);
-const NON_REPLAYABLE_ANNOTATION_STATUS = new Set<FeedbackAnnotationStatus>(["resolved", "dismissed"]);
+const NON_REPLAYABLE_ANNOTATION_STATUS = new Set<FeedbackAnnotationStatus>([
+  'resolved',
+  'dismissed',
+]);
 const runtimeByHost = new WeakMap<HTMLDivElement, AgentationShellRuntime>();
 
 interface MarkerRecord {
@@ -91,7 +100,7 @@ interface MarkerRecord {
   priority: FeedbackPriority;
   selectedText?: string;
   elementName: string;
-  targetInput: FeedbackUiCreateInput["target"];
+  targetInput: FeedbackUiCreateInput['target'];
   // Aggregation semantics are only used in the shell's local rendering layer and not written back to the protocol structure.
   multiSelectMeta?: AgentationShellMultiSelectMeta;
   // Pixel coordinate cache for compatibility with current logic, for direct reuse by tooltip/popup.
@@ -103,7 +112,7 @@ interface MarkerRecord {
 }
 
 interface PopupState {
-  mode: "create" | "edit";
+  mode: 'create' | 'edit';
   editMarkerId?: string;
   returnFocusElement?: HTMLElement;
   anchorX: number;
@@ -112,7 +121,7 @@ interface PopupState {
   initialPriority?: FeedbackPriority;
   selectedText?: string;
   targetElement?: HTMLElement;
-  targetInput: FeedbackUiCreateInput["target"];
+  targetInput: FeedbackUiCreateInput['target'];
   multiSelectMeta?: AgentationShellMultiSelectMeta;
 }
 
@@ -134,7 +143,7 @@ interface ToolbarPosition {
 }
 
 interface ToolbarDragState {
-  source: "toolbar" | "dock";
+  source: 'toolbar' | 'dock';
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -154,7 +163,7 @@ interface ReplayMarkerTarget {
   anchorX: number;
   anchorY: number;
   elementName: string;
-  targetInput: FeedbackUiCreateInput["target"];
+  targetInput: FeedbackUiCreateInput['target'];
 }
 
 interface FeedbackDeltaPlan {
@@ -164,12 +173,12 @@ interface FeedbackDeltaPlan {
 }
 
 interface MarkerTooltipPlacement {
-  horizontal: "left" | "center" | "right";
-  vertical: "top" | "bottom";
+  horizontal: 'left' | 'center' | 'right';
+  vertical: 'top' | 'bottom';
 }
 
 interface MarkerVisualSemantic {
-  kind: "single" | "multi-select" | "area-select";
+  kind: 'single' | 'multi-select' | 'area-select';
   isAggregate: boolean;
   aggregateCount: number;
   mainLabel: string;
@@ -200,12 +209,14 @@ export function installAgentationShell(deps: AgentationShellDeps): boolean {
   if (doc.getElementById(AGENTATION_SHELL_HOST_ID)) {
     return true;
   }
-  return mountAgentationShell({
-    adapter: deps.adapter,
-    doc,
-    win,
-    logger: deps.logger,
-  }) !== null;
+  return (
+    mountAgentationShell({
+      adapter: deps.adapter,
+      doc,
+      win,
+      logger: deps.logger,
+    }) !== null
+  );
 }
 
 /**
@@ -213,7 +224,9 @@ export function installAgentationShell(deps: AgentationShellDeps): boolean {
  * - Supports external host (e.g., React component embedded div);
  * - Returns idempotent unmount handle for proper cleanup during strict mode re-mounting.
  */
-export function mountAgentationShell(deps: AgentationShellMountDeps): AgentationShellMountHandle | null {
+export function mountAgentationShell(
+  deps: AgentationShellMountDeps,
+): AgentationShellMountHandle | null {
   const doc = deps.doc ?? document;
   const win = deps.win ?? window;
   if (!shouldInstallShell(doc, win)) {
@@ -267,11 +280,13 @@ function resolveMountHost(
   const existing = doc.getElementById(AGENTATION_SHELL_HOST_ID);
   if (existing) {
     if (!(existing instanceof HTMLDivElement)) {
-      throw new Error(`agentation shell host id conflicts with non-div element: ${AGENTATION_SHELL_HOST_ID}`);
+      throw new Error(
+        `agentation shell host id conflicts with non-div element: ${AGENTATION_SHELL_HOST_ID}`,
+      );
     }
     return { host: existing, removeHostOnUnmount: false };
   }
-  const host = doc.createElement("div");
+  const host = doc.createElement('div');
   host.id = AGENTATION_SHELL_HOST_ID;
   return { host, removeHostOnUnmount: true };
 }
@@ -280,7 +295,7 @@ function resolveShellShadowRoot(host: HTMLDivElement): ShadowRoot {
   if (host.shadowRoot) {
     return host.shadowRoot;
   }
-  return host.attachShadow({ mode: "open" });
+  return host.attachShadow({ mode: 'open' });
 }
 
 function shouldInstallShell(doc: Document, win: Window): boolean {
@@ -305,7 +320,7 @@ class AgentationShellRuntime {
   private readonly adapter: FeedbackUiAdapter;
   private readonly doc: Document;
   private readonly win: Window;
-  private readonly logger?: AgentationShellDeps["logger"];
+  private readonly logger?: AgentationShellDeps['logger'];
   private readonly removeHostOnUnmount: boolean;
 
   private readonly host: HTMLDivElement;
@@ -338,7 +353,7 @@ class AgentationShellRuntime {
   private submitting = false;
   private popupState: PopupState | null = null;
   private hoveredElement: HTMLElement | null = null;
-  private hoveredElementLabel = "";
+  private hoveredElementLabel = '';
   private markerIdSeq = 0;
   private readonly markers: MarkerRecord[] = [];
   private readonly multiSelectTargets = new Map<HTMLElement, MultiSelectTargetSnapshot>();
@@ -369,7 +384,7 @@ class AgentationShellRuntime {
     adapter: FeedbackUiAdapter;
     doc: Document;
     win: Window;
-    logger?: AgentationShellDeps["logger"];
+    logger?: AgentationShellDeps['logger'];
   }) {
     this.host = args.host;
     this.removeHostOnUnmount = args.removeHostOnUnmount;
@@ -381,28 +396,43 @@ class AgentationShellRuntime {
     this.shadow = resolveShellShadowRoot(this.host);
     this.shadow.innerHTML = SHELL_TEMPLATE;
 
-    this.toolbar = queryRequired<HTMLDivElement>(this.shadow, "[data-toolbar]");
-    this.toolbarToggle = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-toggle]");
-    this.toolbarHint = queryRequired<HTMLSpanElement>(this.shadow, "[data-toolbar-hint]");
-    this.toolbarDragHandle = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-drag]");
-    this.toolbarHideButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-hide]");
-    this.toolbarDock = queryRequired<HTMLButtonElement>(this.shadow, "[data-toolbar-dock]");
-    this.hoverBox = queryRequired<HTMLDivElement>(this.shadow, "[data-hover-box]");
-    this.dragSelectionBox = queryRequired<HTMLDivElement>(this.shadow, "[data-drag-selection]");
-    this.markerLayer = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-layer]");
-    this.popupForm = queryRequired<HTMLFormElement>(this.shadow, "[data-popup]");
-    this.popupTitleView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-title]");
-    this.popupTargetView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-target]");
-    this.popupSelectionLabel = queryRequired<HTMLLabelElement>(this.shadow, "[data-popup-selection-label]");
-    this.popupSelectionView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-selection]");
-    this.popupBodyInput = queryRequired<HTMLTextAreaElement>(this.shadow, "[data-popup-body]");
-    this.popupPrioritySelect = queryRequired<HTMLSelectElement>(this.shadow, "[data-popup-priority]");
-    this.popupStatusView = queryRequired<HTMLParagraphElement>(this.shadow, "[data-popup-status]");
-    this.popupDeleteButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-delete]");
-    this.popupCancelButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-cancel]");
-    this.popupSubmitButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-popup-submit]");
-    this.markerContextMenu = queryRequired<HTMLDivElement>(this.shadow, "[data-marker-context-menu]");
-    this.markerContextMenuDeleteButton = queryRequired<HTMLButtonElement>(this.shadow, "[data-marker-context-menu-delete]");
+    this.toolbar = queryRequired<HTMLDivElement>(this.shadow, '[data-toolbar]');
+    this.toolbarToggle = queryRequired<HTMLButtonElement>(this.shadow, '[data-toolbar-toggle]');
+    this.toolbarHint = queryRequired<HTMLSpanElement>(this.shadow, '[data-toolbar-hint]');
+    this.toolbarDragHandle = queryRequired<HTMLButtonElement>(this.shadow, '[data-toolbar-drag]');
+    this.toolbarHideButton = queryRequired<HTMLButtonElement>(this.shadow, '[data-toolbar-hide]');
+    this.toolbarDock = queryRequired<HTMLButtonElement>(this.shadow, '[data-toolbar-dock]');
+    this.hoverBox = queryRequired<HTMLDivElement>(this.shadow, '[data-hover-box]');
+    this.dragSelectionBox = queryRequired<HTMLDivElement>(this.shadow, '[data-drag-selection]');
+    this.markerLayer = queryRequired<HTMLDivElement>(this.shadow, '[data-marker-layer]');
+    this.popupForm = queryRequired<HTMLFormElement>(this.shadow, '[data-popup]');
+    this.popupTitleView = queryRequired<HTMLParagraphElement>(this.shadow, '[data-popup-title]');
+    this.popupTargetView = queryRequired<HTMLParagraphElement>(this.shadow, '[data-popup-target]');
+    this.popupSelectionLabel = queryRequired<HTMLLabelElement>(
+      this.shadow,
+      '[data-popup-selection-label]',
+    );
+    this.popupSelectionView = queryRequired<HTMLParagraphElement>(
+      this.shadow,
+      '[data-popup-selection]',
+    );
+    this.popupBodyInput = queryRequired<HTMLTextAreaElement>(this.shadow, '[data-popup-body]');
+    this.popupPrioritySelect = queryRequired<HTMLSelectElement>(
+      this.shadow,
+      '[data-popup-priority]',
+    );
+    this.popupStatusView = queryRequired<HTMLParagraphElement>(this.shadow, '[data-popup-status]');
+    this.popupDeleteButton = queryRequired<HTMLButtonElement>(this.shadow, '[data-popup-delete]');
+    this.popupCancelButton = queryRequired<HTMLButtonElement>(this.shadow, '[data-popup-cancel]');
+    this.popupSubmitButton = queryRequired<HTMLButtonElement>(this.shadow, '[data-popup-submit]');
+    this.markerContextMenu = queryRequired<HTMLDivElement>(
+      this.shadow,
+      '[data-marker-context-menu]',
+    );
+    this.markerContextMenuDeleteButton = queryRequired<HTMLButtonElement>(
+      this.shadow,
+      '[data-marker-context-menu-delete]',
+    );
   }
 
   mount(): void {
@@ -415,7 +445,7 @@ class AgentationShellRuntime {
     if (!this.host.isConnected) {
       const parent = this.doc.body ?? this.doc.documentElement;
       if (!parent) {
-        throw new Error("agentation shell host cannot be mounted: missing document root");
+        throw new Error('agentation shell host cannot be mounted: missing document root');
       }
       parent.appendChild(this.host);
     }
@@ -426,19 +456,22 @@ class AgentationShellRuntime {
     } else {
       this.captureToolbarPositionFromLayout();
     }
-    this.toolbarToggle.addEventListener("click", this.onToolbarToggleClick);
-    this.toolbarDragHandle.addEventListener("pointerdown", this.onToolbarDragPointerDown);
-    this.toolbarHideButton.addEventListener("click", this.onToolbarHideClick);
-    this.toolbarDock.addEventListener("pointerdown", this.onToolbarDockPointerDown);
-    this.toolbarDock.addEventListener("click", this.onToolbarDockClick);
-    this.popupDeleteButton.addEventListener("click", this.onPopupDeleteClick);
-    this.popupCancelButton.addEventListener("click", this.onPopupCancelClick);
-    this.popupForm.addEventListener("keydown", this.onPopupKeyDown);
-    this.popupForm.addEventListener("submit", this.onPopupSubmit);
-    this.popupBodyInput.addEventListener("input", this.onPopupBodyInput);
-    this.popupPrioritySelect.addEventListener("change", this.onPriorityChange);
-    this.markerContextMenuDeleteButton.addEventListener("click", this.onMarkerContextMenuDeleteClick);
-    this.win.addEventListener("resize", this.onWindowResize, true);
+    this.toolbarToggle.addEventListener('click', this.onToolbarToggleClick);
+    this.toolbarDragHandle.addEventListener('pointerdown', this.onToolbarDragPointerDown);
+    this.toolbarHideButton.addEventListener('click', this.onToolbarHideClick);
+    this.toolbarDock.addEventListener('pointerdown', this.onToolbarDockPointerDown);
+    this.toolbarDock.addEventListener('click', this.onToolbarDockClick);
+    this.popupDeleteButton.addEventListener('click', this.onPopupDeleteClick);
+    this.popupCancelButton.addEventListener('click', this.onPopupCancelClick);
+    this.popupForm.addEventListener('keydown', this.onPopupKeyDown);
+    this.popupForm.addEventListener('submit', this.onPopupSubmit);
+    this.popupBodyInput.addEventListener('input', this.onPopupBodyInput);
+    this.popupPrioritySelect.addEventListener('change', this.onPriorityChange);
+    this.markerContextMenuDeleteButton.addEventListener(
+      'click',
+      this.onMarkerContextMenuDeleteClick,
+    );
+    this.win.addEventListener('resize', this.onWindowResize, true);
     this.bootstrapFeedbackReplay();
   }
 
@@ -455,20 +488,23 @@ class AgentationShellRuntime {
     this.closePopup();
     this.clearPopupTimers();
     this.detachMarkerContextMenuListeners();
-    this.win.removeEventListener("resize", this.onWindowResize, true);
+    this.win.removeEventListener('resize', this.onWindowResize, true);
 
-    this.toolbarToggle.removeEventListener("click", this.onToolbarToggleClick);
-    this.toolbarDragHandle.removeEventListener("pointerdown", this.onToolbarDragPointerDown);
-    this.toolbarHideButton.removeEventListener("click", this.onToolbarHideClick);
-    this.toolbarDock.removeEventListener("pointerdown", this.onToolbarDockPointerDown);
-    this.toolbarDock.removeEventListener("click", this.onToolbarDockClick);
-    this.popupDeleteButton.removeEventListener("click", this.onPopupDeleteClick);
-    this.popupCancelButton.removeEventListener("click", this.onPopupCancelClick);
-    this.popupForm.removeEventListener("keydown", this.onPopupKeyDown);
-    this.popupForm.removeEventListener("submit", this.onPopupSubmit);
-    this.popupBodyInput.removeEventListener("input", this.onPopupBodyInput);
-    this.popupPrioritySelect.removeEventListener("change", this.onPriorityChange);
-    this.markerContextMenuDeleteButton.removeEventListener("click", this.onMarkerContextMenuDeleteClick);
+    this.toolbarToggle.removeEventListener('click', this.onToolbarToggleClick);
+    this.toolbarDragHandle.removeEventListener('pointerdown', this.onToolbarDragPointerDown);
+    this.toolbarHideButton.removeEventListener('click', this.onToolbarHideClick);
+    this.toolbarDock.removeEventListener('pointerdown', this.onToolbarDockPointerDown);
+    this.toolbarDock.removeEventListener('click', this.onToolbarDockClick);
+    this.popupDeleteButton.removeEventListener('click', this.onPopupDeleteClick);
+    this.popupCancelButton.removeEventListener('click', this.onPopupCancelClick);
+    this.popupForm.removeEventListener('keydown', this.onPopupKeyDown);
+    this.popupForm.removeEventListener('submit', this.onPopupSubmit);
+    this.popupBodyInput.removeEventListener('input', this.onPopupBodyInput);
+    this.popupPrioritySelect.removeEventListener('change', this.onPriorityChange);
+    this.markerContextMenuDeleteButton.removeEventListener(
+      'click',
+      this.onMarkerContextMenuDeleteClick,
+    );
 
     // When reusing external host, do not directly remove the node, only clear shadow content.
     this.shadow.replaceChildren();
@@ -509,12 +545,12 @@ class AgentationShellRuntime {
         return;
       }
       this.reconcileMarkersFromFeedbackSnapshot(snapshot);
-      this.log("debug", "Agentation shell feedback snapshot replay completed", {
+      this.log('debug', 'Agentation shell feedback snapshot replay completed', {
         annotationCount: snapshot.annotations.length,
         snapshotVersion: snapshot.snapshotVersion,
       });
     })().catch((error) => {
-      this.log("error", "Agentation shell feedback snapshot replay failed", error);
+      this.log('error', 'Agentation shell feedback snapshot replay failed', error);
     });
 
     this.feedbackSnapshotSyncInFlight = task.finally(() => {
@@ -551,14 +587,14 @@ class AgentationShellRuntime {
         await this.syncMarkersFromFeedbackSnapshot();
       }
 
-      this.log("debug", "Agentation shell feedback delta sync completed", {
+      this.log('debug', 'Agentation shell feedback delta sync completed', {
         eventCount: plan.eventCount,
         removedCount,
         snapshotReloaded,
         lastSeq: delta.lastSeq,
       });
     })().catch((error) => {
-      this.log("error", "Agentation shell feedback delta sync failed", error);
+      this.log('error', 'Agentation shell feedback delta sync failed', error);
     });
 
     this.feedbackDeltaSyncInFlight = task.finally(() => {
@@ -617,8 +653,10 @@ class AgentationShellRuntime {
     }
 
     this.markers.splice(0, this.markers.length, ...nextMarkers);
-    if (this.popupState?.mode === "edit" && this.popupState.editMarkerId) {
-      const markerExists = this.markers.some((marker) => marker.id === this.popupState?.editMarkerId);
+    if (this.popupState?.mode === 'edit' && this.popupState.editMarkerId) {
+      const markerExists = this.markers.some(
+        (marker) => marker.id === this.popupState?.editMarkerId,
+      );
       if (!markerExists) {
         this.closePopup();
       }
@@ -631,16 +669,29 @@ class AgentationShellRuntime {
    * When missing, fall back to selector on-site positioning to ensure minimal usability.
    */
   private buildMarkerFromFeedbackAnnotation(annotation: FeedbackAnnotation): MarkerRecord | null {
-    const replayTarget = resolveReplayMarkerTarget(annotation, this.doc, this.host, this.win.innerWidth, this.win.innerHeight);
+    const replayTarget = resolveReplayMarkerTarget(
+      annotation,
+      this.doc,
+      this.host,
+      this.win.innerWidth,
+      this.win.innerHeight,
+    );
     if (!replayTarget) {
-      this.log("debug", "Skip replay annotation because uiAnchor target is unavailable", {
+      this.log('debug', 'Skip replay annotation because uiAnchor target is unavailable', {
         annotationId: annotation.id,
       });
       return null;
     }
 
-    const selectedText = normalizeSelectionText(annotation.target.textQuote ?? annotation.target.uiAnchor?.textQuote ?? "");
-    const markerAnchor = buildMarkerAnchor(replayTarget.anchorX, replayTarget.anchorY, this.win.innerWidth, this.win.innerHeight);
+    const selectedText = normalizeSelectionText(
+      annotation.target.textQuote ?? annotation.target.uiAnchor?.textQuote ?? '',
+    );
+    const markerAnchor = buildMarkerAnchor(
+      replayTarget.anchorX,
+      replayTarget.anchorY,
+      this.win.innerWidth,
+      this.win.innerHeight,
+    );
     const multiSelectMeta = readMultiSelectMetaFromUiAnchor(annotation.target.uiAnchor);
     return {
       id: annotation.id,
@@ -706,7 +757,7 @@ class AgentationShellRuntime {
     }
 
     this.toolbarDragState = {
-      source: "toolbar",
+      source: 'toolbar',
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -714,11 +765,11 @@ class AgentationShellRuntime {
       startTop: this.toolbarPosition.top,
       moved: false,
     };
-    this.toolbar.dataset.dragging = "true";
+    this.toolbar.dataset.dragging = 'true';
     this.toolbarDragHandle.setPointerCapture?.(event.pointerId);
-    this.win.addEventListener("pointermove", this.onToolbarDragPointerMove, true);
-    this.win.addEventListener("pointerup", this.onToolbarDragPointerEnd, true);
-    this.win.addEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
+    this.win.addEventListener('pointermove', this.onToolbarDragPointerMove, true);
+    this.win.addEventListener('pointerup', this.onToolbarDragPointerEnd, true);
+    this.win.addEventListener('pointercancel', this.onToolbarDragPointerEnd, true);
   };
 
   private readonly onToolbarDockPointerDown = (event: PointerEvent): void => {
@@ -738,7 +789,7 @@ class AgentationShellRuntime {
     }
 
     this.toolbarDragState = {
-      source: "dock",
+      source: 'dock',
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -746,11 +797,11 @@ class AgentationShellRuntime {
       startTop: this.toolbarPosition.top,
       moved: false,
     };
-    this.toolbarDock.dataset.dragging = "true";
+    this.toolbarDock.dataset.dragging = 'true';
     this.toolbarDock.setPointerCapture?.(event.pointerId);
-    this.win.addEventListener("pointermove", this.onToolbarDragPointerMove, true);
-    this.win.addEventListener("pointerup", this.onToolbarDragPointerEnd, true);
-    this.win.addEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
+    this.win.addEventListener('pointermove', this.onToolbarDragPointerMove, true);
+    this.win.addEventListener('pointerup', this.onToolbarDragPointerEnd, true);
+    this.win.addEventListener('pointercancel', this.onToolbarDragPointerEnd, true);
   };
 
   private readonly onToolbarDragPointerMove = (event: PointerEvent): void => {
@@ -786,38 +837,38 @@ class AgentationShellRuntime {
 
   private startAnnotating(): void {
     this.annotating = true;
-    this.toolbar.dataset.annotating = "true";
-    this.toolbarToggle.dataset.active = "true";
-    this.toolbarToggle.textContent = "Annotating";
+    this.toolbar.dataset.annotating = 'true';
+    this.toolbarToggle.dataset.active = 'true';
+    this.toolbarToggle.textContent = 'Annotating';
     this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
-    this.doc.addEventListener("pointermove", this.onDocumentPointerMove, true);
-    this.doc.addEventListener("mousedown", this.onDocumentMouseDown, true);
-    this.doc.addEventListener("mousemove", this.onDocumentMouseMove, true);
-    this.doc.addEventListener("mouseup", this.onDocumentMouseUp, true);
-    this.doc.addEventListener("click", this.onDocumentClick, true);
-    this.doc.addEventListener("keydown", this.onDocumentKeyDown, true);
-    this.doc.addEventListener("keyup", this.onDocumentKeyUp, true);
-    this.win.addEventListener("scroll", this.onWindowScroll, true);
-    this.win.addEventListener("blur", this.onWindowBlur, true);
+    this.doc.addEventListener('pointermove', this.onDocumentPointerMove, true);
+    this.doc.addEventListener('mousedown', this.onDocumentMouseDown, true);
+    this.doc.addEventListener('mousemove', this.onDocumentMouseMove, true);
+    this.doc.addEventListener('mouseup', this.onDocumentMouseUp, true);
+    this.doc.addEventListener('click', this.onDocumentClick, true);
+    this.doc.addEventListener('keydown', this.onDocumentKeyDown, true);
+    this.doc.addEventListener('keyup', this.onDocumentKeyUp, true);
+    this.win.addEventListener('scroll', this.onWindowScroll, true);
+    this.win.addEventListener('blur', this.onWindowBlur, true);
   }
 
   private stopAnnotating(): void {
     this.annotating = false;
-    this.toolbar.dataset.annotating = "false";
-    this.toolbarToggle.dataset.active = "false";
-    this.toolbarToggle.textContent = "UI Annotation";
-    this.toolbarHint.textContent = "After enabling, click page elements to create feedback.";
-    this.doc.removeEventListener("pointermove", this.onDocumentPointerMove, true);
-    this.doc.removeEventListener("mousedown", this.onDocumentMouseDown, true);
-    this.doc.removeEventListener("mousemove", this.onDocumentMouseMove, true);
-    this.doc.removeEventListener("mouseup", this.onDocumentMouseUp, true);
-    this.doc.removeEventListener("click", this.onDocumentClick, true);
-    this.doc.removeEventListener("keydown", this.onDocumentKeyDown, true);
-    this.doc.removeEventListener("keyup", this.onDocumentKeyUp, true);
-    this.win.removeEventListener("scroll", this.onWindowScroll, true);
-    this.win.removeEventListener("blur", this.onWindowBlur, true);
+    this.toolbar.dataset.annotating = 'false';
+    this.toolbarToggle.dataset.active = 'false';
+    this.toolbarToggle.textContent = 'UI Annotation';
+    this.toolbarHint.textContent = 'After enabling, click page elements to create feedback.';
+    this.doc.removeEventListener('pointermove', this.onDocumentPointerMove, true);
+    this.doc.removeEventListener('mousedown', this.onDocumentMouseDown, true);
+    this.doc.removeEventListener('mousemove', this.onDocumentMouseMove, true);
+    this.doc.removeEventListener('mouseup', this.onDocumentMouseUp, true);
+    this.doc.removeEventListener('click', this.onDocumentClick, true);
+    this.doc.removeEventListener('keydown', this.onDocumentKeyDown, true);
+    this.doc.removeEventListener('keyup', this.onDocumentKeyUp, true);
+    this.win.removeEventListener('scroll', this.onWindowScroll, true);
+    this.win.removeEventListener('blur', this.onWindowBlur, true);
     this.hoveredElement = null;
-    this.hoveredElementLabel = "";
+    this.hoveredElementLabel = '';
     this.resetDragSelectionState();
     this.clearMultiSelectTargets();
     this.hideHoverBox();
@@ -885,13 +936,13 @@ class AgentationShellRuntime {
     const { left, top } = this.toolbarPosition;
     this.toolbar.style.left = `${left}px`;
     this.toolbar.style.top = `${top}px`;
-    this.toolbar.style.right = "auto";
-    this.toolbar.style.bottom = "auto";
+    this.toolbar.style.right = 'auto';
+    this.toolbar.style.bottom = 'auto';
 
     this.toolbarDock.style.left = `${left}px`;
     this.toolbarDock.style.top = `${top}px`;
-    this.toolbarDock.style.right = "auto";
-    this.toolbarDock.style.bottom = "auto";
+    this.toolbarDock.style.right = 'auto';
+    this.toolbarDock.style.bottom = 'auto';
   }
 
   private syncToolbarVisibility(): void {
@@ -913,7 +964,7 @@ class AgentationShellRuntime {
     delete this.toolbar.dataset.dragging;
     delete this.toolbarDock.dataset.dragging;
     if (pointerId !== undefined) {
-      if (dragState?.source === "toolbar") {
+      if (dragState?.source === 'toolbar') {
         this.toolbarDragHandle.releasePointerCapture?.(pointerId);
       } else {
         this.toolbarDock.releasePointerCapture?.(pointerId);
@@ -921,13 +972,13 @@ class AgentationShellRuntime {
     }
 
     // After dragging on the dock, block the subsequent click to avoid "auto-open immediately after moving".
-    if (dragState?.source === "dock" && dragState.moved) {
+    if (dragState?.source === 'dock' && dragState.moved) {
       this.toolbarDockClickBlocked = true;
     }
     this.persistToolbarState();
-    this.win.removeEventListener("pointermove", this.onToolbarDragPointerMove, true);
-    this.win.removeEventListener("pointerup", this.onToolbarDragPointerEnd, true);
-    this.win.removeEventListener("pointercancel", this.onToolbarDragPointerEnd, true);
+    this.win.removeEventListener('pointermove', this.onToolbarDragPointerMove, true);
+    this.win.removeEventListener('pointerup', this.onToolbarDragPointerEnd, true);
+    this.win.removeEventListener('pointercancel', this.onToolbarDragPointerEnd, true);
   }
 
   private readonly onDocumentMouseDown = (event: MouseEvent): void => {
@@ -981,7 +1032,8 @@ class AgentationShellRuntime {
       if (!this.popupForm.hidden) {
         this.closePopup();
       }
-      this.toolbarHint.textContent = "Dragging selection box, release mouse to create unified feedback.";
+      this.toolbarHint.textContent =
+        'Dragging selection box, release mouse to create unified feedback.';
     }
 
     if (!this.dragSelectionStartPoint) {
@@ -1059,7 +1111,7 @@ class AgentationShellRuntime {
     const target = deepElementFromPoint(this.doc, event.clientX, event.clientY);
     if (!target || this.isNodeInsideShell(target)) {
       this.hoveredElement = null;
-      this.hoveredElementLabel = "";
+      this.hoveredElementLabel = '';
       this.hideHoverBox();
       return;
     }
@@ -1114,7 +1166,7 @@ class AgentationShellRuntime {
     if (!this.annotating) {
       return;
     }
-    if (event.key !== "Escape") {
+    if (event.key !== 'Escape') {
       return;
     }
 
@@ -1123,7 +1175,7 @@ class AgentationShellRuntime {
       event.stopPropagation();
       this.resetDragSelectionState();
       this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
-      this.setPopupStatus("Drag selection cancelled", "info");
+      this.setPopupStatus('Drag selection cancelled', 'info');
       return;
     }
 
@@ -1132,7 +1184,7 @@ class AgentationShellRuntime {
       event.preventDefault();
       event.stopPropagation();
       this.clearMultiSelectTargets();
-      this.setPopupStatus("Multi-select aggregation cleared", "info");
+      this.setPopupStatus('Multi-select aggregation cleared', 'info');
       return;
     }
 
@@ -1177,7 +1229,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    if (event.key === "Tab") {
+    if (event.key === 'Tab') {
       const focusableElements = this.collectPopupFocusableElements();
       if (focusableElements.length === 0) {
         return;
@@ -1185,8 +1237,12 @@ class AgentationShellRuntime {
       const activeElement = this.resolvePopupActiveElement(event.target);
       const activeIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
       const nextIndex = event.shiftKey
-        ? (activeIndex <= 0 ? focusableElements.length - 1 : activeIndex - 1)
-        : (activeIndex < 0 || activeIndex >= focusableElements.length - 1 ? 0 : activeIndex + 1);
+        ? activeIndex <= 0
+          ? focusableElements.length - 1
+          : activeIndex - 1
+        : activeIndex < 0 || activeIndex >= focusableElements.length - 1
+          ? 0
+          : activeIndex + 1;
       // Cycle focus inside popup to avoid Tab jumping back to page and breaking keyboard chain.
       event.preventDefault();
       event.stopPropagation();
@@ -1194,7 +1250,7 @@ class AgentationShellRuntime {
       return;
     }
 
-    if (event.key === "Escape") {
+    if (event.key === 'Escape') {
       // Esc inside edit popup always closes the popup first, preventing event bubbling to page.
       event.preventDefault();
       event.stopPropagation();
@@ -1204,18 +1260,18 @@ class AgentationShellRuntime {
       return;
     }
 
-    if (event.key !== "Enter") {
+    if (event.key !== 'Enter') {
       return;
     }
 
     // Only take over Enter inside textarea: Shift+Enter continues new line, regular Enter submits.
     if (
-      event.target instanceof HTMLTextAreaElement
-      && !event.isComposing
-      && !event.shiftKey
-      && !event.metaKey
-      && !event.ctrlKey
-      && !event.altKey
+      event.target instanceof HTMLTextAreaElement &&
+      !event.isComposing &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey
     ) {
       event.preventDefault();
       event.stopPropagation();
@@ -1228,31 +1284,31 @@ class AgentationShellRuntime {
   private readonly onPopupDeleteClick = async (event: MouseEvent): Promise<void> => {
     event.preventDefault();
     this.closeMarkerContextMenu();
-    if (this.submitting || !this.popupState || this.popupState.mode !== "edit") {
+    if (this.submitting || !this.popupState || this.popupState.mode !== 'edit') {
       return;
     }
 
     const markerId = this.popupState.editMarkerId;
     if (!markerId) {
-      this.setPopupStatus("Deletion failed: annotation not found", "error");
+      this.setPopupStatus('Deletion failed: annotation not found', 'error');
       return;
     }
 
     const marker = this.findMarkerById(markerId);
     if (!marker) {
-      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
+      this.setPopupStatus('Deletion failed: annotation may have been removed', 'error');
       return;
     }
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Deleting...", "info");
+    this.setPopupStatus('Deleting...', 'info');
     try {
       await this.dismissRemoteAnnotationIfNeeded(marker);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setPopupStatus(`Deletion failed: ${message}`, "error");
-      this.log("error", "Agentation shell dismiss annotation failed", error);
+      this.setPopupStatus(`Deletion failed: ${message}`, 'error');
+      this.log('error', 'Agentation shell dismiss annotation failed', error);
       return;
     } finally {
       this.submitting = false;
@@ -1260,10 +1316,10 @@ class AgentationShellRuntime {
     }
 
     if (!this.deleteMarkerById(markerId)) {
-      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
+      this.setPopupStatus('Deletion failed: annotation may have been removed', 'error');
       return;
     }
-    this.setPopupStatus("Feedback deleted", "success");
+    this.setPopupStatus('Feedback deleted', 'success');
     this.closePopup();
     this.triggerFeedbackDeltaSync();
   };
@@ -1279,19 +1335,23 @@ class AgentationShellRuntime {
 
     const marker = this.findMarkerById(markerId);
     if (!marker) {
-      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
+      this.setPopupStatus('Deletion failed: annotation may have been removed', 'error');
       return;
     }
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Deleting...", "info");
+    this.setPopupStatus('Deleting...', 'info');
     try {
       await this.dismissRemoteAnnotationIfNeeded(marker);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setPopupStatus(`Deletion failed: ${message}`, "error");
-      this.log("error", "Agentation shell dismiss annotation failed from marker context menu", error);
+      this.setPopupStatus(`Deletion failed: ${message}`, 'error');
+      this.log(
+        'error',
+        'Agentation shell dismiss annotation failed from marker context menu',
+        error,
+      );
       return;
     } finally {
       this.submitting = false;
@@ -1299,13 +1359,13 @@ class AgentationShellRuntime {
     }
 
     if (!this.deleteMarkerById(markerId)) {
-      this.setPopupStatus("Deletion failed: annotation may have been removed", "error");
+      this.setPopupStatus('Deletion failed: annotation may have been removed', 'error');
       return;
     }
-    if (this.popupState?.mode === "edit" && this.popupState.editMarkerId === markerId) {
+    if (this.popupState?.mode === 'edit' && this.popupState.editMarkerId === markerId) {
       this.closePopup();
     }
-    this.setPopupStatus("Feedback deleted", "success");
+    this.setPopupStatus('Feedback deleted', 'success');
     this.triggerFeedbackDeltaSync();
   };
 
@@ -1323,13 +1383,13 @@ class AgentationShellRuntime {
     if (this.markerContextMenu.hidden) {
       return;
     }
-    if (event.key === "Escape") {
+    if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       this.closeMarkerContextMenu();
       return;
     }
-    if (event.key === "Tab") {
+    if (event.key === 'Tab') {
       // Menu has only one action, Tab should not send focus back to page.
       event.preventDefault();
       event.stopPropagation();
@@ -1347,7 +1407,7 @@ class AgentationShellRuntime {
 
   private readonly onPriorityChange = (): void => {
     if (!isFeedbackPriority(this.popupPrioritySelect.value)) {
-      this.popupPrioritySelect.value = "normal";
+      this.popupPrioritySelect.value = 'normal';
     }
   };
 
@@ -1373,28 +1433,28 @@ class AgentationShellRuntime {
     this.clearPopupValidationFeedback();
 
     const priority = normalizePriority(this.popupPrioritySelect.value);
-    if (popupState.mode === "edit") {
+    if (popupState.mode === 'edit') {
       const markerId = popupState.editMarkerId;
       if (!markerId) {
-        this.setPopupStatus("Update failed: annotation not found", "error");
+        this.setPopupStatus('Update failed: annotation not found', 'error');
         return;
       }
 
       const marker = this.findMarkerById(markerId);
       if (!marker) {
-        this.setPopupStatus("Update failed: annotation may have been removed", "error");
+        this.setPopupStatus('Update failed: annotation may have been removed', 'error');
         return;
       }
 
       this.submitting = true;
       this.syncPopupSubmittingState();
-      this.setPopupStatus("Updating...", "info");
+      this.setPopupStatus('Updating...', 'info');
       try {
         await this.updateRemoteAnnotationIfNeeded(marker, body, priority);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.setPopupStatus(`Update failed: ${message}`, "error");
-        this.log("error", "Agentation shell update annotation failed", error);
+        this.setPopupStatus(`Update failed: ${message}`, 'error');
+        this.log('error', 'Agentation shell update annotation failed', error);
         return;
       } finally {
         this.submitting = false;
@@ -1402,23 +1462,19 @@ class AgentationShellRuntime {
       }
 
       if (!this.updateMarkerById(markerId, body, priority)) {
-        this.setPopupStatus("Update failed: annotation may have been removed", "error");
+        this.setPopupStatus('Update failed: annotation may have been removed', 'error');
         return;
       }
-      this.setPopupStatus("Feedback updated", "success");
+      this.setPopupStatus('Feedback updated', 'success');
       this.closePopup();
       this.triggerFeedbackDeltaSync();
       return;
     }
 
-    const uiAnchor = buildUiAnchorFromTarget(
-      popupState.targetInput,
-      popupState.selectedText,
-      {
-        targetElement: popupState.targetElement,
-        multiSelectMeta: popupState.multiSelectMeta,
-      },
-    );
+    const uiAnchor = buildUiAnchorFromTarget(popupState.targetInput, popupState.selectedText, {
+      targetElement: popupState.targetElement,
+      multiSelectMeta: popupState.multiSelectMeta,
+    });
     const payload: FeedbackUiCreateInput = {
       body,
       priority,
@@ -1429,19 +1485,19 @@ class AgentationShellRuntime {
 
     this.submitting = true;
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Submitting...", "info");
+    this.setPopupStatus('Submitting...', 'info');
 
     try {
       const result = await this.adapter.createAnnotation(payload);
       this.applyAnnotationSuccess(result, payload, popupState);
-      this.setPopupStatus("Feedback created", "success");
-      this.popupBodyInput.value = "";
+      this.setPopupStatus('Feedback created', 'success');
+      this.popupBodyInput.value = '';
       this.closePopup();
       this.triggerFeedbackDeltaSync();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.setPopupStatus(`Submission failed: ${message}`, "error");
-      this.log("error", "Agentation shell create annotation failed", error);
+      this.setPopupStatus(`Submission failed: ${message}`, 'error');
+      this.log('error', 'Agentation shell create annotation failed', error);
     } finally {
       this.submitting = false;
       this.syncPopupSubmittingState();
@@ -1507,7 +1563,8 @@ class AgentationShellRuntime {
       return 0;
     }
 
-    const popupEditingMarkerId = this.popupState?.mode === "edit" ? this.popupState.editMarkerId : undefined;
+    const popupEditingMarkerId =
+      this.popupState?.mode === 'edit' ? this.popupState.editMarkerId : undefined;
     const beforeCount = this.markers.length;
     const remained = this.markers.filter((marker) => {
       if (!marker.remoteAnnotationId) {
@@ -1522,7 +1579,10 @@ class AgentationShellRuntime {
     }
 
     this.markers.splice(0, this.markers.length, ...remained);
-    if (popupEditingMarkerId && !this.markers.some((marker) => marker.id === popupEditingMarkerId)) {
+    if (
+      popupEditingMarkerId &&
+      !this.markers.some((marker) => marker.id === popupEditingMarkerId)
+    ) {
       this.closePopup();
     }
     this.renderMarkers();
@@ -1534,13 +1594,18 @@ class AgentationShellRuntime {
     input: FeedbackUiCreateInput,
     popupState: PopupState,
   ): void {
-    if (popupState.mode !== "create") {
+    if (popupState.mode !== 'create') {
       return;
     }
-    const idFromResult = typeof result?.id === "string" ? result.id : "";
+    const idFromResult = typeof result?.id === 'string' ? result.id : '';
     const remoteAnnotationId = idFromResult.trim() || undefined;
     const markerId = remoteAnnotationId ?? `local-${Date.now()}-${this.markerIdSeq++}`;
-    const markerAnchor = buildMarkerAnchor(popupState.anchorX, popupState.anchorY, this.win.innerWidth, this.win.innerHeight);
+    const markerAnchor = buildMarkerAnchor(
+      popupState.anchorX,
+      popupState.anchorY,
+      this.win.innerWidth,
+      this.win.innerHeight,
+    );
     const multiSelectMeta = readMultiSelectMetaFromUiAnchor(input.uiAnchor);
     this.markers.push({
       id: markerId,
@@ -1565,15 +1630,20 @@ class AgentationShellRuntime {
 
   private renderMarkers(): void {
     this.closeMarkerContextMenu();
-    this.markerLayer.innerHTML = "";
+    this.markerLayer.innerHTML = '';
     this.markers.forEach((marker, index) => {
       // Project based on current viewport for each render to avoid markers staying at old coordinates after resize.
-      const markerAnchor = denormalizeMarkerAnchor(marker.normalizedX, marker.normalizedY, this.win.innerWidth, this.win.innerHeight);
+      const markerAnchor = denormalizeMarkerAnchor(
+        marker.normalizedX,
+        marker.normalizedY,
+        this.win.innerWidth,
+        this.win.innerHeight,
+      );
       marker.x = markerAnchor.x;
       marker.y = markerAnchor.y;
-      const button = this.doc.createElement("button");
-      button.type = "button";
-      button.className = "pc-agent-marker";
+      const button = this.doc.createElement('button');
+      button.type = 'button';
+      button.className = 'pc-agent-marker';
       button.dataset.markerId = marker.id;
       button.style.left = `${markerAnchor.x}px`;
       button.style.top = `${markerAnchor.y}px`;
@@ -1581,9 +1651,9 @@ class AgentationShellRuntime {
       const semantic = resolveMarkerVisualSemantic(marker, index);
       // Explicitly pass aggregation semantics to DOM for quick recognition by styles and debugging tools.
       button.dataset.markerKind = semantic.kind;
-      button.dataset.markerAggregate = semantic.isAggregate ? "true" : "false";
+      button.dataset.markerAggregate = semantic.isAggregate ? 'true' : 'false';
       button.dataset.markerAggregateCount = String(semantic.aggregateCount);
-      button.setAttribute("aria-label", semantic.ariaLabel);
+      button.setAttribute('aria-label', semantic.ariaLabel);
       const tooltipPlacement = resolveMarkerTooltipPlacement(
         markerAnchor.x,
         markerAnchor.y,
@@ -1596,27 +1666,27 @@ class AgentationShellRuntime {
       // Title text also carries semantics to immediately distinguish between "regular annotation" and "aggregate annotation" on hover.
       button.title = semantic.title;
 
-      const mainLabel = this.doc.createElement("span");
-      mainLabel.className = "pc-agent-marker-main-label";
+      const mainLabel = this.doc.createElement('span');
+      mainLabel.className = 'pc-agent-marker-main-label';
       mainLabel.textContent = semantic.mainLabel;
-      mainLabel.setAttribute("aria-hidden", "true");
+      mainLabel.setAttribute('aria-hidden', 'true');
       button.appendChild(mainLabel);
       if (semantic.badgeLabel) {
-        const badge = this.doc.createElement("span");
-        badge.className = "pc-agent-marker-badge";
+        const badge = this.doc.createElement('span');
+        badge.className = 'pc-agent-marker-badge';
         badge.textContent = semantic.badgeLabel;
-        badge.setAttribute("aria-hidden", "true");
+        badge.setAttribute('aria-hidden', 'true');
         button.appendChild(badge);
       }
 
-      button.addEventListener("click", (event) => {
+      button.addEventListener('click', (event) => {
         // Marker clicks are only for editing, should not trigger page-level click logic.
         event.preventDefault();
         event.stopPropagation();
         this.closeMarkerContextMenu();
         this.openPopupForMarker(marker.id);
       });
-      button.addEventListener("contextmenu", (event) => {
+      button.addEventListener('contextmenu', (event) => {
         // Right-click provides quick delete entry; only show context menu here, not direct deletion.
         event.preventDefault();
         event.stopPropagation();
@@ -1625,19 +1695,19 @@ class AgentationShellRuntime {
         this.openMarkerContextMenu(marker.id, anchorX, anchorY);
       });
 
-      const affordance = this.doc.createElement("span");
-      affordance.className = "pc-agent-marker-affordance";
+      const affordance = this.doc.createElement('span');
+      affordance.className = 'pc-agent-marker-affordance';
       affordance.textContent = semantic.affordanceLabel;
-      affordance.setAttribute("aria-hidden", "true");
+      affordance.setAttribute('aria-hidden', 'true');
       button.appendChild(affordance);
 
-      const tooltip = this.doc.createElement("span");
-      tooltip.className = "pc-agent-marker-tooltip";
-      const tooltipQuote = this.doc.createElement("span");
-      tooltipQuote.className = "pc-agent-marker-quote";
+      const tooltip = this.doc.createElement('span');
+      tooltip.className = 'pc-agent-marker-tooltip';
+      const tooltipQuote = this.doc.createElement('span');
+      tooltipQuote.className = 'pc-agent-marker-quote';
       tooltipQuote.textContent = buildMarkerTooltipQuote(marker, semantic);
-      const tooltipNote = this.doc.createElement("span");
-      tooltipNote.className = "pc-agent-marker-note";
+      const tooltipNote = this.doc.createElement('span');
+      tooltipNote.className = 'pc-agent-marker-note';
       tooltipNote.textContent = buildMarkerTooltipNote(marker, semantic);
       tooltip.append(tooltipQuote, tooltipNote);
       button.appendChild(tooltip);
@@ -1661,9 +1731,10 @@ class AgentationShellRuntime {
     this.clearMultiSelectTargets();
     this.hideHoverBox();
     this.openPopupWithState({
-      mode: "edit",
+      mode: 'edit',
       editMarkerId: marker.id,
-      returnFocusElement: this.doc.activeElement instanceof HTMLElement ? this.doc.activeElement : undefined,
+      returnFocusElement:
+        this.doc.activeElement instanceof HTMLElement ? this.doc.activeElement : undefined,
       anchorX: marker.x,
       anchorY: marker.y,
       initialBody: marker.body,
@@ -1700,11 +1771,11 @@ class AgentationShellRuntime {
     const count = this.multiSelectTargets.size;
     if (count === 0) {
       this.toolbarHint.textContent = DEFAULT_ANNOTATING_HINT;
-      this.setPopupStatus("Multi-select aggregation is empty", "info");
+      this.setPopupStatus('Multi-select aggregation is empty', 'info');
       return;
     }
     this.toolbarHint.textContent = `Aggregated ${count} elements, release Cmd/Ctrl+Shift to open unified feedback box.`;
-    this.setPopupStatus(`Multi-select aggregating (${count})`, "info");
+    this.setPopupStatus(`Multi-select aggregating (${count})`, 'info');
   }
 
   /**
@@ -1755,11 +1826,13 @@ class AgentationShellRuntime {
     const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
     const first = snapshots[0];
     const state: PopupState = {
-      mode: "create",
+      mode: 'create',
       anchorX:
-        this.multiSelectLastAnchorX || clamp(unionRect.left + unionRect.width / 2, 0, this.win.innerWidth),
+        this.multiSelectLastAnchorX ||
+        clamp(unionRect.left + unionRect.width / 2, 0, this.win.innerWidth),
       anchorY:
-        this.multiSelectLastAnchorY || clamp(unionRect.top + unionRect.height / 2, 0, this.win.innerHeight),
+        this.multiSelectLastAnchorY ||
+        clamp(unionRect.top + unionRect.height / 2, 0, this.win.innerHeight),
       selectedText: selectedText || undefined,
       targetElement: first.element,
       targetInput: {
@@ -1783,7 +1856,11 @@ class AgentationShellRuntime {
    * 1) Hit elements -> multi-select aggregation submission
    * 2) No hit elements -> area annotation submission
    */
-  private openPopupForAreaSelection(selectionRect: DOMRectReadOnly, clientX: number, clientY: number): void {
+  private openPopupForAreaSelection(
+    selectionRect: DOMRectReadOnly,
+    clientX: number,
+    clientY: number,
+  ): void {
     const snapshots = collectAreaSelectionTargets(
       this.doc,
       this.host,
@@ -1821,14 +1898,14 @@ class AgentationShellRuntime {
 
       const first = snapshots[0];
       this.openPopupWithState({
-        mode: "create",
+        mode: 'create',
         anchorX: clamp(clientX, 0, this.win.innerWidth),
         anchorY: clamp(clientY, 0, this.win.innerHeight),
         selectedText: selectedText || undefined,
         targetElement: first.element,
         targetInput: {
           elementName: `multi-select (${items.length})`,
-          elementPath: "multi-select",
+          elementPath: 'multi-select',
           rect: snapshotRect(unionRect),
         },
         multiSelectMeta: {
@@ -1838,7 +1915,7 @@ class AgentationShellRuntime {
         },
       });
       this.toolbarHint.textContent = `Box selection hit ${items.length} elements, unified feedback box opened.`;
-      this.setPopupStatus(`Box selection hit ${items.length} elements`, "info");
+      this.setPopupStatus(`Box selection hit ${items.length} elements`, 'info');
       return;
     }
 
@@ -1854,13 +1931,13 @@ class AgentationShellRuntime {
       selectionRect.top + selectionRect.height / 2,
     );
     this.openPopupWithState({
-      mode: "create",
+      mode: 'create',
       anchorX: clamp(clientX, 0, this.win.innerWidth),
       anchorY: clamp(clientY, 0, this.win.innerHeight),
       selectedText: selectedText || undefined,
       targetElement: fallbackTarget ?? undefined,
       targetInput: {
-        elementName: "area-select",
+        elementName: 'area-select',
         elementPath: `region at (${Math.round(selectionRect.left)}, ${Math.round(selectionRect.top)})`,
         rect: snapshotRect(selectionRect),
       },
@@ -1870,15 +1947,15 @@ class AgentationShellRuntime {
         items: [],
       },
     });
-    this.toolbarHint.textContent = "Area selected, fill feedback to submit.";
-    this.setPopupStatus("No aggregatable elements hit, area annotation created.", "info");
+    this.toolbarHint.textContent = 'Area selected, fill feedback to submit.';
+    this.setPopupStatus('No aggregatable elements hit, area annotation created.', 'info');
   }
 
   private openPopupForTarget(target: HTMLElement, clientX: number, clientY: number): void {
     const elementInfo = identifyElement(target);
     const selectedText = normalizeSelectionText(capturePageSelection(this.win, this.doc));
     this.openPopupWithState({
-      mode: "create",
+      mode: 'create',
       anchorX: clientX,
       anchorY: clientY,
       selectedText: selectedText || undefined,
@@ -1902,40 +1979,41 @@ class AgentationShellRuntime {
     const nextLeft = computePopupLeft(state.anchorX, this.win.innerWidth);
     this.popupForm.style.top = `${nextTop}px`;
     this.popupForm.style.left = `${nextLeft}px`;
-    if (state.mode === "edit") {
-      this.popupTitleView.textContent = "Edit Annotation";
-      this.popupSubmitButton.textContent = "Save Changes";
+    if (state.mode === 'edit') {
+      this.popupTitleView.textContent = 'Edit Annotation';
+      this.popupSubmitButton.textContent = 'Save Changes';
       this.popupDeleteButton.hidden = false;
     } else {
-      this.popupTitleView.textContent = "New Annotation";
-      this.popupSubmitButton.textContent = "Submit Annotation";
+      this.popupTitleView.textContent = 'New Annotation';
+      this.popupSubmitButton.textContent = 'Submit Annotation';
       this.popupDeleteButton.hidden = true;
     }
-    this.popupTargetView.textContent = `${state.targetInput.elementName} · ${state.targetInput.elementPath || "unknown path"}`;
+    this.popupTargetView.textContent = `${state.targetInput.elementName} · ${state.targetInput.elementPath || 'unknown path'}`;
     if (state.selectedText) {
-      this.popupSelectionLabel.textContent = "Current Selected Text";
+      this.popupSelectionLabel.textContent = 'Current Selected Text';
       this.popupSelectionView.textContent = state.selectedText;
     } else if (state.multiSelectMeta) {
       if (state.multiSelectMeta.count > 0) {
         // Aggregation and area scenarios share one display area, only switch label names to reduce template branching.
-        this.popupSelectionLabel.textContent = "Aggregation Range Description";
+        this.popupSelectionLabel.textContent = 'Aggregation Range Description';
         this.popupSelectionView.textContent = `Aggregated ${state.multiSelectMeta.count} elements, a merged annotation will be written after submission.`;
       } else {
-        this.popupSelectionLabel.textContent = "Area Description";
-        this.popupSelectionView.textContent = "An area has been selected, an area annotation will be written after submission.";
+        this.popupSelectionLabel.textContent = 'Area Description';
+        this.popupSelectionView.textContent =
+          'An area has been selected, an area annotation will be written after submission.';
       }
     } else {
-      this.popupSelectionLabel.textContent = "Current Selected Text";
-      this.popupSelectionView.textContent = "No page selection detected";
+      this.popupSelectionLabel.textContent = 'Current Selected Text';
+      this.popupSelectionView.textContent = 'No page selection detected';
     }
-    this.popupBodyInput.value = state.initialBody ?? "";
-    this.popupPrioritySelect.value = normalizePriority(state.initialPriority ?? "normal");
+    this.popupBodyInput.value = state.initialBody ?? '';
+    this.popupPrioritySelect.value = normalizePriority(state.initialPriority ?? 'normal');
     this.popupForm.hidden = false;
     this.popupClosing = false;
     delete this.popupForm.dataset.closing;
-    this.playPopupMotion("enter");
+    this.playPopupMotion('enter');
     this.syncPopupSubmittingState();
-    this.setPopupStatus("Waiting for operation", "info");
+    this.setPopupStatus('Waiting for operation', 'info');
     this.win.setTimeout(() => {
       if (!this.popupForm.hidden && !this.popupClosing && this.popupState) {
         this.popupBodyInput.focus();
@@ -1950,8 +2028,8 @@ class AgentationShellRuntime {
     this.popupState = null;
     if (!this.popupForm.hidden && !this.popupClosing) {
       this.popupClosing = true;
-      this.popupForm.dataset.closing = "true";
-      this.playPopupMotion("exit");
+      this.popupForm.dataset.closing = 'true';
+      this.playPopupMotion('exit');
       this.syncPopupSubmittingState();
       if (this.popupExitTimerId !== null) {
         this.win.clearTimeout(this.popupExitTimerId);
@@ -1974,7 +2052,7 @@ class AgentationShellRuntime {
     }
     this.popupClosing = false;
     delete this.popupForm.dataset.closing;
-    if (this.popupForm.dataset.motion === "exit") {
+    if (this.popupForm.dataset.motion === 'exit') {
       delete this.popupForm.dataset.motion;
     }
   }
@@ -1990,54 +2068,54 @@ class AgentationShellRuntime {
 
   private resetPopupToDefaultView(): void {
     this.popupDeleteButton.hidden = true;
-    this.popupTitleView.textContent = "New Annotation";
-    this.popupSubmitButton.textContent = "Submit Annotation";
-    this.popupSelectionLabel.textContent = "Current Selected Text";
-    this.popupBodyInput.value = "";
-    this.popupPrioritySelect.value = "normal";
+    this.popupTitleView.textContent = 'New Annotation';
+    this.popupSubmitButton.textContent = 'Submit Annotation';
+    this.popupSelectionLabel.textContent = 'Current Selected Text';
+    this.popupBodyInput.value = '';
+    this.popupPrioritySelect.value = 'normal';
     this.clearPopupValidationFeedback();
-    this.setPopupStatus("Waiting for operation", "info");
+    this.setPopupStatus('Waiting for operation', 'info');
   }
 
-  private playPopupMotion(motion: "enter" | "exit"): void {
+  private playPopupMotion(motion: 'enter' | 'exit'): void {
     if (this.popupEnterTimerId !== null) {
       this.win.clearTimeout(this.popupEnterTimerId);
       this.popupEnterTimerId = null;
     }
     this.popupForm.dataset.motion = motion;
-    if (motion !== "enter") {
+    if (motion !== 'enter') {
       return;
     }
     this.popupEnterTimerId = this.win.setTimeout(() => {
       this.popupEnterTimerId = null;
-      if (this.popupForm.dataset.motion === "enter") {
+      if (this.popupForm.dataset.motion === 'enter') {
         delete this.popupForm.dataset.motion;
       }
     }, POPUP_ENTER_DURATION_MS);
   }
 
   private raisePopupBodyRequiredFeedback(): void {
-    this.setPopupStatus("Please enter feedback content", "error");
-    this.popupBodyInput.dataset.invalid = "true";
-    this.popupBodyInput.setAttribute("aria-invalid", "true");
-    this.popupForm.classList.remove("pc-agent-popup-shake");
+    this.setPopupStatus('Please enter feedback content', 'error');
+    this.popupBodyInput.dataset.invalid = 'true';
+    this.popupBodyInput.setAttribute('aria-invalid', 'true');
+    this.popupForm.classList.remove('pc-agent-popup-shake');
     // Force reflow before re-adding class to ensure shake triggers even on consecutive validation failures.
     void this.popupForm.offsetWidth;
-    this.popupForm.classList.add("pc-agent-popup-shake");
+    this.popupForm.classList.add('pc-agent-popup-shake');
     if (this.popupShakeTimerId !== null) {
       this.win.clearTimeout(this.popupShakeTimerId);
     }
     this.popupShakeTimerId = this.win.setTimeout(() => {
       this.popupShakeTimerId = null;
-      this.popupForm.classList.remove("pc-agent-popup-shake");
+      this.popupForm.classList.remove('pc-agent-popup-shake');
     }, POPUP_SHAKE_DURATION_MS);
     this.popupBodyInput.focus();
   }
 
   private clearPopupValidationFeedback(): void {
     delete this.popupBodyInput.dataset.invalid;
-    this.popupBodyInput.removeAttribute("aria-invalid");
-    this.popupForm.classList.remove("pc-agent-popup-shake");
+    this.popupBodyInput.removeAttribute('aria-invalid');
+    this.popupForm.classList.remove('pc-agent-popup-shake');
     if (this.popupShakeTimerId !== null) {
       this.win.clearTimeout(this.popupShakeTimerId);
       this.popupShakeTimerId = null;
@@ -2079,8 +2157,8 @@ class AgentationShellRuntime {
   private closeMarkerContextMenu(): void {
     this.markerContextMenuMarkerId = null;
     this.markerContextMenu.hidden = true;
-    this.markerContextMenu.style.left = "0px";
-    this.markerContextMenu.style.top = "0px";
+    this.markerContextMenu.style.left = '0px';
+    this.markerContextMenu.style.top = '0px';
     this.detachMarkerContextMenuListeners();
   }
 
@@ -2089,10 +2167,10 @@ class AgentationShellRuntime {
       return;
     }
     this.markerContextMenuListening = true;
-    this.doc.addEventListener("pointerdown", this.onMarkerContextMenuPointerDown, true);
-    this.doc.addEventListener("keydown", this.onMarkerContextMenuKeyDown, true);
-    this.win.addEventListener("scroll", this.onMarkerContextMenuViewportChange, true);
-    this.win.addEventListener("blur", this.onMarkerContextMenuViewportChange, true);
+    this.doc.addEventListener('pointerdown', this.onMarkerContextMenuPointerDown, true);
+    this.doc.addEventListener('keydown', this.onMarkerContextMenuKeyDown, true);
+    this.win.addEventListener('scroll', this.onMarkerContextMenuViewportChange, true);
+    this.win.addEventListener('blur', this.onMarkerContextMenuViewportChange, true);
   }
 
   private detachMarkerContextMenuListeners(): void {
@@ -2100,10 +2178,10 @@ class AgentationShellRuntime {
       return;
     }
     this.markerContextMenuListening = false;
-    this.doc.removeEventListener("pointerdown", this.onMarkerContextMenuPointerDown, true);
-    this.doc.removeEventListener("keydown", this.onMarkerContextMenuKeyDown, true);
-    this.win.removeEventListener("scroll", this.onMarkerContextMenuViewportChange, true);
-    this.win.removeEventListener("blur", this.onMarkerContextMenuViewportChange, true);
+    this.doc.removeEventListener('pointerdown', this.onMarkerContextMenuPointerDown, true);
+    this.doc.removeEventListener('keydown', this.onMarkerContextMenuKeyDown, true);
+    this.win.removeEventListener('scroll', this.onMarkerContextMenuViewportChange, true);
+    this.win.removeEventListener('blur', this.onMarkerContextMenuViewportChange, true);
   }
 
   private collectPopupFocusableElements(): HTMLElement[] {
@@ -2129,19 +2207,19 @@ class AgentationShellRuntime {
   private resolvePopupReturnFocusTarget(state: PopupState): HTMLElement | null {
     const activeElement = this.doc.activeElement;
     if (
-      activeElement instanceof HTMLElement
-      && activeElement !== this.doc.body
-      && activeElement !== this.host
-      && !this.popupForm.contains(activeElement)
+      activeElement instanceof HTMLElement &&
+      activeElement !== this.doc.body &&
+      activeElement !== this.host &&
+      !this.popupForm.contains(activeElement)
     ) {
       return activeElement;
     }
     if (
-      state.returnFocusElement
-      && state.returnFocusElement !== this.doc.body
-      && state.returnFocusElement !== this.host
-      && state.returnFocusElement.isConnected
-      && !this.popupForm.contains(state.returnFocusElement)
+      state.returnFocusElement &&
+      state.returnFocusElement !== this.doc.body &&
+      state.returnFocusElement !== this.host &&
+      state.returnFocusElement.isConnected &&
+      !this.popupForm.contains(state.returnFocusElement)
     ) {
       return state.returnFocusElement;
     }
@@ -2162,8 +2240,8 @@ class AgentationShellRuntime {
 
   private hideDragSelectionBox(): void {
     this.dragSelectionBox.hidden = true;
-    this.dragSelectionBox.style.width = "0px";
-    this.dragSelectionBox.style.height = "0px";
+    this.dragSelectionBox.style.width = '0px';
+    this.dragSelectionBox.style.height = '0px';
   }
 
   private resetDragSelectionState(): void {
@@ -2185,15 +2263,15 @@ class AgentationShellRuntime {
     this.hoverBox.style.top = `${rect.top}px`;
     this.hoverBox.style.width = `${rect.width}px`;
     this.hoverBox.style.height = `${rect.height}px`;
-    this.hoverBox.setAttribute("data-label", label || target.tagName.toLowerCase());
+    this.hoverBox.setAttribute('data-label', label || target.tagName.toLowerCase());
   }
 
   private hideHoverBox(): void {
     this.hoverBox.hidden = true;
-    this.hoverBox.removeAttribute("data-label");
+    this.hoverBox.removeAttribute('data-label');
   }
 
-  private setPopupStatus(message: string, level: "info" | "success" | "error"): void {
+  private setPopupStatus(message: string, level: 'info' | 'success' | 'error'): void {
     this.popupStatusView.textContent = message;
     this.popupStatusView.className = `pc-agent-popup-status ${level}`;
   }
@@ -2218,16 +2296,16 @@ class AgentationShellRuntime {
     return this.host.contains(node);
   }
 
-  private log(level: "debug" | "error", message: string, extra?: unknown): void {
+  private log(level: 'debug' | 'error', message: string, extra?: unknown): void {
     if (this.logger) {
       this.logger(level, message, extra);
       return;
     }
-    if (level === "error") {
-      console.error("[AGENTATION-SHELL]", message, extra);
+    if (level === 'error') {
+      console.error('[AGENTATION-SHELL]', message, extra);
       return;
     }
-    console.debug("[AGENTATION-SHELL]", message, extra);
+    console.debug('[AGENTATION-SHELL]', message, extra);
   }
 }
 
@@ -2379,7 +2457,7 @@ function normalizeToolbarPersistedState(value: unknown): ToolbarPersistedState |
   if (value.version !== TOOLBAR_STATE_VERSION) {
     return null;
   }
-  if (typeof value.hidden !== "boolean") {
+  if (typeof value.hidden !== 'boolean') {
     return null;
   }
   if (!isFiniteNumber(value.left) || !isFiniteNumber(value.top)) {
@@ -2403,14 +2481,16 @@ function getSafeLocalStorage(win: Window): Storage | null {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null;
 }
 
 function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-function isMultiSelectChordPressed(event: Pick<MouseEvent | KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey">): boolean {
+function isMultiSelectChordPressed(
+  event: Pick<MouseEvent | KeyboardEvent, 'metaKey' | 'ctrlKey' | 'shiftKey'>,
+): boolean {
   return event.shiftKey && (event.metaKey || event.ctrlKey);
 }
 
@@ -2438,7 +2518,12 @@ function unionRects(rects: readonly FeedbackUiRect[]): DOMRectReadOnly | null {
     bottom = Math.max(bottom, rect.y + rect.height);
   }
 
-  if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(right) || !Number.isFinite(bottom)) {
+  if (
+    !Number.isFinite(left) ||
+    !Number.isFinite(top) ||
+    !Number.isFinite(right) ||
+    !Number.isFinite(bottom)
+  ) {
     return null;
   }
   if (right < left || bottom < top) {
@@ -2448,20 +2533,22 @@ function unionRects(rects: readonly FeedbackUiRect[]): DOMRectReadOnly | null {
 }
 
 function capturePageSelection(win: Window, doc: Document): string {
-  const fromSelection = win.getSelection?.()?.toString?.() ?? "";
+  const fromSelection = win.getSelection?.()?.toString?.() ?? '';
   if (fromSelection.trim()) {
     return fromSelection;
   }
 
   const activeElement = doc.activeElement;
-  if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
-    return "";
+  if (
+    !(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)
+  ) {
+    return '';
   }
 
   const start = activeElement.selectionStart ?? 0;
   const end = activeElement.selectionEnd ?? 0;
   if (start === end) {
-    return "";
+    return '';
   }
   return activeElement.value.slice(start, end);
 }
@@ -2475,7 +2562,7 @@ function normalizeSelectionText(value: string): string {
  * Adhere to a "conservatively usable" strategy: provide stable fields first, leave complex selector engine for future iterations.
  */
 function buildUiAnchorFromTarget(
-  target: FeedbackUiCreateInput["target"],
+  target: FeedbackUiCreateInput['target'],
   selectedText?: string,
   options?: {
     targetElement?: HTMLElement;
@@ -2483,7 +2570,7 @@ function buildUiAnchorFromTarget(
   },
 ): FeedbackUiAnchor {
   const meta: Record<string, unknown> = {
-    source: "agentation-shell",
+    source: 'agentation-shell',
     elementName: target.elementName,
     elementPath: target.elementPath,
   };
@@ -2524,12 +2611,19 @@ function normalizeUiTextQuote(value: string | undefined): string | undefined {
   return normalized.slice(0, 2_000);
 }
 
-function toUiRect(rect: Pick<FeedbackUiRect, "x" | "y" | "width" | "height">): FeedbackUiAnchor["rect"] {
+function toUiRect(
+  rect: Pick<FeedbackUiRect, 'x' | 'y' | 'width' | 'height'>,
+): FeedbackUiAnchor['rect'] {
   const x = Number(rect.x);
   const y = Number(rect.y);
   const width = Number(rect.width);
   const height = Number(rect.height);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
     return undefined;
   }
   if (width < 0 || height < 0) {
@@ -2545,12 +2639,12 @@ function toCssSelectorCandidate(elementPath: string): string | undefined {
   }
 
   // Shadow boundary paths are for human reading, not guaranteed to follow CSS syntax, direct degradation is more stable.
-  if (normalizedPath.includes("⟨shadow⟩")) {
+  if (normalizedPath.includes('⟨shadow⟩')) {
     return undefined;
   }
 
   const segments = normalizedPath
-    .split(">")
+    .split('>')
     .map((segment) => segment.trim())
     .filter(Boolean);
   if (segments.length === 0) {
@@ -2563,7 +2657,7 @@ function toCssSelectorCandidate(elementPath: string): string | undefined {
     return undefined;
   }
 
-  return segments.join(" > ");
+  return segments.join(' > ');
 }
 
 /**
@@ -2585,13 +2679,13 @@ function buildFeedbackDeltaPlan(delta: FeedbackStateDeltaResult): FeedbackDeltaP
 
   for (const event of delta.events) {
     const eventType = event.eventType;
-    if (!eventType.startsWith("annotation.")) {
+    if (!eventType.startsWith('annotation.')) {
       continue;
     }
     plan.eventCount += 1;
 
-    if (eventType === "annotation.dismissed") {
-      const annotationId = event.annotationId?.trim() ?? "";
+    if (eventType === 'annotation.dismissed') {
+      const annotationId = event.annotationId?.trim() ?? '';
       if (annotationId) {
         // Dismiss events directly delete markers to avoid replaying full snapshot every time.
         plan.dismissedAnnotationIds.add(annotationId);
@@ -2618,18 +2712,21 @@ function resolveReplayMarkerTarget(
 ): ReplayMarkerTarget | null {
   const uiAnchor = annotation.target.uiAnchor;
   const anchorMeta = isRecord(uiAnchor?.meta) ? uiAnchor.meta : null;
-  const selector = typeof uiAnchor?.cssSelector === "string" ? uiAnchor.cssSelector.trim() : "";
+  const selector = typeof uiAnchor?.cssSelector === 'string' ? uiAnchor.cssSelector.trim() : '';
   const selectorElement = selector ? queryReplayElementBySelector(doc, shellHost, selector) : null;
-  const rect = toDomRectFromUiRect(uiAnchor?.rect)
-    ?? readMultiSelectUnionRect(anchorMeta)
-    ?? (selectorElement ? selectorElement.getBoundingClientRect() : null);
+  const rect =
+    toDomRectFromUiRect(uiAnchor?.rect) ??
+    readMultiSelectUnionRect(anchorMeta) ??
+    (selectorElement ? selectorElement.getBoundingClientRect() : null);
   if (!rect || rect.width < 1 || rect.height < 1) {
     return null;
   }
 
   const identified = selectorElement ? identifyElement(selectorElement) : null;
-  const elementName = readRecordString(anchorMeta, "elementName") || identified?.name || "annotation";
-  const elementPath = readRecordString(anchorMeta, "elementPath") || selector || identified?.path || "unknown path";
+  const elementName =
+    readRecordString(anchorMeta, 'elementName') || identified?.name || 'annotation';
+  const elementPath =
+    readRecordString(anchorMeta, 'elementPath') || selector || identified?.path || 'unknown path';
   return {
     anchorX: clamp(rect.x + rect.width / 2, 0, Math.max(0, viewportWidth)),
     anchorY: clamp(rect.y + rect.height / 2, 0, Math.max(0, viewportHeight)),
@@ -2642,7 +2739,11 @@ function resolveReplayMarkerTarget(
   };
 }
 
-function queryReplayElementBySelector(doc: Document, shellHost: HTMLElement, selector: string): HTMLElement | null {
+function queryReplayElementBySelector(
+  doc: Document,
+  shellHost: HTMLElement,
+  selector: string,
+): HTMLElement | null {
   try {
     const node = doc.querySelector(selector);
     if (!(node instanceof HTMLElement)) {
@@ -2670,7 +2771,12 @@ function toDomRectFromUiRect(rect: FeedbackUiRect | undefined): DOMRectReadOnly 
   if (!rect) {
     return null;
   }
-  if (!isFiniteNumber(rect.x) || !isFiniteNumber(rect.y) || !isFiniteNumber(rect.width) || !isFiniteNumber(rect.height)) {
+  if (
+    !isFiniteNumber(rect.x) ||
+    !isFiniteNumber(rect.y) ||
+    !isFiniteNumber(rect.width) ||
+    !isFiniteNumber(rect.height)
+  ) {
     return null;
   }
   if (rect.width < 1 || rect.height < 1) {
@@ -2681,11 +2787,11 @@ function toDomRectFromUiRect(rect: FeedbackUiRect | undefined): DOMRectReadOnly 
 
 function readRecordString(record: Record<string, unknown> | null, key: string): string {
   if (!record) {
-    return "";
+    return '';
   }
   const value = record[key];
-  if (typeof value !== "string") {
-    return "";
+  if (typeof value !== 'string') {
+    return '';
   }
   return value.trim();
 }
@@ -2694,21 +2800,25 @@ function normalizePriority(value: string): FeedbackPriority {
   if (isFeedbackPriority(value)) {
     return value;
   }
-  return "normal";
+  return 'normal';
 }
 
 function isFeedbackPriority(value: string): value is FeedbackPriority {
   return PRIORITY_ORDER.includes(value as FeedbackPriority);
 }
 
-function readMultiSelectMetaFromUiAnchor(uiAnchor: FeedbackUiAnchor | undefined): AgentationShellMultiSelectMeta | undefined {
+function readMultiSelectMetaFromUiAnchor(
+  uiAnchor: FeedbackUiAnchor | undefined,
+): AgentationShellMultiSelectMeta | undefined {
   if (!uiAnchor || !isRecord(uiAnchor.meta)) {
     return undefined;
   }
   return readMultiSelectMetaFromMetaRecord(uiAnchor.meta);
 }
 
-function readMultiSelectMetaFromMetaRecord(meta: Record<string, unknown> | null): AgentationShellMultiSelectMeta | undefined {
+function readMultiSelectMetaFromMetaRecord(
+  meta: Record<string, unknown> | null,
+): AgentationShellMultiSelectMeta | undefined {
   if (!meta) {
     return undefined;
   }
@@ -2740,8 +2850,8 @@ function readMultiSelectItemsFromUnknown(value: unknown): AgentationShellMultiSe
     if (!isRecord(item)) {
       continue;
     }
-    const elementName = typeof item.elementName === "string" ? item.elementName.trim() : "";
-    const elementPath = typeof item.elementPath === "string" ? item.elementPath.trim() : "";
+    const elementName = typeof item.elementName === 'string' ? item.elementName.trim() : '';
+    const elementPath = typeof item.elementPath === 'string' ? item.elementPath.trim() : '';
     const rect = readUiRectFromUnknown(item.rect);
     if (!elementName || !elementPath || !rect) {
       continue;
@@ -2763,7 +2873,12 @@ function readUiRectFromUnknown(value: unknown): FeedbackUiRect | null {
   const y = value.y;
   const width = value.width;
   const height = value.height;
-  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(width) || !isFiniteNumber(height)) {
+  if (
+    !isFiniteNumber(x) ||
+    !isFiniteNumber(y) ||
+    !isFiniteNumber(width) ||
+    !isFiniteNumber(height)
+  ) {
     return null;
   }
   if (width < 1 || height < 1) {
@@ -2774,15 +2889,15 @@ function readUiRectFromUnknown(value: unknown): FeedbackUiRect | null {
 
 function markerColor(priority: FeedbackPriority): string {
   switch (priority) {
-    case "low":
-      return "#00c3d0";
-    case "high":
-      return "#ff8d28";
-    case "critical":
-      return "#ff383c";
-    case "normal":
+    case 'low':
+      return '#00c3d0';
+    case 'high':
+      return '#ff8d28';
+    case 'critical':
+      return '#ff383c';
+    case 'normal':
     default:
-      return "#0088ff";
+      return '#0088ff';
   }
 }
 
@@ -2790,50 +2905,50 @@ function resolveMarkerVisualSemantic(marker: MarkerRecord, index: number): Marke
   const multiSelectMeta = marker.multiSelectMeta;
   if (multiSelectMeta?.count === 0) {
     return {
-      kind: "area-select",
+      kind: 'area-select',
       isAggregate: true,
       aggregateCount: 0,
-      mainLabel: "Area",
-      title: "Area aggregation annotation: click to edit; can delete in popup",
+      mainLabel: 'Area',
+      title: 'Area aggregation annotation: click to edit; can delete in popup',
       ariaLabel: `annotation-area-marker-${index + 1}`,
-      affordanceLabel: "Area edit / delete",
+      affordanceLabel: 'Area edit / delete',
     };
   }
   if (multiSelectMeta && multiSelectMeta.count > 1) {
     return {
-      kind: "multi-select",
+      kind: 'multi-select',
       isAggregate: true,
       aggregateCount: multiSelectMeta.count,
-      mainLabel: "Σ",
-      badgeLabel: multiSelectMeta.count > 99 ? "99+" : String(multiSelectMeta.count),
+      mainLabel: 'Σ',
+      badgeLabel: multiSelectMeta.count > 99 ? '99+' : String(multiSelectMeta.count),
       title: `Aggregation annotation (${multiSelectMeta.count} elements): click to edit; can delete in popup`,
       ariaLabel: `annotation-multi-marker-${index + 1}-${multiSelectMeta.count}-items`,
-      affordanceLabel: "Aggregation edit / delete",
+      affordanceLabel: 'Aggregation edit / delete',
     };
   }
   return {
-    kind: "single",
+    kind: 'single',
     isAggregate: false,
     aggregateCount: 1,
     mainLabel: String(index + 1),
-    title: "Click to edit; can delete in popup",
+    title: 'Click to edit; can delete in popup',
     ariaLabel: `annotation-marker-${index + 1}`,
-    affordanceLabel: "Edit / delete",
+    affordanceLabel: 'Edit / delete',
   };
 }
 
 function isFocusableInPopup(element: HTMLElement): boolean {
-  if (element.hasAttribute("hidden") || element.closest("[hidden]")) {
+  if (element.hasAttribute('hidden') || element.closest('[hidden]')) {
     return false;
   }
   if (!element.isConnected || element.tabIndex < 0) {
     return false;
   }
   if (
-    element instanceof HTMLButtonElement
-    || element instanceof HTMLInputElement
-    || element instanceof HTMLSelectElement
-    || element instanceof HTMLTextAreaElement
+    element instanceof HTMLButtonElement ||
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLSelectElement ||
+    element instanceof HTMLTextAreaElement
   ) {
     return !element.disabled;
   }
@@ -2841,24 +2956,24 @@ function isFocusableInPopup(element: HTMLElement): boolean {
 }
 
 function buildMarkerTooltipQuote(marker: MarkerRecord, semantic: MarkerVisualSemantic): string {
-  if (semantic.kind === "multi-select") {
+  if (semantic.kind === 'multi-select') {
     return `Aggregation annotation · hit ${semantic.aggregateCount} elements`;
   }
-  if (semantic.kind === "area-select") {
-    return "Area aggregation annotation · no aggregatable elements hit";
+  if (semantic.kind === 'area-select') {
+    return 'Area aggregation annotation · no aggregatable elements hit';
   }
   if (!marker.selectedText) {
-    return "No selected text";
+    return 'No selected text';
   }
   return `“${marker.selectedText.slice(0, 40)}”`;
 }
 
 function buildMarkerTooltipNote(marker: MarkerRecord, semantic: MarkerVisualSemantic): string {
   const content = `${marker.elementName} · ${marker.body.slice(0, 80)}`;
-  if (semantic.kind === "single") {
+  if (semantic.kind === 'single') {
     return content;
   }
-  if (semantic.kind === "area-select") {
+  if (semantic.kind === 'area-select') {
     return `Area range · ${content}`;
   }
   return `Aggregation range(${semantic.aggregateCount}) · ${content}`;
@@ -2877,16 +2992,19 @@ function resolveMarkerTooltipPlacement(
   const tooltipEstimatedHeight = 84;
   const horizontalHalf = tooltipMaxWidth / 2;
 
-  let horizontal: MarkerTooltipPlacement["horizontal"] = "center";
+  let horizontal: MarkerTooltipPlacement['horizontal'] = 'center';
   if (markerX - horizontalHalf < horizontalSpacing) {
-    horizontal = "left";
+    horizontal = 'left';
   } else if (markerX + horizontalHalf > viewportWidth - horizontalSpacing) {
-    horizontal = "right";
+    horizontal = 'right';
   }
 
-  let vertical: MarkerTooltipPlacement["vertical"] = "bottom";
-  if (markerY + markerRadius + verticalSpacing + tooltipEstimatedHeight > viewportHeight - verticalSpacing) {
-    vertical = "top";
+  let vertical: MarkerTooltipPlacement['vertical'] = 'bottom';
+  if (
+    markerY + markerRadius + verticalSpacing + tooltipEstimatedHeight >
+    viewportHeight - verticalSpacing
+  ) {
+    vertical = 'top';
   }
 
   return { horizontal, vertical };
@@ -2919,7 +3037,11 @@ function computePopupTop(clientY: number, viewportHeight: number): number {
   if (preferTop + height <= viewportHeight - spacing) {
     return preferTop;
   }
-  return clamp(clientY - height - spacing, spacing, Math.max(spacing, viewportHeight - height - spacing));
+  return clamp(
+    clientY - height - spacing,
+    spacing,
+    Math.max(spacing, viewportHeight - height - spacing),
+  );
 }
 
 function buildMarkerAnchor(

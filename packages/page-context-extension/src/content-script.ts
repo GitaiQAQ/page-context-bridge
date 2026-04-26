@@ -1,12 +1,16 @@
-import { BRIDGE_METHODS } from "@page-context/shared-protocol";
-import { createConsoleCapture, executeContentScriptTool, type ConsoleEntry } from "@page-context/builtin-tools";
-import { createFeedbackUiAdapter } from "./feedback-ui-adapter";
-import { createRuntimeListener, sendRuntimeRequest } from "./runtime-rpc";
+import { BRIDGE_METHODS } from '@page-context/shared-protocol';
+import {
+  createConsoleCapture,
+  executeContentScriptTool,
+  type ConsoleEntry,
+} from '@page-context/builtin-tools';
+import { createFeedbackUiAdapter } from './feedback-ui-adapter';
+import { createRuntimeListener, sendRuntimeRequest } from './runtime-rpc';
 
 const consoleEntries: ConsoleEntry[] = [];
 
 function log(...args: unknown[]): void {
-  console.log("[PAGE-CONTEXT-CS]", ...args);
+  console.log('[PAGE-CONTEXT-CS]', ...args);
 }
 
 createConsoleCapture(window, consoleEntries);
@@ -16,7 +20,7 @@ const feedbackUiAdapter = createFeedbackUiAdapter();
 // Agentation UI (including react-detection.ts) now runs in the MAIN world,
 // Object.keys(element) can directly see the __reactFiber$xxx property.
 void sendRuntimeRequest(BRIDGE_METHODS.extensionAgentationMainEnsure).catch((error) => {
-  log("Failed to ensure MAIN world Agentation", error);
+  log('Failed to ensure MAIN world Agentation', error);
 });
 
 // ── Listen to MAIN world Agentation callback events ──
@@ -27,7 +31,7 @@ interface AgentationAnnotationEventDetail {
   annotation: {
     id?: string;
     comment: string;
-    severity?: "blocking" | "important" | "suggestion";
+    severity?: 'blocking' | 'important' | 'suggestion';
     element?: string;
     elementPath?: string;
     fullPath?: string;
@@ -45,17 +49,17 @@ interface AgentationAnnotationEventDetail {
 
 /** Basic validation: discard events with no annotation, no comment, or outdated timestamps */
 function isValidAnnotationEvent(detail: unknown): detail is AgentationAnnotationEventDetail {
-  if (!detail || typeof detail !== "object") return false;
+  if (!detail || typeof detail !== 'object') return false;
   const d = detail as AgentationAnnotationEventDetail;
-  if (!d.annotation || typeof d.annotation !== "object") return false;
-  if (typeof d.annotation.comment !== "string" || !d.annotation.comment.trim()) return false;
-  if (typeof d.timestamp !== "number" || d.timestamp <= 0) return false;
+  if (!d.annotation || typeof d.annotation !== 'object') return false;
+  if (typeof d.annotation.comment !== 'string' || !d.annotation.comment.trim()) return false;
+  if (typeof d.timestamp !== 'number' || d.timestamp <= 0) return false;
   // Discard events older than 60s to prevent replay attacks
   if (Date.now() - d.timestamp > 60_000) return false;
   return true;
 }
 
-window.addEventListener("page-context:agentation:annotation:add", ((event: Event) => {
+window.addEventListener('page-context:agentation:annotation:add', ((event: Event) => {
   const detail = (event as CustomEvent<AgentationAnnotationEventDetail>).detail;
   if (!isValidAnnotationEvent(detail)) return;
 
@@ -63,11 +67,11 @@ window.addEventListener("page-context:agentation:annotation:add", ((event: Event
   if (!payload) return;
 
   void feedbackUiAdapter.createAnnotation?.(payload)?.catch((error) => {
-    log("Failed to create annotation from MAIN world Agentation", error);
+    log('Failed to create annotation from MAIN world Agentation', error);
   });
 }) as EventListener);
 
-window.addEventListener("page-context:agentation:annotation:update", ((event: Event) => {
+window.addEventListener('page-context:agentation:annotation:update', ((event: Event) => {
   const detail = (event as CustomEvent<AgentationAnnotationEventDetail>).detail;
   if (!isValidAnnotationEvent(detail)) return;
 
@@ -75,28 +79,32 @@ window.addEventListener("page-context:agentation:annotation:update", ((event: Ev
   const body = detail.annotation.comment.trim();
   if (!id || !body) return;
 
-  void feedbackUiAdapter.updateAnnotation?.({
-    annotationId: id,
-    body,
-    priority: toFeedbackPriority(detail.annotation.severity),
-  }).catch((error) => {
-    log("Failed to update annotation from MAIN world Agentation", error);
-  });
+  void feedbackUiAdapter
+    .updateAnnotation?.({
+      annotationId: id,
+      body,
+      priority: toFeedbackPriority(detail.annotation.severity),
+    })
+    .catch((error) => {
+      log('Failed to update annotation from MAIN world Agentation', error);
+    });
 }) as EventListener);
 
-window.addEventListener("page-context:agentation:annotation:delete", ((event: Event) => {
+window.addEventListener('page-context:agentation:annotation:delete', ((event: Event) => {
   const detail = (event as CustomEvent<AgentationAnnotationEventDetail>).detail;
   if (!isValidAnnotationEvent(detail)) return;
 
   const id = normalizeId(detail.annotation.id);
   if (!id) return;
 
-  void feedbackUiAdapter.dismissAnnotation?.({
-    annotationId: id,
-    dismissReason: "deleted from agentation main world",
-  }).catch((error) => {
-    log("Failed to dismiss annotation from MAIN world Agentation", error);
-  });
+  void feedbackUiAdapter
+    .dismissAnnotation?.({
+      annotationId: id,
+      dismissReason: 'deleted from agentation main world',
+    })
+    .catch((error) => {
+      log('Failed to dismiss annotation from MAIN world Agentation', error);
+    });
 }) as EventListener);
 
 // ── Tool execution listener (remains unchanged) ──
@@ -120,28 +128,28 @@ chrome.runtime.onMessage.addListener(
 
 // ── Page event forwarding (remains unchanged) ──
 
-window.addEventListener("message", (event) => {
+window.addEventListener('message', (event) => {
   if (event.source !== window) {
     return;
   }
   const data = event.data;
-  if (!data || typeof data !== "object") {
+  if (!data || typeof data !== 'object') {
     return;
   }
 
-  if ((data as { type?: string }).type === "PAGE_CONTEXT_REQUEST") {
-    log("Forwarding page context request from page to background");
+  if ((data as { type?: string }).type === 'PAGE_CONTEXT_REQUEST') {
+    log('Forwarding page context request from page to background');
     void sendRuntimeRequest(BRIDGE_METHODS.extensionPageEvent, {
       payload: (data as { payload?: unknown }).payload,
     }).catch((error) => {
-      log("Failed to forward page event", error);
+      log('Failed to forward page event', error);
     });
   }
 });
 
 // ── Helper function: convert Agentation raw annotation to bridge payload ──
 
-function buildCreatePayload(ann: AgentationAnnotationEventDetail["annotation"]) {
+function buildCreatePayload(ann: AgentationAnnotationEventDetail['annotation']) {
   const body = ann.comment?.trim();
   if (!body) return null;
 
@@ -154,14 +162,14 @@ function buildCreatePayload(ann: AgentationAnnotationEventDetail["annotation"]) 
     selectedText,
     uiAnchor: buildUiAnchor(ann, targetRect, selectedText),
     target: {
-      elementName: normalizeText(ann.element) ?? "element",
-      elementPath: normalizeText(ann.elementPath) ?? "",
+      elementName: normalizeText(ann.element) ?? 'element',
+      elementPath: normalizeText(ann.elementPath) ?? '',
       rect: targetRect,
     },
   };
 }
 
-function resolveTargetRect(ann: AgentationAnnotationEventDetail["annotation"]): DOMRectReadOnly {
+function resolveTargetRect(ann: AgentationAnnotationEventDetail['annotation']): DOMRectReadOnly {
   const box = ann.boundingBox;
   if (box) {
     const viewportY = ann.isFixed ? box.y : box.y - window.scrollY;
@@ -175,12 +183,12 @@ function resolveTargetRect(ann: AgentationAnnotationEventDetail["annotation"]): 
 }
 
 function buildUiAnchor(
-  ann: AgentationAnnotationEventDetail["annotation"],
+  ann: AgentationAnnotationEventDetail['annotation'],
   rect: DOMRectReadOnly,
   selectedText?: string,
 ) {
   const meta: Record<string, unknown> = {
-    source: "agentation-main-world",
+    source: 'agentation-main-world',
     element: normalizeText(ann.element),
     elementPath: normalizeText(ann.elementPath),
     fullPath: normalizeText(ann.fullPath),
@@ -199,18 +207,24 @@ function buildUiAnchor(
   };
 }
 
-function toFeedbackPriority(severity?: string): "critical" | "high" | "normal" {
+function toFeedbackPriority(severity?: string): 'critical' | 'high' | 'normal' {
   switch (severity) {
-    case "blocking": return "critical";
-    case "important": return "high";
-    default: return "normal";
+    case 'blocking':
+      return 'critical';
+    case 'important':
+      return 'high';
+    default:
+      return 'normal';
   }
 }
 
 function toCssSelectorCandidate(elementPath?: string): string | undefined {
   const path = elementPath?.trim();
-  if (!path || path.includes("⟨shadow⟩")) return undefined;
-  const segments = path.split(">").map((s) => s.trim()).filter(Boolean);
+  if (!path || path.includes('⟨shadow⟩')) return undefined;
+  const segments = path
+    .split('>')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (segments.length === 0) return undefined;
   const leaf = segments.at(-1);
   if (!leaf) return undefined;
@@ -225,23 +239,23 @@ function normalizeText(value?: string): string | undefined {
 }
 
 function normalizeId(value?: string): string | undefined {
-  if (typeof value !== "string") return undefined;
+  if (typeof value !== 'string') return undefined;
   return value.trim() || undefined;
 }
 
 window.__PAGE_CONTEXT_BRIDGE_DEMO__ = () => {
   const selection = window.getSelection();
-  const text = selection ? selection.toString() : "";
+  const text = selection ? selection.toString() : '';
 
   window.postMessage(
     {
-      type: "PAGE_CONTEXT_REQUEST",
+      type: 'PAGE_CONTEXT_REQUEST',
       payload: {
-        type: "demo.selection",
+        type: 'demo.selection',
         text,
       },
     },
-    "*",
+    '*',
   );
 };
 

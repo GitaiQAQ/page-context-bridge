@@ -3,10 +3,19 @@ import type {
   ContextResourceDescriptor,
   ContextSkillDescriptor,
   ToolSpec,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import type { PageToolInstance, ToolInput, UserscriptBridgeAdapter } from "../types";
-import { buildSkillPrompt, listToolNames, normalizeSkillInput, previewValue, READONLY_ANNOTATION, toErrorMessage, toJsonResource, isObjectRecord } from "../utils";
+import type { PageToolInstance, ToolInput, UserscriptBridgeAdapter } from '../types';
+import {
+  buildSkillPrompt,
+  listToolNames,
+  normalizeSkillInput,
+  previewValue,
+  READONLY_ANNOTATION,
+  toErrorMessage,
+  toJsonResource,
+  isObjectRecord,
+} from '../utils';
 
 interface ReactDevtoolsHookLike {
   renderers?: Map<unknown, unknown>;
@@ -73,7 +82,10 @@ interface ReactAdapterState {
   /** Prop diff snapshots keyed by componentId (max 20 entries, LRU eviction) */
   propSnapshots: Map<string, { hash: string; propsExpanded: unknown }>;
   /** Render baseline snapshots keyed by componentId (max 10 entries, LRU eviction) */
-  renderBaselines: Map<string, { capturedAt: string; propsSnapshot: unknown; stateHooksPreview: string[] }>;
+  renderBaselines: Map<
+    string,
+    { capturedAt: string; propsSnapshot: unknown; stateHooksPreview: string[] }
+  >;
   /** Hook snapshots for change detection between calls (Enhancement 5) - max 20 entries, LRU eviction */
   hookSnapshots: Map<string, { hash: string; hooks: { hookType: string; preview: string }[] }>;
 }
@@ -102,148 +114,167 @@ interface SafeTraversalOptions {
   maxArrayLength?: number;
 }
 
-const NS = "react";
-const INSTANCE = "primary";
+const NS = 'react';
+const INSTANCE = 'primary';
 const RESOURCE_IDS = {
-  summary: "react.summary",
-  roots: "react.roots",
-  selection: "react.selection",
-  component: "react.component",
-  diagnostics: "react.diagnostics",
-  componentTree: "react.componentTree",
+  summary: 'react.summary',
+  roots: 'react.roots',
+  selection: 'react.selection',
+  component: 'react.component',
+  diagnostics: 'react.diagnostics',
+  componentTree: 'react.componentTree',
 } as const;
 
 const SKILL_IDS = {
-  rootLandscape: "react.analyze-root-landscape",
-  selectionTrace: "react.trace-selection-component",
-  componentReview: "react.review-component-state",
-  hierarchyTrace: "react.trace-component-hierarchy",
+  rootLandscape: 'react.analyze-root-landscape',
+  selectionTrace: 'react.trace-selection-component',
+  componentReview: 'react.review-component-state',
+  hierarchyTrace: 'react.trace-component-hierarchy',
 } as const;
 
 const NAMESPACE: ContextNamespaceDescriptor = {
   namespace: NS,
-  title: "React",
-  description: "Read-only React runtime inspection via DevTools global hook.",
-  tags: ["react", "readonly", "inspect"],
+  title: 'React',
+  description: 'Read-only React runtime inspection via DevTools global hook.',
+  tags: ['react', 'readonly', 'inspect'],
 };
 
 const TOOLS: ToolSpec[] = [
   {
-    name: "listRoots",
-    description: "List the React root summaries detected on the current page.",
+    name: 'listRoots',
+    description: 'List the React root summaries detected on the current page.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        includeDiagnostics: { type: "boolean", description: "Include diagnostics in the response." },
+        includeDiagnostics: {
+          type: 'boolean',
+          description: 'Include diagnostics in the response.',
+        },
       },
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "inspectComponent",
-    description: "Inspect a component summary by componentId.",
+    name: 'inspectComponent',
+    description: 'Inspect a component summary by componentId.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        componentId: { type: "string", description: "A componentId returned by listRoots or inspectSelectedElement." },
+        componentId: {
+          type: 'string',
+          description: 'A componentId returned by listRoots or inspectSelectedElement.',
+        },
       },
-      required: ["componentId"],
+      required: ['componentId'],
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "inspectSelectedElement",
-    description: "Inspect the current selection and trace back to the nearest React component.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    name: 'inspectSelectedElement',
+    description: 'Inspect the current selection and trace back to the nearest React component.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "searchComponents",
-    description: "Search components by name substring with optional depth and root filters.",
+    name: 'searchComponents',
+    description: 'Search components by name substring with optional depth and root filters.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        query: { type: "string", description: "Search term (substring match on component name)." },
-        rootId: { type: "string", description: "Optional: scope to a specific root." },
-        maxResults: { type: "number", description: "Max results to return (default: 20, max: 100)." },
+        query: { type: 'string', description: 'Search term (substring match on component name).' },
+        rootId: { type: 'string', description: 'Optional: scope to a specific root.' },
+        maxResults: {
+          type: 'number',
+          description: 'Max results to return (default: 20, max: 100).',
+        },
         filterByDepth: {
-          type: "object",
+          type: 'object',
           properties: {
-            min: { type: "number" },
-            max: { type: "number" },
+            min: { type: 'number' },
+            max: { type: 'number' },
           },
-          description: "Optional depth range filter.",
+          description: 'Optional depth range filter.',
         },
       },
-      required: ["query"],
+      required: ['query'],
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "inspectComponentDeep",
+    name: 'inspectComponentDeep',
     description:
-      "Inspect a component with expanded props, parsed hook chain (useState/useEffect/useRef/etc.), and optional subtree children.",
+      'Inspect a component with expanded props, parsed hook chain (useState/useEffect/useRef/etc.), and optional subtree children.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        componentId: { type: "string", description: "A componentId from listRoots or inspectSelectedElement." },
-        maxDepth: { type: "number", description: "Max object depth for props/state expansion (default: 3, max: 8)." },
-        includeSubtree: { type: "boolean", description: "Include direct children summaries (default: false)." },
+        componentId: {
+          type: 'string',
+          description: 'A componentId from listRoots or inspectSelectedElement.',
+        },
+        maxDepth: {
+          type: 'number',
+          description: 'Max object depth for props/state expansion (default: 3, max: 8).',
+        },
+        includeSubtree: {
+          type: 'boolean',
+          description: 'Include direct children summaries (default: false).',
+        },
       },
-      required: ["componentId"],
+      required: ['componentId'],
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "listContextProviders",
-    description: "List all detected React Context Providers with their names and locations in the component tree.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        rootId: { type: "string", description: "Optional: scope to a specific root." },
-      },
-      additionalProperties: false,
-    },
-    annotations: READONLY_ANNOTATION,
-  },
-  {
-    name: "listSpecialBoundaries",
-    description: "List Suspense boundaries and Error Boundaries with their coverage areas.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    annotations: READONLY_ANNOTATION,
-  },
-  {
-    name: "analyzeStaleClosures",
+    name: 'listContextProviders',
     description:
-      "Analyze components for potential stale closure issues in useEffect/useMemo/useCallback hooks.",
+      'List all detected React Context Providers with their names and locations in the component tree.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        rootId: { type: "string", description: "Optional: scope to specific root." },
+        rootId: { type: 'string', description: 'Optional: scope to a specific root.' },
       },
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "analyzeRenderTriggers",
+    name: 'listSpecialBoundaries',
+    description: 'List Suspense boundaries and Error Boundaries with their coverage areas.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: READONLY_ANNOTATION,
+  },
+  {
+    name: 'analyzeStaleClosures',
     description:
-      "Analyze why a component may have re-rendered by comparing current props/state against a captured baseline.",
+      'Analyze components for potential stale closure issues in useEffect/useMemo/useCallback hooks.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        componentId: { type: "string", description: "Component to analyze." },
+        rootId: { type: 'string', description: 'Optional: scope to specific root.' },
+      },
+      additionalProperties: false,
+    },
+    annotations: READONLY_ANNOTATION,
+  },
+  {
+    name: 'analyzeRenderTriggers',
+    description:
+      'Analyze why a component may have re-rendered by comparing current props/state against a captured baseline.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        componentId: { type: 'string', description: 'Component to analyze.' },
         action: {
-          type: "string",
-          enum: ["capture", "compare"],
-          description: "capture=save baseline, compare=diff against saved.",
+          type: 'string',
+          enum: ['capture', 'compare'],
+          description: 'capture=save baseline, compare=diff against saved.',
         },
       },
-      required: ["componentId", "action"],
+      required: ['componentId', 'action'],
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
@@ -254,56 +285,56 @@ const RESOURCES: ContextResourceDescriptor[] = [
   {
     id: RESOURCE_IDS.summary,
     namespace: NS,
-    title: "React Summary",
-    description: "React detection summary and recent inspection state.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["summary"],
+    title: 'React Summary',
+    description: 'React detection summary and recent inspection state.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['summary'],
   },
   {
     id: RESOURCE_IDS.roots,
     namespace: NS,
-    title: "React Roots",
-    description: "List of React root summaries.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["roots"],
+    title: 'React Roots',
+    description: 'List of React root summaries.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['roots'],
   },
   {
     id: RESOURCE_IDS.selection,
     namespace: NS,
-    title: "React Selection",
-    description: "Current selection, matching element, and nearest component summary.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["selection"],
+    title: 'React Selection',
+    description: 'Current selection, matching element, and nearest component summary.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['selection'],
   },
   {
     id: RESOURCE_IDS.component,
     namespace: NS,
-    title: "React Component",
-    description: "Result of the most recent inspectComponent call.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["component"],
+    title: 'React Component',
+    description: 'Result of the most recent inspectComponent call.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['component'],
   },
   {
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
-    title: "React Diagnostics",
-    description: "React hook detection and fallback diagnostics.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["diagnostics"],
+    title: 'React Diagnostics',
+    description: 'React hook detection and fallback diagnostics.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['diagnostics'],
   },
   {
     id: RESOURCE_IDS.componentTree,
     namespace: NS,
-    title: "React Component Tree",
-    description: "Hierarchical component tree with parent-child relationships.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["tree", "components"],
+    title: 'React Component Tree',
+    description: 'Hierarchical component tree with parent-child relationships.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['tree', 'components'],
   },
 ];
 
@@ -311,42 +342,43 @@ const SKILLS: ContextSkillDescriptor[] = [
   {
     id: SKILL_IDS.rootLandscape,
     namespace: NS,
-    title: "Analyze React Root Landscape",
-    description: "Analyze root count, topology, and suspicious areas.",
-    intentTags: ["analysis", "react", "roots"],
+    title: 'Analyze React Root Landscape',
+    description: 'Analyze root count, topology, and suspicious areas.',
+    intentTags: ['analysis', 'react', 'roots'],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.roots, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
   {
     id: SKILL_IDS.selectionTrace,
     namespace: NS,
-    title: "Trace Selected Element to Component",
-    description: "Map the current selection to a component and explain the context.",
-    intentTags: ["analysis", "selection", "react"],
+    title: 'Trace Selected Element to Component',
+    description: 'Map the current selection to a component and explain the context.',
+    intentTags: ['analysis', 'selection', 'react'],
     resourceIds: [RESOURCE_IDS.selection, RESOURCE_IDS.component, RESOURCE_IDS.roots],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[2]!, TOOLS[1]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
   {
     id: SKILL_IDS.componentReview,
     namespace: NS,
-    title: "Review Component Props and State",
-    description: "Review component props/state previews and summarize the evidence chain.",
-    intentTags: ["analysis", "component", "state"],
+    title: 'Review Component Props and State',
+    description: 'Review component props/state previews and summarize the evidence chain.',
+    intentTags: ['analysis', 'component', 'state'],
     resourceIds: [RESOURCE_IDS.component, RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[1]!, TOOLS[0]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
   {
     id: SKILL_IDS.hierarchyTrace,
     namespace: NS,
-    title: "Trace Component Hierarchy Path",
-    description: "Given a component, trace its ancestry chain and summarize the rendering path from root.",
-    intentTags: ["analysis", "hierarchy", "navigation"],
+    title: 'Trace Component Hierarchy Path',
+    description:
+      'Given a component, trace its ancestry chain and summarize the rendering path from root.',
+    intentTags: ['analysis', 'hierarchy', 'navigation'],
     resourceIds: [RESOURCE_IDS.componentTree, RESOURCE_IDS.component, RESOURCE_IDS.summary],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[1]!, TOOLS[3]!, TOOLS[0]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
 ];
 
@@ -368,19 +400,25 @@ export function createReactUserscriptAdapter(win: Window, doc: Document): Usersc
   };
 
   return {
-    adapterId: "react-inspector",
+    adapterId: 'react-inspector',
     namespace: NAMESPACE,
     listInstances: () => [primaryInstance],
     listResources: () => RESOURCES,
     readResource: (id) => readReactResource(id, win, doc, state),
     listSkills: () => SKILLS,
     getSkill: (id, input) => getReactSkillPrompt(id, input ?? {}, win, doc, state),
-    getSceneHint: () => "react",
+    getSceneHint: () => 'react',
   };
 }
 
-function callReactTool(name: string, input: ToolInput, win: Window, doc: Document, state: ReactAdapterState): unknown {
-  if (name === "listRoots") {
+function callReactTool(
+  name: string,
+  input: ToolInput,
+  win: Window,
+  doc: Document,
+  state: ReactAdapterState,
+): unknown {
+  if (name === 'listRoots') {
     const snapshot = collectReactSnapshot(win, doc);
     state.lastSnapshot = snapshot;
     return {
@@ -391,10 +429,10 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
     };
   }
 
-  if (name === "inspectComponent") {
-    const componentId = typeof input.componentId === "string" ? input.componentId : "";
+  if (name === 'inspectComponent') {
+    const componentId = typeof input.componentId === 'string' ? input.componentId : '';
     if (!componentId) {
-      return { ok: false, reason: "componentId must not be empty." };
+      return { ok: false, reason: 'componentId must not be empty.' };
     }
 
     const snapshot = collectReactSnapshot(win, doc);
@@ -405,22 +443,24 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
       return {
         ok: false,
         reason: `Component not found: ${componentId}`,
-        suggestion: "Run listRoots or inspectSelectedElement first to get a valid componentId.",
+        suggestion: 'Run listRoots or inspectSelectedElement first to get a valid componentId.',
       };
     }
     return { ok: true, component };
   }
 
-  if (name === "inspectSelectedElement") {
+  if (name === 'inspectSelectedElement') {
     const snapshot = collectReactSnapshot(win, doc);
     state.lastSnapshot = snapshot;
 
     const selectedElement = resolveSelectedElement(win);
     const nearestFiber = findNearestFiberFromElement(selectedElement);
-    const nearestComponent = nearestFiber ? buildComponentSummaryFromFiber(nearestFiber, snapshot.roots) : null;
+    const nearestComponent = nearestFiber
+      ? buildComponentSummaryFromFiber(nearestFiber, snapshot.roots)
+      : null;
 
     const selection: SelectionSummary = {
-      selectedText: (win.getSelection?.()?.toString() ?? "").trim(),
+      selectedText: (win.getSelection?.()?.toString() ?? '').trim(),
       element: describeElement(selectedElement),
       nearestComponent,
     };
@@ -431,17 +471,20 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
     return { ok: true, ...selection };
   }
 
-  if (name === "searchComponents") {
-    const query = typeof input.query === "string" ? input.query.trim().toLowerCase() : "";
+  if (name === 'searchComponents') {
+    const query = typeof input.query === 'string' ? input.query.trim().toLowerCase() : '';
     if (!query) {
-      return { ok: false, reason: "query must be a non-empty string." };
+      return { ok: false, reason: 'query must be a non-empty string.' };
     }
 
     const snapshot = collectReactSnapshot(win, doc);
     state.lastSnapshot = snapshot;
 
-    const maxResults = Math.min(100, Math.max(1, typeof input.maxResults === "number" ? input.maxResults : 20));
-    const rootFilter = typeof input.rootId === "string" ? input.rootId : null;
+    const maxResults = Math.min(
+      100,
+      Math.max(1, typeof input.maxResults === 'number' ? input.maxResults : 20),
+    );
+    const rootFilter = typeof input.rootId === 'string' ? input.rootId : null;
 
     const results: ComponentSummary[] = [];
     let totalCount = 0;
@@ -456,10 +499,10 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
       totalCount += 1;
       if (isObjectRecord(input.filterByDepth)) {
         const fb = input.filterByDepth as Record<string, unknown>;
-        if (typeof fb.min === "number" && comp.depth < fb.min) {
+        if (typeof fb.min === 'number' && comp.depth < fb.min) {
           continue;
         }
-        if (typeof fb.max === "number" && comp.depth > fb.max) {
+        if (typeof fb.max === 'number' && comp.depth > fb.max) {
           continue;
         }
       }
@@ -472,13 +515,16 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
     return { ok: true, query, totalCount, results };
   }
 
-  if (name === "inspectComponentDeep") {
-    const componentId = typeof input.componentId === "string" ? input.componentId : "";
+  if (name === 'inspectComponentDeep') {
+    const componentId = typeof input.componentId === 'string' ? input.componentId : '';
     if (!componentId) {
-      return { ok: false, reason: "componentId must not be empty." };
+      return { ok: false, reason: 'componentId must not be empty.' };
     }
 
-    const maxDepth = Math.min(8, Math.max(1, typeof input.maxDepth === "number" ? input.maxDepth : 3));
+    const maxDepth = Math.min(
+      8,
+      Math.max(1, typeof input.maxDepth === 'number' ? input.maxDepth : 3),
+    );
     const includeSubtree = input.includeSubtree === true;
 
     try {
@@ -486,12 +532,18 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
       state.lastSnapshot = snapshot;
       const component = snapshot.componentMap.get(componentId) ?? null;
       if (!component) {
-        return { ok: false, reason: `Component not found: ${componentId}`, suggestion: "Run listRoots or inspectSelectedElement first." };
+        return {
+          ok: false,
+          reason: `Component not found: ${componentId}`,
+          suggestion: 'Run listRoots or inspectSelectedElement first.',
+        };
       }
       state.lastComponent = component;
 
       const fiber = findLiveFiberByPath(win, componentId);
-      const propsExpanded = fiber ? safeTraverseValue(fiber.memoizedProps, { maxDepth }) : undefined;
+      const propsExpanded = fiber
+        ? safeTraverseValue(fiber.memoizedProps, { maxDepth })
+        : undefined;
       const hooks = fiber ? traverseHookChain(fiber.memoizedState, { maxDepth }) : [];
 
       // Enhancement 4: Compute prop type inference hints
@@ -502,7 +554,9 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
 
       // Enhancement 4: Prop-to-state mapping heuristic
       const propStateMapping = computePropStateMapping(
-        propsExpanded && isObjectRecord(propsExpanded) ? Object.keys(propsExpanded as Record<string, unknown>) : [],
+        propsExpanded && isObjectRecord(propsExpanded)
+          ? Object.keys(propsExpanded as Record<string, unknown>)
+          : [],
         hooks,
       );
 
@@ -513,7 +567,14 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
       const MAX_HOOK_SNAPSHOTS = 20;
       const hookSnapshotEntries = hooks.map((h) => ({ hookType: h.hookType, preview: h.preview }));
       const currentHash = JSON.stringify(hookSnapshotEntries).slice(0, 200);
-      let hookChanges: Array<{ index: number; hookType: string; previousPreview: string; currentPreview: string }> | undefined;
+      let hookChanges:
+        | Array<{
+            index: number;
+            hookType: string;
+            previousPreview: string;
+            currentPreview: string;
+          }>
+        | undefined;
 
       const previousHookSnapshot = state.hookSnapshots.get(componentId);
       if (previousHookSnapshot) {
@@ -524,12 +585,17 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
           for (let i = 0; i < maxLen; i++) {
             const prev = prevHooks[i];
             const curr = hookSnapshotEntries[i];
-            if (!prev || !curr || prev.preview !== curr.preview || prev.hookType !== curr.hookType) {
+            if (
+              !prev ||
+              !curr ||
+              prev.preview !== curr.preview ||
+              prev.hookType !== curr.hookType
+            ) {
               hookChanges.push({
                 index: i,
-                hookType: curr?.hookType ?? "(removed)",
-                previousPreview: prev?.preview ?? "(none)",
-                currentPreview: curr?.preview ?? "(removed)",
+                hookType: curr?.hookType ?? '(removed)',
+                previousPreview: prev?.preview ?? '(none)',
+                currentPreview: curr?.preview ?? '(removed)',
               });
             }
           }
@@ -545,14 +611,16 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
       }
       state.hookSnapshots.set(componentId, { hash: currentHash, hooks: hookSnapshotEntries });
 
-      let children: Array<{
-        componentId: string;
-        name: string;
-        depth: number;
-        key: string | null;
-        propsPreview: string;
-        statePreview: string;
-      }> | undefined;
+      let children:
+        | Array<{
+            componentId: string;
+            name: string;
+            depth: number;
+            key: string | null;
+            propsPreview: string;
+            statePreview: string;
+          }>
+        | undefined;
       if (includeSubtree) {
         children = component.childrenIds
           .map((cid) => snapshot.componentMap.get(cid))
@@ -581,15 +649,19 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
         hookChanges,
       };
     } catch (error) {
-      return { ok: false, reason: `Deep inspection failed: ${toErrorMessage(error)}`, suggestion: "Try with lower maxDepth or use inspectComponent for basic info." };
+      return {
+        ok: false,
+        reason: `Deep inspection failed: ${toErrorMessage(error)}`,
+        suggestion: 'Try with lower maxDepth or use inspectComponent for basic info.',
+      };
     }
   }
 
-  if (name === "listContextProviders") {
+  if (name === 'listContextProviders') {
     const snapshot = collectReactSnapshot(win, doc);
     state.lastSnapshot = snapshot;
 
-    const rootFilter = typeof input.rootId === "string" ? input.rootId : null;
+    const rootFilter = typeof input.rootId === 'string' ? input.rootId : null;
     const providers: Array<{
       componentId: string;
       contextName: string;
@@ -600,9 +672,9 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
 
     for (const comp of snapshot.componentMap.values()) {
       if (rootFilter && comp.rootId !== rootFilter) continue;
-      if (!comp.name.endsWith(".Provider")) continue;
+      if (!comp.name.endsWith('.Provider')) continue;
 
-      const contextName = comp.name.replace(/\.Provider$/, "");
+      const contextName = comp.name.replace(/\.Provider$/, '');
       providers.push({
         componentId: comp.componentId,
         contextName,
@@ -615,7 +687,7 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
     return { ok: true, providerCount: providers.length, providers };
   }
 
-  if (name === "listSpecialBoundaries") {
+  if (name === 'listSpecialBoundaries') {
     const snapshot = collectReactSnapshot(win, doc);
     state.lastSnapshot = snapshot;
 
@@ -642,7 +714,7 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
       for (const rid of rendererIds) {
         const fiberRoots = getFiberRoots(hook, rid, diagnostics);
         for (const root of fiberRoots) {
-          collectSpecialFibers(root, snapshot, suspenseBoundaries, errorBoundaries, "0", rid);
+          collectSpecialFibers(root, snapshot, suspenseBoundaries, errorBoundaries, '0', rid);
         }
       }
     }
@@ -656,17 +728,17 @@ function callReactTool(name: string, input: ToolInput, win: Window, doc: Documen
     };
   }
 
-  if (name === "analyzeStaleClosures") {
+  if (name === 'analyzeStaleClosures') {
     return analyzeStaleClosures(win, doc, state, input);
   }
 
-  if (name === "analyzeRenderTriggers") {
-    const componentId = typeof input.componentId === "string" ? input.componentId : "";
-    const action = typeof input.action === "string" ? input.action : "";
+  if (name === 'analyzeRenderTriggers') {
+    const componentId = typeof input.componentId === 'string' ? input.componentId : '';
+    const action = typeof input.action === 'string' ? input.action : '';
     if (!componentId || !action) {
-      return { ok: false, reason: "componentId and action are required." };
+      return { ok: false, reason: 'componentId and action are required.' };
     }
-    if (action !== "capture" && action !== "compare") {
+    if (action !== 'capture' && action !== 'compare') {
       return { ok: false, reason: 'action must be either "capture" or "compare".' };
     }
     return handleRenderTriggers(componentId, action, win, state);
@@ -699,15 +771,24 @@ function readReactResource(id: string, win: Window, doc: Document, state: ReactA
   }
 
   if (id === RESOURCE_IDS.selection) {
-    return toJsonResource(id, state.lastSelection ?? { selectedText: "", element: null, nearestComponent: null });
+    return toJsonResource(
+      id,
+      state.lastSelection ?? { selectedText: '', element: null, nearestComponent: null },
+    );
   }
 
   if (id === RESOURCE_IDS.component) {
-    return toJsonResource(id, { component: state.lastComponent, hasComponent: Boolean(state.lastComponent) });
+    return toJsonResource(id, {
+      component: state.lastComponent,
+      hasComponent: Boolean(state.lastComponent),
+    });
   }
 
   if (id === RESOURCE_IDS.diagnostics) {
-    return toJsonResource(id, { diagnostics: snapshot.diagnostics, rendererCount: snapshot.rendererCount });
+    return toJsonResource(id, {
+      diagnostics: snapshot.diagnostics,
+      rendererCount: snapshot.rendererCount,
+    });
   }
 
   if (id === RESOURCE_IDS.componentTree) {
@@ -726,7 +807,13 @@ function readReactResource(id: string, win: Window, doc: Document, state: ReactA
   return toJsonResource(id, { error: `Unknown resource id: ${id}` });
 }
 
-function getReactSkillPrompt(id: string, input: ToolInput, win: Window, doc: Document, state: ReactAdapterState) {
+function getReactSkillPrompt(
+  id: string,
+  input: ToolInput,
+  win: Window,
+  doc: Document,
+  state: ReactAdapterState,
+) {
   const skill = SKILLS.find((item) => item.id === id);
   if (!skill) {
     return undefined;
@@ -779,15 +866,19 @@ function collectReactSnapshot(win: Window, doc: Document): ReactSnapshot {
   });
 
   if (rendererIds.length === 0) {
-    diagnostics.push("The DevTools hook exists, but renderers is empty.");
+    diagnostics.push('The DevTools hook exists, but renderers is empty.');
   }
   if (rendererIds.length > 0 && roots.length === 0) {
-    diagnostics.push("Renderers were detected but no roots were found. The page may not have mounted yet.");
+    diagnostics.push(
+      'Renderers were detected but no roots were found. The page may not have mounted yet.',
+    );
   }
 
   const containerHints = countReactContainerHints(doc);
   if (containerHints > 0 && roots.length === 0) {
-    diagnostics.push(`Found ${containerHints} React container markers in the DOM, but could not build root summaries.`);
+    diagnostics.push(
+      `Found ${containerHints} React container markers in the DOM, but could not build root summaries.`,
+    );
   }
 
   return {
@@ -812,9 +903,12 @@ function analyzeRoot(
   let fiberCount = 0;
   let componentCount = 0;
   const topComponents: string[] = [];
-  const stack: Array<{ fiber: FiberNodeLike; depth: number; path: string; parentComponentId: string | null }> = [
-    { fiber: start, depth: 0, path: "0", parentComponentId: null },
-  ];
+  const stack: Array<{
+    fiber: FiberNodeLike;
+    depth: number;
+    path: string;
+    parentComponentId: string | null;
+  }> = [{ fiber: start, depth: 0, path: '0', parentComponentId: null }];
 
   while (stack.length > 0) {
     const item = stack.pop();
@@ -878,9 +972,10 @@ function collectFiberChildren(fiber: FiberNodeLike): Array<FiberNodeLike | null>
 }
 
 function getDevtoolsHook(win: Window, diagnostics: string[]): ReactDevtoolsHookLike | undefined {
-  const hook = (win as Window & { __REACT_DEVTOOLS_GLOBAL_HOOK__?: ReactDevtoolsHookLike }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+  const hook = (win as Window & { __REACT_DEVTOOLS_GLOBAL_HOOK__?: ReactDevtoolsHookLike })
+    .__REACT_DEVTOOLS_GLOBAL_HOOK__;
   if (!hook) {
-    diagnostics.push("Did not detect __REACT_DEVTOOLS_GLOBAL_HOOK__.");
+    diagnostics.push('Did not detect __REACT_DEVTOOLS_GLOBAL_HOOK__.');
     return undefined;
   }
   return hook;
@@ -888,7 +983,7 @@ function getDevtoolsHook(win: Window, diagnostics: string[]): ReactDevtoolsHookL
 
 function getRendererIds(hook: ReactDevtoolsHookLike, diagnostics: string[]): number[] {
   if (!(hook.renderers instanceof Map)) {
-    diagnostics.push("The DevTools hook does not expose a renderers Map.");
+    diagnostics.push('The DevTools hook does not expose a renderers Map.');
     return [];
   }
   const ids: number[] = [];
@@ -903,9 +998,13 @@ function getRendererIds(hook: ReactDevtoolsHookLike, diagnostics: string[]): num
   return ids;
 }
 
-function getFiberRoots(hook: ReactDevtoolsHookLike, rendererId: number, diagnostics: string[]): FiberRootLike[] {
-  if (typeof hook.getFiberRoots !== "function") {
-    diagnostics.push("The DevTools hook does not expose getFiberRoots.");
+function getFiberRoots(
+  hook: ReactDevtoolsHookLike,
+  rendererId: number,
+  diagnostics: string[],
+): FiberRootLike[] {
+  if (typeof hook.getFiberRoots !== 'function') {
+    diagnostics.push('The DevTools hook does not expose getFiberRoots.');
     return [];
   }
   try {
@@ -977,7 +1076,9 @@ function readFiberFromDomNode(node: Element): FiberNodeLike | null {
   const ownKeys = Object.getOwnPropertyNames(node);
 
   // Check fiber keys first (host elements like div, span, button)
-  const fiberKey = ownKeys.find((key) => key.startsWith("__reactFiber$") || key.startsWith("__reactInternalInstance$"));
+  const fiberKey = ownKeys.find(
+    (key) => key.startsWith('__reactFiber$') || key.startsWith('__reactInternalInstance$'),
+  );
   if (fiberKey) {
     const value = (node as unknown as Record<string, unknown>)[fiberKey];
     if (isObjectRecord(value)) {
@@ -986,9 +1087,9 @@ function readFiberFromDomNode(node: Element): FiberNodeLike | null {
   }
 
   // Check container keys (container elements like #app, #root)
-  const containerKey = ownKeys.find((key) => key.startsWith("__reactContainer$"));
+  const containerKey = ownKeys.find((key) => key.startsWith('__reactContainer$'));
   if (containerKey) {
-    const container = (node as unknown as Record<string,unknown>)[containerKey];
+    const container = (node as unknown as Record<string, unknown>)[containerKey];
     if (isObjectRecord(container) && isObjectRecord(container.stateNode)) {
       const stateNode = container.stateNode as Record<string, unknown>;
       if (isObjectRecord(stateNode.current) && isObjectRecord(stateNode.current.child)) {
@@ -1000,18 +1101,21 @@ function readFiberFromDomNode(node: Element): FiberNodeLike | null {
   return null;
 }
 
-function buildComponentSummaryFromFiber(fiber: FiberNodeLike, roots: RootSummary[]): ComponentSummary | null {
+function buildComponentSummaryFromFiber(
+  fiber: FiberNodeLike,
+  roots: RootSummary[],
+): ComponentSummary | null {
   const name = getFiberDisplayName(fiber);
   if (!name) {
     return null;
   }
-  const rootId = roots[0]?.rootId ?? "renderer:unknown:root:0";
+  const rootId = roots[0]?.rootId ?? 'renderer:unknown:root:0';
   const path = buildFiberPath(fiber);
   return {
     componentId: `${rootId}:fiber:${path}`,
     rootId,
     name,
-    depth: path.split(".").length - 1,
+    depth: path.split('.').length - 1,
     key: readFiberKey(fiber),
     propsPreview: previewValue(fiber.memoizedProps),
     statePreview: previewValue(fiber.memoizedState),
@@ -1035,37 +1139,45 @@ function buildFiberPath(fiber: FiberNodeLike): string {
     cursor = cursor.return;
   }
   segments.reverse();
-  return segments.length > 0 ? segments.join(".") : "0";
+  return segments.length > 0 ? segments.join('.') : '0';
 }
 
 function getFiberDisplayName(fiber: FiberNodeLike): string | null {
   const type = fiber.elementType ?? fiber.type;
-  if (typeof type === "string") {
+  if (typeof type === 'string') {
     return type;
   }
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     const named = type as Function & { displayName?: string };
-    return named.displayName || named.name || "AnonymousComponent";
+    return named.displayName || named.name || 'AnonymousComponent';
   }
   if (isObjectRecord(type)) {
-    if (typeof type.displayName === "string" && type.displayName) {
+    if (typeof type.displayName === 'string' && type.displayName) {
       return type.displayName;
     }
-    if (typeof type.render === "function") {
+    if (typeof type.render === 'function') {
       const render = type.render as Function & { displayName?: string };
-      return render.displayName || render.name || "AnonymousRender";
+      return render.displayName || render.name || 'AnonymousRender';
     }
 
     // Detect Context.Provider via _context.displayName
     const contextObj = type._context;
-    if (isObjectRecord(contextObj) && typeof contextObj.displayName === "string" && contextObj.displayName) {
+    if (
+      isObjectRecord(contextObj) &&
+      typeof contextObj.displayName === 'string' &&
+      contextObj.displayName
+    ) {
       return `${contextObj.displayName}.Provider`;
     }
 
     // Check nested render prop for wrapped context providers
     if (isObjectRecord(type.render)) {
       const innerContext = (type.render as Record<string, unknown>)._context;
-      if (isObjectRecord(innerContext) && typeof innerContext.displayName === "string" && innerContext.displayName) {
+      if (
+        isObjectRecord(innerContext) &&
+        typeof innerContext.displayName === 'string' &&
+        innerContext.displayName
+      ) {
         return `${innerContext.displayName}.Provider`;
       }
     }
@@ -1084,12 +1196,13 @@ function describeContainer(containerInfo: unknown): string | null {
   if (!isObjectRecord(containerInfo)) {
     return null;
   }
-  const nodeName = typeof containerInfo.nodeName === "string" ? containerInfo.nodeName.toLowerCase() : "unknown";
-  const id = typeof containerInfo.id === "string" && containerInfo.id ? `#${containerInfo.id}` : "";
+  const nodeName =
+    typeof containerInfo.nodeName === 'string' ? containerInfo.nodeName.toLowerCase() : 'unknown';
+  const id = typeof containerInfo.id === 'string' && containerInfo.id ? `#${containerInfo.id}` : '';
   const className =
-    typeof containerInfo.className === "string" && containerInfo.className
-      ? `.${containerInfo.className.split(/\s+/).filter(Boolean).join(".")}`
-      : "";
+    typeof containerInfo.className === 'string' && containerInfo.className
+      ? `.${containerInfo.className.split(/\s+/).filter(Boolean).join('.')}`
+      : '';
   return `${nodeName}${id}${className}`;
 }
 
@@ -1097,8 +1210,9 @@ function describeElement(element: Element | null): string | null {
   if (!element) {
     return null;
   }
-  const id = element.id ? `#${element.id}` : "";
-  const className = element.classList.length > 0 ? `.${Array.from(element.classList).join(".")}` : "";
+  const id = element.id ? `#${element.id}` : '';
+  const className =
+    element.classList.length > 0 ? `.${Array.from(element.classList).join('.')}` : '';
   return `${element.tagName.toLowerCase()}${id}${className}`;
 }
 
@@ -1115,7 +1229,7 @@ function countReactContainerHints(doc: Document): number {
       continue;
     }
     const keys = Object.getOwnPropertyNames(node);
-    if (keys.some((key) => key.startsWith("__reactContainer$"))) {
+    if (keys.some((key) => key.startsWith('__reactContainer$'))) {
       hints += 1;
     }
   }
@@ -1133,27 +1247,35 @@ function safeTraverseValue(
   depth: number = 0,
   parentKey?: string,
 ): unknown {
-  const { maxKeys = SAFE_TRAVERSAL_DEFAULTS.maxKeys, maxArrayLength = SAFE_TRAVERSAL_DEFAULTS.maxArrayLength } = options;
+  const {
+    maxKeys = SAFE_TRAVERSAL_DEFAULTS.maxKeys,
+    maxArrayLength = SAFE_TRAVERSAL_DEFAULTS.maxArrayLength,
+  } = options;
 
   if (depth > options.maxDepth) {
-    return "[max depth reached]";
+    return '[max depth reached]';
   }
 
   if (value === null || value === undefined) {
     return value;
   }
 
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
     return value;
   }
 
   // Enhancement 3: Event handler classification for functions that are object property values
-  if (typeof value === "function") {
+  if (typeof value === 'function') {
     const namedFn = value as Function & { displayName?: string; name?: string };
-    const baseName = namedFn.displayName || namedFn.name || "anonymous";
+    const baseName = namedFn.displayName || namedFn.name || 'anonymous';
 
     // Only classify when we have parent key context (inside props/object traversal)
-    if (parentKey && typeof parentKey === "string") {
+    if (parentKey && typeof parentKey === 'string') {
       // SyntheticEvent pattern: onClick, onChange, onSubmit, etc.
       if (/^on[A-Z]/.test(parentKey)) {
         return `[SyntheticEvent: ${parentKey}]`;
@@ -1167,50 +1289,53 @@ function safeTraverseValue(
     return `[Function ${baseName}]`;
   }
 
-  if (typeof value === "symbol") {
+  if (typeof value === 'symbol') {
     return value.toString();
   }
 
   if (visited.has(value)) {
-    return "[circular]";
+    return '[circular]';
   }
   visited.add(value);
 
   // Enhancement 2: JSX Element rendering - detect React Elements
-  if (isObjectRecord(value) && typeof (value as Record<string, unknown>)["$$typeof"] === "symbol") {
+  if (isObjectRecord(value) && typeof (value as Record<string, unknown>)['$$typeof'] === 'symbol') {
     try {
       const reactElement = value as Record<string, unknown>;
-      const elementType = reactElement["$$typeof"];
+      const elementType = reactElement['$$typeof'];
       // Check for Symbol.for('react.element')
-      const expectedSymbol = Symbol.for("react.element");
+      const expectedSymbol = Symbol.for('react.element');
       if (elementType === expectedSymbol) {
-        const type = reactElement["type"];
-        const elementKey = reactElement["key"];
-        const props = reactElement["props"];
+        const type = reactElement['type'];
+        const elementKey = reactElement['key'];
+        const props = reactElement['props'];
 
         let componentName: string;
-        if (typeof type === "string") {
+        if (typeof type === 'string') {
           componentName = type;
-        } else if (typeof type === "function") {
+        } else if (typeof type === 'function') {
           const fnType = type as Function & { displayName?: string; name?: string };
-          componentName = fnType.displayName || fnType.name || "Anonymous";
-        } else if (isObjectRecord(type) && typeof (type as Record<string, unknown>)["displayName"] === "string") {
-          componentName = String((type as Record<string, unknown>)["displayName"]);
+          componentName = fnType.displayName || fnType.name || 'Anonymous';
+        } else if (
+          isObjectRecord(type) &&
+          typeof (type as Record<string, unknown>)['displayName'] === 'string'
+        ) {
+          componentName = String((type as Record<string, unknown>)['displayName']);
         } else {
-          componentName = String(type ?? "Unknown");
+          componentName = String(type ?? 'Unknown');
         }
 
-        const keyStr = elementKey != null ? ` key="${String(elementKey)}"` : "";
+        const keyStr = elementKey != null ? ` key="${String(elementKey)}"` : '';
 
         // Shallow-preview props (first few keys only)
-        let propsPreview = "";
+        let propsPreview = '';
         if (isObjectRecord(props)) {
           const propKeys = Object.keys(props).slice(0, 3);
           const parts = propKeys.map((pk) => `${pk}="${previewValue(props[pk])}"`);
           if (parts.length > 0) {
-            propsPreview = ` ${parts.join(" ")}`;
+            propsPreview = ` ${parts.join(' ')}`;
             if (Object.keys(props).length > 3) {
-              propsPreview += " ...";
+              propsPreview += ' ...';
             }
           }
         }
@@ -1225,7 +1350,9 @@ function safeTraverseValue(
   if (Array.isArray(value)) {
     if (value.length > maxArrayLength) {
       return [
-        ...value.slice(0, maxArrayLength).map((item) => safeTraverseValue(item, options, visited, depth + 1)),
+        ...value
+          .slice(0, maxArrayLength)
+          .map((item) => safeTraverseValue(item, options, visited, depth + 1)),
         `... ${value.length - maxArrayLength} more items`,
       ];
     }
@@ -1246,16 +1373,16 @@ function safeTraverseValue(
         const childValue = (value as Record<string, unknown>)[k];
 
         // Enhancement 1: Children smart truncation for known heavy prop keys
-        if (k === "children") {
+        if (k === 'children') {
           // Count direct children
           try {
             if (childValue == null) {
-              result[k] = "[ReactChildren: count=0]";
+              result[k] = '[ReactChildren: count=0]';
             } else if (Array.isArray(childValue)) {
               result[k] = `[ReactChildren: count=${childValue.length}]`;
             } else {
               // Single child or text node
-              result[k] = "[ReactChildren: count=1]";
+              result[k] = '[ReactChildren: count=1]';
             }
           } catch {
             result[k] = safeTraverseValue(childValue, options, visited, depth + 1, k);
@@ -1263,13 +1390,13 @@ function safeTraverseValue(
           continue;
         }
 
-        if (k === "dangerouslySetInnerHTML" || k === "innerHTML") {
+        if (k === 'dangerouslySetInnerHTML' || k === 'innerHTML') {
           try {
             const htmlContent =
-              k === "dangerouslySetInnerHTML" && isObjectRecord(childValue)
-                ? (childValue as Record<string, unknown>)["__html"]
+              k === 'dangerouslySetInnerHTML' && isObjectRecord(childValue)
+                ? (childValue as Record<string, unknown>)['__html']
                 : childValue;
-            const charCount = typeof htmlContent === "string" ? htmlContent.length : 0;
+            const charCount = typeof htmlContent === 'string' ? htmlContent.length : 0;
             result[k] = `[HTML: ${charCount} chars]`;
           } catch {
             result[k] = safeTraverseValue(childValue, options, visited, depth + 1, k);
@@ -1282,11 +1409,11 @@ function safeTraverseValue(
 
         result[k] = safeTraverseValue(childValue, options, visited, depth + 1, k);
       } catch {
-        result[k] = "[error reading]";
+        result[k] = '[error reading]';
       }
     }
     if (keys.length > maxKeys) {
-      result["__more__"] = `${keys.length - maxKeys} more keys`;
+      result['__more__'] = `${keys.length - maxKeys} more keys`;
     }
     return result;
   }
@@ -1302,31 +1429,31 @@ function safeTraverseValue(
  */
 function inferPropTypeHints(value: unknown): string | null {
   if (value === null) {
-    return "null";
+    return 'null';
   }
 
-  if (typeof value === "string") {
-    return "string";
+  if (typeof value === 'string') {
+    return 'string';
   }
 
-  if (typeof value === "number" || typeof value === "bigint") {
-    return "number";
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return 'number';
   }
 
-  if (typeof value === "boolean") {
-    return "boolean";
+  if (typeof value === 'boolean') {
+    return 'boolean';
   }
 
-  if (typeof value === "function") {
-    return "function";
+  if (typeof value === 'function') {
+    return 'function';
   }
 
   if (Array.isArray(value)) {
-    return "array";
+    return 'array';
   }
 
   if (value instanceof Element) {
-    return "HTMLElement";
+    return 'HTMLElement';
   }
 
   // Object with specific shape patterns - infer record with field types
@@ -1339,7 +1466,7 @@ function inferPropTypeHints(value: unknown): string | null {
         return fieldType ? `${k}: ${fieldType}` : k;
       });
       if (fields.length > 0) {
-        return `{ ${fields.join(", ")}${keys.length > Object.keys(obj).length ? ", ..." : ""} }`;
+        return `{ ${fields.join(', ')}${keys.length > Object.keys(obj).length ? ', ...' : ''} }`;
       }
     } catch {
       // Fall through
@@ -1382,34 +1509,44 @@ function traverseHookChain(memoizedState: unknown, options: SafeTraversalOptions
       hookType: inferred.type,
       preview: previewValue(inferred.primaryField ?? rec.memoizedState),
       value:
-        inferred.type !== "effect" ? safeTraverseValue(inferred.primaryField ?? rec.memoizedState, { ...options, maxDepth: Math.min(options.maxDepth, 2) }) : undefined,
+        inferred.type !== 'effect'
+          ? safeTraverseValue(inferred.primaryField ?? rec.memoizedState, {
+              ...options,
+              maxDepth: Math.min(options.maxDepth, 2),
+            })
+          : undefined,
     };
 
     // ── Enhancement 1: Dependency array full expansion for effect/memo/callback hooks ──
     if (inferred.deps !== undefined && Array.isArray(inferred.deps)) {
-      summary.depsExpanded = safeTraverseValue(inferred.deps, { ...options, maxDepth: 4 }) as unknown[];
+      summary.depsExpanded = safeTraverseValue(inferred.deps, {
+        ...options,
+        maxDepth: 4,
+      }) as unknown[];
     }
 
     // ── Enhancement 2: Ref depth check + type annotation for useRef hooks ──
-    if (inferred.type === "useRef") {
+    if (inferred.type === 'useRef') {
       const currentVal = rec.current ?? rec._instance;
       if (currentVal instanceof Element) {
-        summary.refType = "dom";
-      } else if (typeof currentVal === "function") {
-        summary.refType = "function";
+        summary.refType = 'dom';
+      } else if (typeof currentVal === 'function') {
+        summary.refType = 'function';
       } else if (currentVal === null || currentVal === undefined) {
-        summary.refType = "null";
-      } else if (typeof currentVal === "number") {
-        summary.refType = "number";
-      } else if (typeof currentVal === "string") {
-        summary.refType = "string";
+        summary.refType = 'null';
+      } else if (typeof currentVal === 'number') {
+        summary.refType = 'number';
+      } else if (typeof currentVal === 'string') {
+        summary.refType = 'string';
       } else if (isObjectRecord(currentVal)) {
-        summary.refType = "object";
+        summary.refType = 'object';
       } else {
-        summary.refType = "unknown";
+        summary.refType = 'unknown';
       }
       // Deeper preview of .current value at depth 3
-      summary.refCurrentPreview = previewValue(safeTraverseValue(currentVal, { ...options, maxDepth: 3 }));
+      summary.refCurrentPreview = previewValue(
+        safeTraverseValue(currentVal, { ...options, maxDepth: 3 }),
+      );
     }
 
     // ── Enhancement 3 & 4: Pending update queue inspection + Reducer name extraction ──
@@ -1427,12 +1564,18 @@ function traverseHookChain(memoizedState: unknown, options: SafeTraversalOptions
       }
 
       // Enhancement 4: Extract reducer name for useReducer
-      if (queueRec.lastRenderedReducer !== undefined && typeof queueRec.lastRenderedReducer === "function") {
-        const reducerFn = queueRec.lastRenderedReducer as Function & { displayName?: string; name?: string };
+      if (
+        queueRec.lastRenderedReducer !== undefined &&
+        typeof queueRec.lastRenderedReducer === 'function'
+      ) {
+        const reducerFn = queueRec.lastRenderedReducer as Function & {
+          displayName?: string;
+          name?: string;
+        };
         summary.reducerName = reducerFn.displayName || reducerFn.name || undefined;
         // If we found a reducer, this is likely useReducer not useState
         if (summary.reducerName) {
-          summary.hookType = "useReducer";
+          summary.hookType = 'useReducer';
         }
       }
     }
@@ -1443,7 +1586,7 @@ function traverseHookChain(memoizedState: unknown, options: SafeTraversalOptions
   }
 
   if (index >= MAX_HOOKS) {
-    hooks.push({ hookType: "truncated", preview: `... ${MAX_HOOKS}+ hooks` });
+    hooks.push({ hookType: 'truncated', preview: `... ${MAX_HOOKS}+ hooks` });
   }
 
   return hooks;
@@ -1466,23 +1609,23 @@ interface InferredHook {
 
 function inferHookType(hookRecord: Record<string, unknown>): InferredHook {
   // useRef: has _init or _instance but no queue
-  if ("_init" in hookRecord || "_instance" in hookRecord) {
+  if ('_init' in hookRecord || '_instance' in hookRecord) {
     // Check for ref shape: { current: ... }
-    if ("current" in hookRecord || "_instance" in hookRecord) {
-      return { type: "useRef", primaryField: hookRecord.current ?? hookRecord._instance };
+    if ('current' in hookRecord || '_instance' in hookRecord) {
+      return { type: 'useRef', primaryField: hookRecord.current ?? hookRecord._instance };
     }
   }
 
   // useContext: has context and memoizedValue
-  if ("context" in hookRecord && "memoizedValue" in hookRecord) {
-    return { type: "useContext", primaryField: hookRecord.memoizedValue };
+  if ('context' in hookRecord && 'memoizedValue' in hookRecord) {
+    return { type: 'useContext', primaryField: hookRecord.memoizedValue };
   }
 
   // useMemo / useCallback: has create/deps or callback/deps
-  if ("create" in hookRecord || "callback" in hookRecord) {
-    const isMemo = "create" in hookRecord;
+  if ('create' in hookRecord || 'callback' in hookRecord) {
+    const isMemo = 'create' in hookRecord;
     return {
-      type: isMemo ? "useMemo" : "useCallback",
+      type: isMemo ? 'useMemo' : 'useCallback',
       primaryField: hookRecord.memoizedState,
       deps: hookRecord.deps,
       create: isMemo ? hookRecord.create : undefined,
@@ -1491,9 +1634,9 @@ function inferHookType(hookRecord: Record<string, unknown>): InferredHook {
   }
 
   // useEffect / useLayoutEffect: has next with deps/create/destroy pattern
-  if ("deps" in hookRecord && ("create" in hookRecord || "destroy" in hookRecord)) {
+  if ('deps' in hookRecord && ('create' in hookRecord || 'destroy' in hookRecord)) {
     return {
-      type: "useEffect",
+      type: 'useEffect',
       primaryField: hookRecord.deps,
       deps: hookRecord.deps,
       create: hookRecord.create,
@@ -1502,15 +1645,18 @@ function inferHookType(hookRecord: Record<string, unknown>): InferredHook {
   }
 
   // useState / useReducer: has queue and memoizedState (most common)
-  if ("queue" in hookRecord || "baseState" in hookRecord) {
-    return { type: "useState", primaryField: hookRecord.memoizedState, queue: hookRecord.queue };
+  if ('queue' in hookRecord || 'baseState' in hookRecord) {
+    return { type: 'useState', primaryField: hookRecord.memoizedState, queue: hookRecord.queue };
   }
 
   // Fallback: treat as state-like
-  return { type: "state", primaryField: hookRecord.memoizedState };
+  return { type: 'state', primaryField: hookRecord.memoizedState };
 }
 
-function findFiberByComponentId(snapshot: ReactSnapshot, componentId: string): FiberNodeLike | null {
+function findFiberByComponentId(
+  snapshot: ReactSnapshot,
+  componentId: string,
+): FiberNodeLike | null {
   // Cannot resolve fiber from stored summary alone.
   // Return null — caller degrades gracefully (omits propsExpanded/hooks).
   return null;
@@ -1519,7 +1665,7 @@ function findFiberByComponentId(snapshot: ReactSnapshot, componentId: string): F
 // ─── Live fiber lookup by path ─────────────────────────────────────────────
 
 function findLiveFiberByPath(win: Window, componentId: string): FiberNodeLike | null {
-  const colonIdx = componentId.indexOf(":fiber:");
+  const colonIdx = componentId.indexOf(':fiber:');
   if (colonIdx < 0) return null;
 
   const rootPart = componentId.slice(0, colonIdx); // e.g. "renderer:1:root:0"
@@ -1536,7 +1682,7 @@ function findLiveFiberByPath(win: Window, componentId: string): FiberNodeLike | 
 
     const fiberRoots = getFiberRoots(hook, rid, diagnostics);
     for (const root of fiberRoots) {
-      const found = findFiberAtPath(root, pathPart.split(".").map(Number));
+      const found = findFiberAtPath(root, pathPart.split('.').map(Number));
       if (found) return found;
     }
   }
@@ -1585,7 +1731,11 @@ function buildTreesFromComponentMap(
   for (const root of roots) {
     // Find top-level components under this root (parentId is null or points outside this root)
     const topLevel = Array.from(componentMap.values()).filter(
-      (c) => c.rootId === root.rootId && (c.parentId === null || !componentMap.has(c.parentId) || componentMap.get(c.parentId)?.rootId !== root.rootId),
+      (c) =>
+        c.rootId === root.rootId &&
+        (c.parentId === null ||
+          !componentMap.has(c.parentId) ||
+          componentMap.get(c.parentId)?.rootId !== root.rootId),
     );
     result.set(
       root.rootId,
@@ -1596,7 +1746,11 @@ function buildTreesFromComponentMap(
   return result;
 }
 
-function buildTreeNode(comp: ComponentSummary, componentMap: Map<string, ComponentSummary>, depth: number): TreeNode {
+function buildTreeNode(
+  comp: ComponentSummary,
+  componentMap: Map<string, ComponentSummary>,
+  depth: number,
+): TreeNode {
   if (depth >= TREE_MAX_DEPTH) {
     return {
       componentId: comp.componentId,
@@ -1650,7 +1804,9 @@ function collectSpecialFibers(
   const start = root.current?.child ?? root.current ?? null;
   if (!start) return;
 
-  const stack: Array<{ fiber: FiberNodeLike; path: string; depth: number }> = [{ fiber: start, path: pathPrefix, depth: 0 }];
+  const stack: Array<{ fiber: FiberNodeLike; path: string; depth: number }> = [
+    { fiber: start, path: pathPrefix, depth: 0 },
+  ];
   const rootId = `renderer:${rendererId}:root:0`;
 
   while (stack.length > 0) {
@@ -1661,7 +1817,7 @@ function collectSpecialFibers(
     const displayName = getFiberDisplayName(item.fiber);
 
     // Detect Suspense
-    if (displayName === "Suspense") {
+    if (displayName === 'Suspense') {
       suspenseBoundaries.push({
         componentId,
         name: displayName,
@@ -1673,14 +1829,15 @@ function collectSpecialFibers(
 
     // Detect Error Boundary (class components with error handling methods)
     const type = item.fiber.elementType ?? item.fiber.type;
-    if (typeof type === "function") {
+    if (typeof type === 'function') {
       const proto = (type as Function).prototype;
-      const hasStatic = typeof (type as unknown as Record<string, unknown>).getDerivedStateFromError === "function";
-      const hasInstance = typeof proto?.componentDidCatch === "function";
+      const hasStatic =
+        typeof (type as unknown as Record<string, unknown>).getDerivedStateFromError === 'function';
+      const hasInstance = typeof proto?.componentDidCatch === 'function';
       if (hasStatic || hasInstance) {
         errorBoundaries.push({
           componentId,
-          name: displayName ?? "Unknown",
+          name: displayName ?? 'Unknown',
           depth: item.depth,
           hasGetDerivedStateFromError: hasStatic,
           hasComponentDidCatch: hasInstance,
@@ -1736,9 +1893,7 @@ function computePropDiff(
   const oldObj = isObjectRecord(previousSnapshot.propsExpanded)
     ? (previousSnapshot.propsExpanded as Record<string, unknown>)
     : {};
-  const newObj = isObjectRecord(propsExpanded)
-    ? (propsExpanded as Record<string, unknown>)
-    : {};
+  const newObj = isObjectRecord(propsExpanded) ? (propsExpanded as Record<string, unknown>) : {};
 
   const oldKeys = new Set(Object.keys(oldObj));
   const newKeys = new Set(Object.keys(newObj));
@@ -1772,22 +1927,25 @@ interface PropStateMappingEntry {
   targetHookIndex?: number;
 }
 
-function computePropStateMapping(propKeys: string[], hooks: HookSummary[]): PropStateMappingEntry[] {
+function computePropStateMapping(
+  propKeys: string[],
+  hooks: HookSummary[],
+): PropStateMappingEntry[] {
   const mapping: PropStateMappingEntry[] = [];
 
   // Collect useState hook indices and their value types
   const stateHookIndices: number[] = [];
-  const stateValueTypes: Array<"array" | "object" | "other"> = [];
+  const stateValueTypes: Array<'array' | 'object' | 'other'> = [];
   hooks.forEach((hook, idx) => {
-    if (hook.hookType === "useState") {
+    if (hook.hookType === 'useState') {
       stateHookIndices.push(idx);
       const val = hook.value;
       if (Array.isArray(val)) {
-        stateValueTypes.push("array");
+        stateValueTypes.push('array');
       } else if (isObjectRecord(val)) {
-        stateValueTypes.push("object");
+        stateValueTypes.push('object');
       } else {
-        stateValueTypes.push("other");
+        stateValueTypes.push('other');
       }
     }
   });
@@ -1795,7 +1953,10 @@ function computePropStateMapping(propKeys: string[], hooks: HookSummary[]): Prop
   // Check if any hook directly consumes a function prop (heuristic: check preview for handler-like strings)
   const consumedHandlerProps = new Set<string>();
   for (const hook of hooks) {
-    if (typeof hook.preview === "string" && (hook.preview.startsWith("[SyntheticEvent:") || hook.preview.startsWith("[Handler:"))) {
+    if (
+      typeof hook.preview === 'string' &&
+      (hook.preview.startsWith('[SyntheticEvent:') || hook.preview.startsWith('[Handler:'))
+    ) {
       // Extract prop key from preview format "[SyntheticEvent: onClick]" or "[Handler: handleClick]"
       const match = hook.preview.match(/\[SyntheticEvent:\s*(\w+)\]|\[Handler:\s*(\w+)\]/);
       if (match) {
@@ -1806,18 +1967,29 @@ function computePropStateMapping(propKeys: string[], hooks: HookSummary[]): Prop
 
   for (const propKey of propKeys) {
     // Rule: defaultValue / initialValue / value -> likely initializes first useState
-    if ((propKey === "defaultValue" || propKey === "initialValue" || propKey === "value") && stateHookIndices.length > 0) {
-      mapping.push({ propKey, relation: `likely initializes state[${stateHookIndices[0]}]`, targetHookIndex: stateHookIndices[0] });
+    if (
+      (propKey === 'defaultValue' || propKey === 'initialValue' || propKey === 'value') &&
+      stateHookIndices.length > 0
+    ) {
+      mapping.push({
+        propKey,
+        relation: `likely initializes state[${stateHookIndices[0]}]`,
+        targetHookIndex: stateHookIndices[0],
+      });
       continue;
     }
 
     // Rule: items / data / list -> may feed a state holding an array
-    if ((propKey === "items" || propKey === "data" || propKey === "list")) {
-      const arrayStateIdx = stateValueTypes.findIndex((t) => t === "array");
+    if (propKey === 'items' || propKey === 'data' || propKey === 'list') {
+      const arrayStateIdx = stateValueTypes.findIndex((t) => t === 'array');
       if (arrayStateIdx >= 0) {
-        mapping.push({ propKey, relation: `may feed state[${stateHookIndices[arrayStateIdx]}]`, targetHookIndex: stateHookIndices[arrayStateIdx] });
+        mapping.push({
+          propKey,
+          relation: `may feed state[${stateHookIndices[arrayStateIdx]}]`,
+          targetHookIndex: stateHookIndices[arrayStateIdx],
+        });
       } else {
-        mapping.push({ propKey, relation: "may feed state (no array state found)" });
+        mapping.push({ propKey, relation: 'may feed state (no array state found)' });
       }
       continue;
     }
@@ -1825,9 +1997,9 @@ function computePropStateMapping(propKeys: string[], hooks: HookSummary[]): Prop
     // Rule: Function props starting with 'on' that are not consumed by any hook
     if (/^on[A-Z]/.test(propKey)) {
       if (!consumedHandlerProps.has(propKey)) {
-        mapping.push({ propKey, relation: "event handler (untracked)" });
+        mapping.push({ propKey, relation: 'event handler (untracked)' });
       } else {
-        mapping.push({ propKey, relation: "event handler (consumed by hook)" });
+        mapping.push({ propKey, relation: 'event handler (consumed by hook)' });
       }
       continue;
     }
@@ -1841,7 +2013,7 @@ function computePropStateMapping(propKeys: string[], hooks: HookSummary[]): Prop
 interface StaleClosureFinding {
   componentId: string;
   componentName: string;
-  severity: "high" | "medium" | "low";
+  severity: 'high' | 'medium' | 'low';
   rule: string;
   message: string;
   hookIndex: number;
@@ -1865,13 +2037,15 @@ function analyzeStaleClosures(
   _doc: Document,
   _state: ReactAdapterState,
   input: ToolInput,
-): { ok: true; findings: StaleClosureFinding[]; componentCount: number } | { ok: false; reason: string } {
-  const rootFilter = typeof input.rootId === "string" ? input.rootId : null;
+):
+  | { ok: true; findings: StaleClosureFinding[]; componentCount: number }
+  | { ok: false; reason: string } {
+  const rootFilter = typeof input.rootId === 'string' ? input.rootId : null;
 
   const diagnostics: string[] = [];
   const hook = getDevtoolsHook(win, diagnostics);
   if (!hook) {
-    return { ok: false, reason: "React DevTools hook not detected on this page." };
+    return { ok: false, reason: 'React DevTools hook not detected on this page.' };
   }
 
   const snapshot = collectReactSnapshot(win, _doc);
@@ -1881,7 +2055,7 @@ function analyzeStaleClosures(
   for (const rid of rendererIds) {
     const fiberRoots = getFiberRoots(hook, rid, diagnostics);
     for (const root of fiberRoots) {
-      walkFibersForStaleClosures(root, snapshot, rootFilter, rid, findings, "0");
+      walkFibersForStaleClosures(root, snapshot, rootFilter, rid, findings, '0');
     }
   }
 
@@ -1899,7 +2073,9 @@ function walkFibersForStaleClosures(
   const start = root.current?.child ?? root.current ?? null;
   if (!start) return;
 
-  const stack: Array<{ fiber: FiberNodeLike; path: string; depth: number }> = [{ fiber: start, path: pathPrefix, depth: 0 }];
+  const stack: Array<{ fiber: FiberNodeLike; path: string; depth: number }> = [
+    { fiber: start, path: pathPrefix, depth: 0 },
+  ];
   const rootId = `renderer:${rendererId}:root:0`;
 
   while (stack.length > 0) {
@@ -1989,7 +2165,7 @@ function analyzeComponentHooks(
   for (const entry of hookEntries) {
     // --- Rule 1: Empty deps with external references ---
     if (
-      (entry.type === "useEffect" || entry.type === "useMemo" || entry.type === "useCallback") &&
+      (entry.type === 'useEffect' || entry.type === 'useMemo' || entry.type === 'useCallback') &&
       entry.deps !== undefined
     ) {
       const isEmptyDeps =
@@ -1998,15 +2174,15 @@ function analyzeComponentHooks(
 
       if (isEmptyDeps) {
         const fnToCheck = entry.create ?? entry.callback;
-        if (fnToCheck && typeof fnToCheck === "function") {
+        if (fnToCheck && typeof fnToCheck === 'function') {
           const fnStr = fnToCheck.toString();
           const hasOuterReferences = fnStr.length > 80 && /\b(this|props|state)\b/.test(fnStr);
           if (hasOuterReferences) {
             findings.push({
               componentId,
               componentName,
-              severity: "high",
-              rule: "empty-deps-with-external-references",
+              severity: 'high',
+              rule: 'empty-deps-with-external-references',
               message: `${entry.type} at hook[${entry.index}] has empty deps but create/callback appears to reference outer scope variables.`,
               hookIndex: entry.index,
               details: { hookType: entry.type, fnLength: fnStr.length },
@@ -2017,16 +2193,16 @@ function analyzeComponentHooks(
     }
 
     // --- Rule 3: Stale ref pattern ---
-    if (entry.type === "useRef" && entry.refCurrent !== undefined) {
+    if (entry.type === 'useRef' && entry.refCurrent !== undefined) {
       if (entry.refCurrent instanceof Element && depth > 8) {
         findings.push({
           componentId,
           componentName,
-          severity: "low",
-          rule: "stale-ref-deep-dom",
+          severity: 'low',
+          rule: 'stale-ref-deep-dom',
           message: `useRef at hook[${entry.index}] holds a DOM element reference at depth ${depth}, which may become stale if parent unmounts.`,
           hookIndex: entry.index,
-          details: { refType: "dom", depth },
+          details: { refType: 'dom', depth },
         });
       }
     }
@@ -2037,9 +2213,9 @@ function analyzeComponentHooks(
     REACTIVE_PROP_PATTERNS.some((pattern) => pattern.test(key)),
   );
 
-  if (reactivePropKeys.length > 0 && hookEntries.some((e) => e.type === "useEffect")) {
+  if (reactivePropKeys.length > 0 && hookEntries.some((e) => e.type === 'useEffect')) {
     for (const entry of hookEntries) {
-      if (entry.type !== "useEffect") continue;
+      if (entry.type !== 'useEffect') continue;
 
       const hasDeps = Array.isArray(entry.deps) && entry.deps.length > 0;
       const isEmptyOrMissing = !hasDeps || (Array.isArray(entry.deps) && entry.deps.length === 0);
@@ -2048,11 +2224,14 @@ function analyzeComponentHooks(
         findings.push({
           componentId,
           componentName,
-          severity: "medium",
-          rule: "missing-reactive-dependency",
-          message: `useEffect at hook[${entry.index}] has ${Array.isArray(entry.deps) ? "empty" : "no"} deps array, but component has reactive-looking props: ${reactivePropKeys.slice(0, 5).join(", ")}.`,
+          severity: 'medium',
+          rule: 'missing-reactive-dependency',
+          message: `useEffect at hook[${entry.index}] has ${Array.isArray(entry.deps) ? 'empty' : 'no'} deps array, but component has reactive-looking props: ${reactivePropKeys.slice(0, 5).join(', ')}.`,
           hookIndex: entry.index,
-          details: { reactiveProps: reactivePropKeys.slice(0, 10), depsCount: Array.isArray(entry.deps) ? entry.deps.length : 0 },
+          details: {
+            reactiveProps: reactivePropKeys.slice(0, 10),
+            depsCount: Array.isArray(entry.deps) ? entry.deps.length : 0,
+          },
         });
         break;
       }
@@ -2070,10 +2249,10 @@ function handleRenderTriggers(
   win: Window,
   state: ReactAdapterState,
 ):
-  | { ok: true; action: "capture"; capturedAt: string; message: string }
-  | { ok: true; action: "compare"; capturedAt: string; triggers: RenderTriggerResult }
+  | { ok: true; action: 'capture'; capturedAt: string; message: string }
+  | { ok: true; action: 'compare'; capturedAt: string; triggers: RenderTriggerResult }
   | { ok: false; reason: string } {
-  if (action === "capture") {
+  if (action === 'capture') {
     const fiber = findLiveFiberByPath(win, componentId);
     if (!fiber) {
       return { ok: false, reason: `Cannot resolve live fiber for component: ${componentId}` };
@@ -2093,13 +2272,21 @@ function handleRenderTriggers(
     }
     state.renderBaselines.set(componentId, { capturedAt, propsSnapshot, stateHooksPreview });
 
-    return { ok: true, action: "capture", capturedAt, message: `Baseline captured for ${componentId} at ${capturedAt}.` };
+    return {
+      ok: true,
+      action: 'capture',
+      capturedAt,
+      message: `Baseline captured for ${componentId} at ${capturedAt}.`,
+    };
   }
 
   // action === "compare"
   const baseline = state.renderBaselines.get(componentId);
   if (!baseline) {
-    return { ok: false, reason: `No baseline found for component: ${componentId}. Call with action="capture" first.` };
+    return {
+      ok: false,
+      reason: `No baseline found for component: ${componentId}. Call with action="capture" first.`,
+    };
   }
 
   const fiber = findLiveFiberByPath(win, componentId);
@@ -2111,9 +2298,14 @@ function handleRenderTriggers(
   const currentHooks = traverseHookChain(fiber.memoizedState, { maxDepth: 2 });
   const currentStatePreviews = currentHooks.map((h) => `[${h.hookType}] ${h.preview}`);
 
-  const triggers = computeRenderTriggers(baseline.propsSnapshot, currentProps, baseline.stateHooksPreview, currentStatePreviews);
+  const triggers = computeRenderTriggers(
+    baseline.propsSnapshot,
+    currentProps,
+    baseline.stateHooksPreview,
+    currentStatePreviews,
+  );
 
-  return { ok: true, action: "compare", capturedAt: baseline.capturedAt, triggers };
+  return { ok: true, action: 'compare', capturedAt: baseline.capturedAt, triggers };
 }
 
 interface RenderTriggerResult {
@@ -2153,20 +2345,24 @@ function computeRenderTriggers(
   for (let i = 0; i < maxLen; i++) {
     const prev = baselineStatePreviews[i];
     const curr = currentStatePreviews[i];
-    if ((prev ?? "") !== (curr ?? "")) {
+    if ((prev ?? '') !== (curr ?? '')) {
       changedHookIndices.push(i);
     }
   }
 
   const parts: string[] = [];
   if (changedPropKeys.length > 0) {
-    parts.push(`props changed: ${changedPropKeys.slice(0, 5).join(", ")}${changedPropKeys.length > 5 ? ` (+${changedPropKeys.length - 5} more)` : ""}`);
+    parts.push(
+      `props changed: ${changedPropKeys.slice(0, 5).join(', ')}${changedPropKeys.length > 5 ? ` (+${changedPropKeys.length - 5} more)` : ''}`,
+    );
   }
   if (changedHookIndices.length > 0) {
-    parts.push(`state/hooks changed at indices: [${changedHookIndices.slice(0, 5).join(", ")}${changedHookIndices.length > 5 ? "..." : ""}]`);
+    parts.push(
+      `state/hooks changed at indices: [${changedHookIndices.slice(0, 5).join(', ')}${changedHookIndices.length > 5 ? '...' : ''}]`,
+    );
   }
   if (parts.length === 0) {
-    parts.push("no changes detected between baseline and current state");
+    parts.push('no changes detected between baseline and current state');
   }
 
   return {
@@ -2174,6 +2370,6 @@ function computeRenderTriggers(
     stateChanged: changedHookIndices.length > 0,
     changedPropKeys,
     changedHookIndices,
-    likelyCause: parts.join("; "),
+    likelyCause: parts.join('; '),
   };
 }

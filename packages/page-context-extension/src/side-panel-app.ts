@@ -8,15 +8,15 @@ import {
   type FeedbackPriority,
   type FeedbackStateSnapshotResult,
   type PageContextManifest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import { LitElement, html, css, type PropertyValues, type TemplateResult, nothing } from "lit";
-import { customElement, state, query } from "lit/decorators.js";
-import { classMap } from "lit/directives/class-map.js";
-import { when } from "lit/directives/when.js";
+import { LitElement, html, css, type PropertyValues, type TemplateResult, nothing } from 'lit';
+import { customElement, state, query } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { when } from 'lit/directives/when.js';
 
-import type { ContextManifestFilterDebug } from "./context-manifest-filter-debug";
-import { sendRuntimeRequest } from "./runtime-rpc";
+import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
+import { sendRuntimeRequest } from './runtime-rpc';
 import {
   createArgsTemplate,
   filterBuiltins,
@@ -26,12 +26,12 @@ import {
   renderTabNode,
   renderToolsEmpty,
   safeParseJson,
-} from "./sidepanel-tree-renderer";
+} from './sidepanel-tree-renderer';
 import {
   buildContextManifestDiff,
   renderContextResourceCard,
   renderContextSkillCard,
-} from "./sidepanel-context-panel";
+} from './sidepanel-context-panel';
 import {
   createFeedbackActionState,
   type FeedbackAnnotationActionState,
@@ -41,11 +41,11 @@ import {
   reconcileFeedbackActionStates,
   renderFeedbackTab,
   updateFeedbackActionStates,
-} from "./sidepanel-feedback";
-import { renderToolsTab } from "./sidepanel-tools-view";
-import { renderContextTab, type RenderContextTabInput } from "./sidepanel-context-controller";
-import { initializeToolTestState, resetToolTestArgsState } from "./sidepanel-tool-test-controller";
-import { normalizeUrl, createBoundMessageHandler, buildLoaderUrl } from "./sidepanel-navigation";
+} from './sidepanel-feedback';
+import { renderToolsTab } from './sidepanel-tools-view';
+import { renderContextTab, type RenderContextTabInput } from './sidepanel-context-controller';
+import { initializeToolTestState, resetToolTestArgsState } from './sidepanel-tool-test-controller';
+import { normalizeUrl, createBoundMessageHandler, buildLoaderUrl } from './sidepanel-navigation';
 import type {
   ContextManifestResponse,
   ContextSkillResponse,
@@ -54,31 +54,54 @@ import type {
   ToolDebugResponse,
   ToolTestSelection,
   ToolTreeResponse,
-} from "./sidepanel-types";
+} from './sidepanel-types';
 
 // Vite resolves this to the built CSS asset URL at runtime
-import sidepanelCssUrl from "./sidepanel.css?url";
+import sidepanelCssUrl from './sidepanel.css?url';
 
 // Custom sidepanel-specific rules that were previously in <style> in the HTML
 const customRules = css`
   /* tree indentation */
-  .tree-indent-1 { padding-left: 1.5rem; }
-  .tree-indent-2 { padding-left: 2.5rem; }
-  .tree-indent-3 { padding-left: 3.5rem; }
+  .tree-indent-1 {
+    padding-left: 1.5rem;
+  }
+  .tree-indent-2 {
+    padding-left: 2.5rem;
+  }
+  .tree-indent-3 {
+    padding-left: 3.5rem;
+  }
   /* keep details/summary clean */
-  details summary { list-style: none; cursor: pointer; }
-  details summary::-webkit-details-marker { display: none; }
+  details summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  details summary::-webkit-details-marker {
+    display: none;
+  }
   /* iframe fill */
-  .iframe-container iframe { width: 100%; height: 100%; border: none; }
+  .iframe-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
   /* test panel toggle */
-  .test-panel { display: none; }
-  .test-panel.open { display: flex; }
+  .test-panel {
+    display: none;
+  }
+  .test-panel.open {
+    display: flex;
+  }
   /* tab content visibility: override daisyUI's display:none */
-  .tab-content { display: none; }
-  .tab-content.active { display: flex; }
+  .tab-content {
+    display: none;
+  }
+  .tab-content.active {
+    display: flex;
+  }
 `;
 
-@customElement("side-panel-app")
+@customElement('side-panel-app')
 export class SidePanelApp extends LitElement {
   // Custom rules live in static styles; global CSS (Tailwind/DaisyUI) is fetched at runtime
   // and injected into shadow root so <link> tags work inside Shadow DOM.
@@ -100,57 +123,64 @@ export class SidePanelApp extends LitElement {
   @state() private _refreshing = false;
   @state() private _currentTabId: number | null = null;
   @state() private _toolTreeResponse: ToolTreeResponse | null = null;
-  @state() private _currentFilter = "";
+  @state() private _currentFilter = '';
   @state() private _currentToolTestSelection: ToolTestSelection | null = null;
   @state() private _currentRawContextManifest: PageContextManifest | null = null;
   @state() private _currentEffectiveContextManifest: PageContextManifest | null = null;
   @state() private _currentContextDebug: ContextManifestFilterDebug | null = null;
-  @state() private _activeTab: "tools" | "context" | "feedback" | "diagnosis" = "tools";
+  @state() private _activeTab: 'tools' | 'context' | 'feedback' | 'diagnosis' = 'tools';
   @state() private _urlBarVisible = true;
-  @state() private _currentUrl = "";
-  @state() private _manifestStatus = "";
-  @state() private _manifestStatusClass = "";
-  @state() private _manifestOutput = "(manifest not loaded)";
-  @state() private _diffStatus = "";
+  @state() private _currentUrl = '';
+  @state() private _manifestStatus = '';
+  @state() private _manifestStatusClass = '';
+  @state() private _manifestOutput = '(manifest not loaded)';
+  @state() private _diffStatus = '';
   @state() private _diffOutput: TemplateResult = html``;
-  @state() private _resourceStatus = "";
-  @state() private _resourceOutput = "(select a resource to read)";
-  @state() private _skillStatus = "";
-  @state() private _skillOutput = "(select a skill to render its prompt)";
-  @state() private _contextAppValue = "-";
-  @state() private _contextSceneValue = "-";
-  @state() private _contextTabValue = "-";
-  @state() private _contextRouteValue = "-";
+  @state() private _resourceStatus = '';
+  @state() private _resourceOutput = '(select a resource to read)';
+  @state() private _skillStatus = '';
+  @state() private _skillOutput = '(select a skill to render its prompt)';
+  @state() private _contextAppValue = '-';
+  @state() private _contextSceneValue = '-';
+  @state() private _contextTabValue = '-';
+  @state() private _contextRouteValue = '-';
   @state() private _contextResourcesListHtml: TemplateResult = html``;
   @state() private _contextSkillsListHtml: TemplateResult = html``;
-  @state() private _toolTestArgs = "{}";
-  @state() private _toolTestOutput = "(no output yet)";
-  @state() private _toolTestStatusText = "Idle";
-  @state() private _toolTestStatusClass = "text-xs font-semibold opacity-60";
+  @state() private _toolTestArgs = '{}';
+  @state() private _toolTestOutput = '(no output yet)';
+  @state() private _toolTestStatusText = 'Idle';
+  @state() private _toolTestStatusClass = 'text-xs font-semibold opacity-60';
   @state() private _toolTestRunning = false;
-  @state() private _toolTestSchemaOutput = "{}";
-  @state() private _toolTestTitle = "Tool Test";
-  @state() private _toolTestSubtitle = "Select a tool to run an RPC debug call.";
-  @state() private _toolTestTabIdValue = "";
+  @state() private _toolTestSchemaOutput = '{}';
+  @state() private _toolTestTitle = 'Tool Test';
+  @state() private _toolTestSubtitle = 'Select a tool to run an RPC debug call.';
+  @state() private _toolTestTabIdValue = '';
   @state() private _toolTestTabIdDisabled = false;
-  @state() private _feedbackBody = "";
-  @state() private _feedbackPriority: SidepanelFeedbackDraft["priority"] = "normal";
-  @state() private _feedbackCreateStatus = "Idle";
-  @state() private _feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
+  @state() private _feedbackBody = '';
+  @state() private _feedbackPriority: SidepanelFeedbackDraft['priority'] = 'normal';
+  @state() private _feedbackCreateStatus = 'Idle';
+  @state() private _feedbackCreateStatusClass = 'text-xs font-semibold opacity-60';
   @state() private _feedbackSnapshot: FeedbackStateSnapshotResult | null = null;
   @state() private _feedbackLoading = false;
-  @state() private _feedbackError = "";
-  @state() private _feedbackActionStateByAnnotationId: Record<string, FeedbackAnnotationActionState> = {};
+  @state() private _feedbackError = '';
+  @state() private _feedbackActionStateByAnnotationId: Record<
+    string,
+    FeedbackAnnotationActionState
+  > = {};
 
   // ─── Query references (shadowRoot is guaranteed when using default createRenderRoot) ──
-  @query("#iframeContainer") private _iframeContainer!: HTMLElement;
+  @query('#iframeContainer') private _iframeContainer!: HTMLElement;
 
   // ─── Private state (non-reactive) ─────────────────────────────
   private _currentIframe: HTMLIFrameElement | null = null;
   private _statusIntervalId: ReturnType<typeof setInterval> | null = null;
   private _feedbackPollIntervalId: ReturnType<typeof setInterval> | null = null;
   private _tabActivatedListener?: (activeInfo: { tabId: number; windowId: number }) => void;
-  private _tabUpdatedListener?: (tabId: number, changeInfo: { status?: string }, tab: chrome.tabs.Tab) => void;
+  private _tabUpdatedListener?: (
+    tabId: number,
+    changeInfo: { status?: string },
+    tab: chrome.tabs.Tab,
+  ) => void;
 
   // ─── Lifecycle ─────────────────────────────────────────────────
   override connectedCallback(): void {
@@ -158,8 +188,8 @@ export class SidePanelApp extends LitElement {
     // Inject global CSS (Tailwind + DaisyUI) into shadow root via <link>
     // This is needed because Vite's injectCssLinks plugin adds <link> to <head>,
     // which is outside our shadow boundary.
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
     link.href = sidepanelCssUrl;
     this.shadowRoot!.appendChild(link);
     this._init();
@@ -167,7 +197,7 @@ export class SidePanelApp extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    window.removeEventListener("message", this._boundMessageHandler);
+    window.removeEventListener('message', this._boundMessageHandler);
     if (this._statusIntervalId) {
       clearInterval(this._statusIntervalId);
       this._statusIntervalId = null;
@@ -186,10 +216,10 @@ export class SidePanelApp extends LitElement {
 
   override updated(changedProperties: PropertyValues): void {
     super.updated(changedProperties);
-    if (changedProperties.has("_toolTreeResponse") || changedProperties.has("_currentFilter")) {
+    if (changedProperties.has('_toolTreeResponse') || changedProperties.has('_currentFilter')) {
       this.updateComplete.then(() => this._syncIndeterminateCheckboxes());
     }
-    if (changedProperties.has("_currentUrl")) {
+    if (changedProperties.has('_currentUrl')) {
       this.updateComplete.then(() => this._manageIframe());
     }
   }
@@ -199,45 +229,45 @@ export class SidePanelApp extends LitElement {
     await this._refreshStatus();
     this._statusIntervalId = setInterval(() => this._refreshStatus(), 5000);
     this._feedbackPollIntervalId = setInterval(() => {
-      if (this._activeTab === "feedback") {
+      if (this._activeTab === 'feedback') {
         void this._loadFeedbackSnapshot();
       }
     }, 10_000);
     await this._loadPageTools();
 
-    const result = await chrome.storage.local.get("sidePanelUrl");
-    const url = result.sidePanelUrl ? String(result.sidePanelUrl) : "http://127.0.0.1:22338/";
+    const result = await chrome.storage.local.get('sidePanelUrl');
+    const url = result.sidePanelUrl ? String(result.sidePanelUrl) : 'http://127.0.0.1:22338/';
     this._navigateTo(url);
     this.updateComplete.then(() => this._manageIframe());
 
     if (result.sidePanelUrl) {
-      await chrome.storage.local.remove("sidePanelUrl");
+      await chrome.storage.local.remove('sidePanelUrl');
     }
 
     // Register extension API listeners
     this._tabActivatedListener = (activeInfo: { tabId: number; windowId: number }) => {
-      if (activeInfo.tabId !== this._currentTabId && this._activeTab === "tools") {
+      if (activeInfo.tabId !== this._currentTabId && this._activeTab === 'tools') {
         void this._loadPageTools();
       }
-      if (this._activeTab === "context") {
+      if (this._activeTab === 'context') {
         void this._loadContextManifest();
       }
-      if (this._activeTab === "feedback") {
+      if (this._activeTab === 'feedback') {
         void this._loadFeedbackSnapshot();
       }
     };
     chrome.tabs.onActivated.addListener(this._tabActivatedListener!);
 
     this._tabUpdatedListener = (_tabId: number, changeInfo: { status?: string }) => {
-      if (_tabId === this._currentTabId && changeInfo.status === "complete") {
+      if (_tabId === this._currentTabId && changeInfo.status === 'complete') {
         setTimeout(() => {
-          if (this._activeTab === "tools") {
+          if (this._activeTab === 'tools') {
             void this._loadPageTools();
           }
-          if (this._activeTab === "context") {
+          if (this._activeTab === 'context') {
             void this._loadContextManifest();
           }
-          if (this._activeTab === "feedback") {
+          if (this._activeTab === 'feedback') {
             void this._loadFeedbackSnapshot();
           }
         }, 1000);
@@ -263,11 +293,13 @@ export class SidePanelApp extends LitElement {
 
   // ─── Tools Tree Rendering ──────────────────────────────────────
   private _syncIndeterminateCheckboxes(): void {
-    const toolsPanel = this.shadowRoot!.getElementById("toolsPanel");
+    const toolsPanel = this.shadowRoot!.getElementById('toolsPanel');
     if (!toolsPanel) return;
-    toolsPanel.querySelectorAll<HTMLInputElement>("input[data-indeterminate='true']").forEach((input) => {
-      input.indeterminate = true;
-    });
+    toolsPanel
+      .querySelectorAll<HTMLInputElement>("input[data-indeterminate='true']")
+      .forEach((input) => {
+        input.indeterminate = true;
+      });
   }
 
   private async _loadPageTools(forceRediscover = false): Promise<void> {
@@ -275,19 +307,33 @@ export class SidePanelApp extends LitElement {
 
     try {
       if (forceRediscover && this._currentTabId) {
-        await sendRuntimeRequest(BRIDGE_METHODS.extensionPageToolsDiscover, { tabId: this._currentTabId });
+        await sendRuntimeRequest(BRIDGE_METHODS.extensionPageToolsDiscover, {
+          tabId: this._currentTabId,
+        });
       }
-      this._toolTreeResponse = await sendRuntimeRequest<ToolTreeResponse>(BRIDGE_METHODS.extensionPageToolsTreeGet);
+      this._toolTreeResponse = await sendRuntimeRequest<ToolTreeResponse>(
+        BRIDGE_METHODS.extensionPageToolsTreeGet,
+      );
     } catch (error) {
       this._toolTreeResponse = null;
     }
     this.requestUpdate();
   }
 
-  private async _updateScopeEnabled(input: { root?: "builtin" | "page"; tabId?: number; namespace?: string; instanceId?: string; toolName?: string; enabled: boolean }): Promise<void> {
-    this._toolTreeResponse = await sendRuntimeRequest<ToolTreeResponse>(BRIDGE_METHODS.extensionPageToolsSetEnabled, input);
+  private async _updateScopeEnabled(input: {
+    root?: 'builtin' | 'page';
+    tabId?: number;
+    namespace?: string;
+    instanceId?: string;
+    toolName?: string;
+    enabled: boolean;
+  }): Promise<void> {
+    this._toolTreeResponse = await sendRuntimeRequest<ToolTreeResponse>(
+      BRIDGE_METHODS.extensionPageToolsSetEnabled,
+      input,
+    );
     this.requestUpdate();
-    if (this._activeTab === "context") {
+    if (this._activeTab === 'context') {
       await this._loadContextManifest();
     }
   }
@@ -296,22 +342,29 @@ export class SidePanelApp extends LitElement {
   private async _loadContextManifest(): Promise<void> {
     this._currentTabId = await this._getCurrentTabId();
     if (!this._currentTabId) {
-      this._renderContextEmpty("No active tab found.", null, false);
+      this._renderContextEmpty('No active tab found.', null, false);
       return;
     }
 
-    this._manifestStatus = "Loading...";
-    this._manifestStatusClass = "text-xs font-semibold opacity-60";
+    this._manifestStatus = 'Loading...';
+    this._manifestStatusClass = 'text-xs font-semibold opacity-60';
     this.requestUpdate();
 
     try {
-      const response = await sendRuntimeRequest<ContextManifestResponse>(BRIDGE_METHODS.extensionContextManifestGet, { tabId: this._currentTabId });
+      const response = await sendRuntimeRequest<ContextManifestResponse>(
+        BRIDGE_METHODS.extensionContextManifestGet,
+        { tabId: this._currentTabId },
+      );
       const manifest = response.manifest;
       const rawManifest = response.rawManifest ?? response.manifest;
       this._currentContextDebug = response.debug ?? null;
 
       if (!manifest) {
-        this._renderContextEmpty("No page context manifest available for this tab.", this._currentTabId, false);
+        this._renderContextEmpty(
+          'No page context manifest available for this tab.',
+          this._currentTabId,
+          false,
+        );
         return;
       }
 
@@ -321,19 +374,25 @@ export class SidePanelApp extends LitElement {
       this._contextAppValue = manifest.app;
       this._contextSceneValue = manifest.scene;
       this._contextTabValue = String(this._currentTabId);
-      this._contextRouteValue = manifest.route || "/";
+      this._contextRouteValue = manifest.route || '/';
 
-      this._contextResourcesListHtml = manifest.resources.length > 0
-        ? html`${manifest.resources.map((resource) => renderContextResourceCard(resource))}`
-        : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40"><p class="text-xs">No resources declared.</p></div>`;
-      this._contextSkillsListHtml = manifest.skills.length > 0
-        ? html`${manifest.skills.map((skill) => renderContextSkillCard(skill))}`
-        : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40"><p class="text-xs">No skills declared.</p></div>`;
+      this._contextResourcesListHtml =
+        manifest.resources.length > 0
+          ? html`${manifest.resources.map((resource) => renderContextResourceCard(resource))}`
+          : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
+              <p class="text-xs">No resources declared.</p>
+            </div>`;
+      this._contextSkillsListHtml =
+        manifest.skills.length > 0
+          ? html`${manifest.skills.map((skill) => renderContextSkillCard(skill))}`
+          : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
+              <p class="text-xs">No skills declared.</p>
+            </div>`;
 
       this._renderContextDiff(rawManifest, manifest);
 
-      this._manifestStatus = "Loaded";
-      this._manifestStatusClass = "text-xs font-semibold text-success";
+      this._manifestStatus = 'Loaded';
+      this._manifestStatusClass = 'text-xs font-semibold text-success';
       this._manifestOutput = formatJson(manifest);
     } catch (error) {
       this._currentContextDebug = null;
@@ -342,60 +401,112 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  private _renderContextEmpty(message: string, currentTabId: number | null, isError: boolean): void {
-    this._contextAppValue = "-";
-    this._contextSceneValue = "-";
-    this._contextTabValue = currentTabId != null ? String(currentTabId) : "-";
-    this._contextRouteValue = "-";
-    this._contextResourcesListHtml = html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40"><p class="text-xs">${message}</p></div>`;
-    this._contextSkillsListHtml = html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40"><p class="text-xs">${message}</p></div>`;
+  private _renderContextEmpty(
+    message: string,
+    currentTabId: number | null,
+    isError: boolean,
+  ): void {
+    this._contextAppValue = '-';
+    this._contextSceneValue = '-';
+    this._contextTabValue = currentTabId != null ? String(currentTabId) : '-';
+    this._contextRouteValue = '-';
+    this._contextResourcesListHtml = html`<div
+      class="flex flex-col items-center justify-center p-4 text-base-content/40"
+    >
+      <p class="text-xs">${message}</p>
+    </div>`;
+    this._contextSkillsListHtml = html`<div
+      class="flex flex-col items-center justify-center p-4 text-base-content/40"
+    >
+      <p class="text-xs">${message}</p>
+    </div>`;
     this._manifestStatus = message;
-    this._manifestStatusClass = `text-xs font-semibold ${isError ? "text-error" : "opacity-60"}`.trim();
-    this._manifestOutput = isError ? formatJson({ error: message }) : "(manifest not loaded)";
-    this._diffStatus = "Idle";
-    this._diffStatusClass = "text-xs font-semibold opacity-60";
-    this._diffOutput = html`<div class="border border-base-300 rounded-lg bg-base-100 p-2.5"><p class="text-xs opacity-60">(manifest diff not available)</p></div>`;
-    this._resourceStatus = "Idle";
-    this._resourceStatusClass = "text-xs font-semibold opacity-60";
-    this._resourceOutput = "(select a resource to read)";
-    this._skillStatus = "Idle";
-    this._skillStatusClass = "text-xs font-semibold opacity-60";
-    this._skillOutput = "(select a skill to render its prompt)";
+    this._manifestStatusClass =
+      `text-xs font-semibold ${isError ? 'text-error' : 'opacity-60'}`.trim();
+    this._manifestOutput = isError ? formatJson({ error: message }) : '(manifest not loaded)';
+    this._diffStatus = 'Idle';
+    this._diffStatusClass = 'text-xs font-semibold opacity-60';
+    this._diffOutput = html`<div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
+      <p class="text-xs opacity-60">(manifest diff not available)</p>
+    </div>`;
+    this._resourceStatus = 'Idle';
+    this._resourceStatusClass = 'text-xs font-semibold opacity-60';
+    this._resourceOutput = '(select a resource to read)';
+    this._skillStatus = 'Idle';
+    this._skillStatusClass = 'text-xs font-semibold opacity-60';
+    this._skillOutput = '(select a skill to render its prompt)';
     this.requestUpdate();
   }
 
-  @state() private _diffStatusClass = "text-xs font-semibold opacity-60";
-  @state() private _resourceStatusClass = "text-xs font-semibold opacity-60";
-  @state() private _skillStatusClass = "text-xs font-semibold opacity-60";
+  @state() private _diffStatusClass = 'text-xs font-semibold opacity-60';
+  @state() private _resourceStatusClass = 'text-xs font-semibold opacity-60';
+  @state() private _skillStatusClass = 'text-xs font-semibold opacity-60';
 
-  private _renderContextDiff(rawManifest: PageContextManifest | null, effectiveManifest: PageContextManifest): void {
+  private _renderContextDiff(
+    rawManifest: PageContextManifest | null,
+    effectiveManifest: PageContextManifest,
+  ): void {
     const diff = buildContextManifestDiff(rawManifest, effectiveManifest);
-    const hasDiff = diff.hiddenNamespaces.length > 0 || diff.hiddenResources.length > 0 || diff.hiddenSkills.length > 0 || diff.sceneChanged;
+    const hasDiff =
+      diff.hiddenNamespaces.length > 0 ||
+      diff.hiddenResources.length > 0 ||
+      diff.hiddenSkills.length > 0 ||
+      diff.sceneChanged;
 
-    this._diffStatus = hasDiff ? "Diff detected" : "No diff";
-    this._diffStatusClass = `text-xs font-semibold ${hasDiff ? "text-success" : "opacity-60"}`.trim();
+    this._diffStatus = hasDiff ? 'Diff detected' : 'No diff';
+    this._diffStatusClass =
+      `text-xs font-semibold ${hasDiff ? 'text-success' : 'opacity-60'}`.trim();
 
     const debug = this._currentContextDebug;
     this._diffOutput = html`
-      ${this._renderDiffCard("Namespaces", diff.rawNamespaces, diff.effectiveNamespaces, debug?.hiddenNamespaces ?? diff.hiddenNamespaces.map((id) => ({ id, reason: "unknown" })))}
-      ${this._renderDiffCard("Resources", diff.rawResources, diff.effectiveResources, debug?.hiddenResources ?? diff.hiddenResources.map((id) => ({ id, reason: "unknown" })))}
-      ${this._renderDiffCard("Skills", diff.rawSkills, diff.effectiveSkills, debug?.hiddenSkills ?? diff.hiddenSkills.map((id) => ({ id, reason: "unknown" })))}
+      ${this._renderDiffCard(
+        'Namespaces',
+        diff.rawNamespaces,
+        diff.effectiveNamespaces,
+        debug?.hiddenNamespaces ?? diff.hiddenNamespaces.map((id) => ({ id, reason: 'unknown' })),
+      )}
+      ${this._renderDiffCard(
+        'Resources',
+        diff.rawResources,
+        diff.effectiveResources,
+        debug?.hiddenResources ?? diff.hiddenResources.map((id) => ({ id, reason: 'unknown' })),
+      )}
+      ${this._renderDiffCard(
+        'Skills',
+        diff.rawSkills,
+        diff.effectiveSkills,
+        debug?.hiddenSkills ?? diff.hiddenSkills.map((id) => ({ id, reason: 'unknown' })),
+      )}
       ${this._renderTrimmedToolsCard(debug)}
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
         <h4 class="text-xs font-bold mb-1">Scene</h4>
-        <p class="text-xs opacity-70">${diff.sceneChanged ? "Scene changed between raw and effective manifest." : "Scene is unchanged."}</p>
+        <p class="text-xs opacity-70">
+          ${diff.sceneChanged
+            ? 'Scene changed between raw and effective manifest.'
+            : 'Scene is unchanged.'}
+        </p>
       </div>
     `;
   }
 
-  private _renderDiffCard(title: string, rawCount: number, effectiveCount: number, hiddenItems: Array<{ id: string; reason: string }>): TemplateResult {
+  private _renderDiffCard(
+    title: string,
+    rawCount: number,
+    effectiveCount: number,
+    hiddenItems: Array<{ id: string; reason: string }>,
+  ): TemplateResult {
     const formatReason = (reason: string): string => {
       switch (reason) {
-        case "namespace_disabled": return "disabled by namespace";
-        case "builtin_tool_disabled": return "disabled by built-in tool filter";
-        case "page_tool_disabled": return "disabled by page tool filter";
-        case "scene_filtered": return "filtered by scene";
-        default: return "unknown reason";
+        case 'namespace_disabled':
+          return 'disabled by namespace';
+        case 'builtin_tool_disabled':
+          return 'disabled by built-in tool filter';
+        case 'page_tool_disabled':
+          return 'disabled by page tool filter';
+        case 'scene_filtered':
+          return 'filtered by scene';
+        default:
+          return 'unknown reason';
       }
     };
     return html`
@@ -403,7 +514,14 @@ export class SidePanelApp extends LitElement {
         <h4 class="text-xs font-bold mb-1">${title}</h4>
         <p class="text-xs opacity-70">Raw: ${rawCount} · Effective: ${effectiveCount}</p>
         ${hiddenItems.length > 0
-          ? html`<ul class="mt-1.5 pl-4 text-xs opacity-70 list-disc">${hiddenItems.map((item) => html`<li class="break-words"><strong>${item.id}</strong> · ${formatReason(item.reason)}</li>`)}</ul>`
+          ? html`<ul class="mt-1.5 pl-4 text-xs opacity-70 list-disc">
+              ${hiddenItems.map(
+                (item) =>
+                  html`<li class="break-words">
+                    <strong>${item.id}</strong> · ${formatReason(item.reason)}
+                  </li>`,
+              )}
+            </ul>`
           : html`<p class="text-xs opacity-50 mt-1">No hidden items.</p>`}
       </div>
     `;
@@ -413,19 +531,35 @@ export class SidePanelApp extends LitElement {
     const trimmed = debug?.trimmedSkillTools ?? [];
     const formatReason = (reason: string): string => {
       switch (reason) {
-        case "namespace_disabled": return "disabled by namespace";
-        case "builtin_tool_disabled": return "disabled by built-in tool filter";
-        case "page_tool_disabled": return "disabled by page tool filter";
-        case "scene_filtered": return "filtered by scene";
-        default: return "unknown reason";
+        case 'namespace_disabled':
+          return 'disabled by namespace';
+        case 'builtin_tool_disabled':
+          return 'disabled by built-in tool filter';
+        case 'page_tool_disabled':
+          return 'disabled by page tool filter';
+        case 'scene_filtered':
+          return 'filtered by scene';
+        default:
+          return 'unknown reason';
       }
     };
     return html`
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
         <h4 class="text-xs font-bold mb-1">Skill Tool Trimming</h4>
         ${trimmed.length > 0
-          ? html`<ul class="mt-1.5 pl-4 text-xs opacity-70 list-disc">${trimmed.flatMap((entry) => entry.removedTools.map((item) => html`<li class="break-words"><strong>${entry.skillId}</strong> · ${item.id} · ${formatReason(item.reason)}</li>`))}</ul>`
-          : html`<p class="text-xs opacity-50 mt-1">No skill tool recommendations were trimmed.</p>`}
+          ? html`<ul class="mt-1.5 pl-4 text-xs opacity-70 list-disc">
+              ${trimmed.flatMap((entry) =>
+                entry.removedTools.map(
+                  (item) =>
+                    html`<li class="break-words">
+                      <strong>${entry.skillId}</strong> · ${item.id} · ${formatReason(item.reason)}
+                    </li>`,
+                ),
+              )}
+            </ul>`
+          : html`<p class="text-xs opacity-50 mt-1">
+              No skill tool recommendations were trimmed.
+            </p>`}
       </div>
     `;
   }
@@ -434,18 +568,21 @@ export class SidePanelApp extends LitElement {
     if (!this._currentTabId) return;
 
     this._resourceStatus = `Reading ${resourceId}...`;
-    this._resourceStatusClass = "text-xs font-semibold opacity-60";
+    this._resourceStatusClass = 'text-xs font-semibold opacity-60';
     this.requestUpdate();
 
     try {
-      const resource = await sendRuntimeRequest<ContextResourcePayload>(BRIDGE_METHODS.extensionContextResourceRead, { tabId: this._currentTabId, resourceId });
+      const resource = await sendRuntimeRequest<ContextResourcePayload>(
+        BRIDGE_METHODS.extensionContextResourceRead,
+        { tabId: this._currentTabId, resourceId },
+      );
       this._resourceStatus = `Loaded ${resourceId}`;
-      this._resourceStatusClass = "text-xs font-semibold text-success";
+      this._resourceStatusClass = 'text-xs font-semibold text-success';
       this._resourceOutput = resource.text;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this._resourceStatus = message;
-      this._resourceStatusClass = "text-xs font-semibold text-error";
+      this._resourceStatusClass = 'text-xs font-semibold text-error';
       this._resourceOutput = formatJson({ error: message });
     }
   }
@@ -454,22 +591,27 @@ export class SidePanelApp extends LitElement {
     if (!this._currentTabId) return;
 
     this._skillStatus = `Rendering ${skillId}...`;
-    this._skillStatusClass = "text-xs font-semibold opacity-60";
+    this._skillStatusClass = 'text-xs font-semibold opacity-60';
     this.requestUpdate();
 
     try {
-      const response = await sendRuntimeRequest<ContextSkillResponse>(BRIDGE_METHODS.extensionContextSkillGet, {
-        tabId: this._currentTabId,
-        skillId,
-        input: { goal: "Explain how the agent should use this business skill safely." },
-      });
+      const response = await sendRuntimeRequest<ContextSkillResponse>(
+        BRIDGE_METHODS.extensionContextSkillGet,
+        {
+          tabId: this._currentTabId,
+          skillId,
+          input: { goal: 'Explain how the agent should use this business skill safely.' },
+        },
+      );
       this._skillStatus = response.prompt ? `Loaded ${skillId}` : `Skill ${skillId} unavailable`;
-      this._skillStatusClass = `text-xs font-semibold ${response.prompt ? "text-success" : "text-error"}`;
-      this._skillOutput = response.prompt ? formatJson(response.prompt) : formatJson({ error: "Prompt unavailable" });
+      this._skillStatusClass = `text-xs font-semibold ${response.prompt ? 'text-success' : 'text-error'}`;
+      this._skillOutput = response.prompt
+        ? formatJson(response.prompt)
+        : formatJson({ error: 'Prompt unavailable' });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this._skillStatus = message;
-      this._skillStatusClass = "text-xs font-semibold text-error";
+      this._skillStatusClass = 'text-xs font-semibold text-error';
       this._skillOutput = formatJson({ error: message });
     }
   }
@@ -477,18 +619,20 @@ export class SidePanelApp extends LitElement {
   // ─── Feedback ────────────────────────────────────────────────
   private async _loadFeedbackSnapshot(): Promise<void> {
     this._feedbackLoading = true;
-    this._feedbackError = "";
+    this._feedbackError = '';
     this.requestUpdate();
 
     try {
-      this._feedbackSnapshot = await sendRuntimeRequest<FeedbackStateSnapshotResult>(BRIDGE_METHODS.extensionFeedbackStateSnapshot);
+      this._feedbackSnapshot = await sendRuntimeRequest<FeedbackStateSnapshotResult>(
+        BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+      );
       // After polling, keep only annotation form states present in the current snapshot to avoid leaking stale local input into new snapshots.
       this._feedbackActionStateByAnnotationId = reconcileFeedbackActionStates(
         this._feedbackActionStateByAnnotationId,
         this._feedbackSnapshot.annotations,
       );
-      this._feedbackCreateStatus = "Snapshot loaded";
-      this._feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
+      this._feedbackCreateStatus = 'Snapshot loaded';
+      this._feedbackCreateStatusClass = 'text-xs font-semibold opacity-60';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this._feedbackError = message;
@@ -501,13 +645,13 @@ export class SidePanelApp extends LitElement {
   private async _submitFeedback(): Promise<void> {
     const body = this._feedbackBody.trim();
     if (!body) {
-      this._feedbackCreateStatus = "Please enter feedback content";
-      this._feedbackCreateStatusClass = "text-xs font-semibold text-error";
+      this._feedbackCreateStatus = 'Please enter feedback content';
+      this._feedbackCreateStatusClass = 'text-xs font-semibold text-error';
       return;
     }
 
-    this._feedbackCreateStatus = "Submitting...";
-    this._feedbackCreateStatusClass = "text-xs font-semibold opacity-60";
+    this._feedbackCreateStatus = 'Submitting...';
+    this._feedbackCreateStatusClass = 'text-xs font-semibold opacity-60';
     this.requestUpdate();
 
     try {
@@ -515,14 +659,14 @@ export class SidePanelApp extends LitElement {
         body,
         priority: this._feedbackPriority,
       } satisfies SidepanelFeedbackDraft);
-      this._feedbackBody = "";
-      this._feedbackCreateStatus = "Created";
-      this._feedbackCreateStatusClass = "text-xs font-semibold text-success";
+      this._feedbackBody = '';
+      this._feedbackCreateStatus = 'Created';
+      this._feedbackCreateStatusClass = 'text-xs font-semibold text-success';
       await this._loadFeedbackSnapshot();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this._feedbackCreateStatus = message;
-      this._feedbackCreateStatusClass = "text-xs font-semibold text-error";
+      this._feedbackCreateStatusClass = 'text-xs font-semibold text-error';
     }
   }
 
@@ -534,25 +678,33 @@ export class SidePanelApp extends LitElement {
     annotationId: string,
     updater: (current: FeedbackAnnotationActionState) => FeedbackAnnotationActionState,
   ): void {
-    this._feedbackActionStateByAnnotationId = updateFeedbackActionStates(this._feedbackActionStateByAnnotationId, annotationId, updater);
+    this._feedbackActionStateByAnnotationId = updateFeedbackActionStates(
+      this._feedbackActionStateByAnnotationId,
+      annotationId,
+      updater,
+    );
   }
 
   private _setFeedbackActionMode(annotationId: string, mode: FeedbackActionFormMode): void {
     this._updateFeedbackActionState(annotationId, (current) => ({
       ...current,
       mode: current.mode === mode ? null : mode,
-      error: "",
-      success: "",
+      error: '',
+      success: '',
     }));
   }
 
-  private _handleFeedbackActionInput(annotationId: string, field: FeedbackActionInputField, event: Event): void {
+  private _handleFeedbackActionInput(
+    annotationId: string,
+    field: FeedbackActionInputField,
+    event: Event,
+  ): void {
     const value = (event.target as HTMLInputElement | HTMLTextAreaElement).value;
     this._updateFeedbackActionState(annotationId, (current) => ({
       ...current,
       [field]: value,
-      error: "",
-      success: "",
+      error: '',
+      success: '',
     }));
   }
 
@@ -566,8 +718,8 @@ export class SidePanelApp extends LitElement {
     this._updateFeedbackActionState(annotationId, (current) => ({
       ...current,
       submitting: true,
-      error: "",
-      success: "",
+      error: '',
+      success: '',
     }));
 
     try {
@@ -575,7 +727,7 @@ export class SidePanelApp extends LitElement {
       this._updateFeedbackActionState(annotationId, (current) => ({
         ...onSuccess(current),
         submitting: false,
-        error: "",
+        error: '',
         success: successMessage,
       }));
       await this._loadFeedbackSnapshot();
@@ -592,10 +744,11 @@ export class SidePanelApp extends LitElement {
   private async _claimFeedbackAnnotation(annotationId: string): Promise<void> {
     await this._runFeedbackMutation(
       annotationId,
-      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationClaim, {
-        annotationId,
-      } satisfies FeedbackAnnotationClaimParams),
-      "Claimed",
+      () =>
+        sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationClaim, {
+          annotationId,
+        } satisfies FeedbackAnnotationClaimParams),
+      'Claimed',
       (state) => ({ ...state, mode: null }),
     );
   }
@@ -606,19 +759,20 @@ export class SidePanelApp extends LitElement {
     if (!body) {
       this._updateFeedbackActionState(annotationId, (current) => ({
         ...current,
-        error: "Reply content cannot be empty",
+        error: 'Reply content cannot be empty',
       }));
       return;
     }
 
     await this._runFeedbackMutation(
       annotationId,
-      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationReply, {
-        annotationId,
-        body,
-      } satisfies FeedbackAnnotationReplyParams),
-      "Reply submitted",
-      (current) => ({ ...current, mode: null, replyBody: "" }),
+      () =>
+        sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationReply, {
+          annotationId,
+          body,
+        } satisfies FeedbackAnnotationReplyParams),
+      'Reply submitted',
+      (current) => ({ ...current, mode: null, replyBody: '' }),
     );
   }
 
@@ -626,12 +780,13 @@ export class SidePanelApp extends LitElement {
     const state = this._readFeedbackActionState(annotationId);
     await this._runFeedbackMutation(
       annotationId,
-      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationResolve, {
-        annotationId,
-        resolution: state.resolveNote.trim() || undefined,
-      } satisfies FeedbackAnnotationResolveParams),
-      "Marked as resolved",
-      (current) => ({ ...current, mode: null, resolveNote: "" }),
+      () =>
+        sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationResolve, {
+          annotationId,
+          resolution: state.resolveNote.trim() || undefined,
+        } satisfies FeedbackAnnotationResolveParams),
+      'Marked as resolved',
+      (current) => ({ ...current, mode: null, resolveNote: '' }),
     );
   }
 
@@ -639,12 +794,13 @@ export class SidePanelApp extends LitElement {
     const state = this._readFeedbackActionState(annotationId);
     await this._runFeedbackMutation(
       annotationId,
-      () => sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, {
-        annotationId,
-        dismissReason: state.dismissReason.trim() || undefined,
-      } satisfies FeedbackAnnotationDismissParams),
-      "Dismissed",
-      (current) => ({ ...current, mode: null, dismissReason: "" }),
+      () =>
+        sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationDismiss, {
+          annotationId,
+          dismissReason: state.dismissReason.trim() || undefined,
+        } satisfies FeedbackAnnotationDismissParams),
+      'Dismissed',
+      (current) => ({ ...current, mode: null, dismissReason: '' }),
     );
   }
 
@@ -674,39 +830,44 @@ export class SidePanelApp extends LitElement {
 
     let parsedArgs: Record<string, unknown>;
     try {
-      const raw = this._toolTestArgs.trim() || "{}";
+      const raw = this._toolTestArgs.trim() || '{}';
       const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-        throw new Error("RPC args must be a JSON object");
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+        throw new Error('RPC args must be a JSON object');
       }
       parsedArgs = parsed as Record<string, unknown>;
     } catch (error) {
       this._toolTestStatusText = error instanceof Error ? error.message : String(error);
-      this._toolTestStatusClass = "text-xs font-semibold text-error";
-      this._toolTestOutput = "(invalid JSON args)";
+      this._toolTestStatusClass = 'text-xs font-semibold text-error';
+      this._toolTestOutput = '(invalid JSON args)';
       return;
     }
 
     this._toolTestRunning = true;
-    this._toolTestStatusText = "Running...";
-    this._toolTestStatusClass = "text-xs font-semibold opacity-60";
+    this._toolTestStatusText = 'Running...';
+    this._toolTestStatusClass = 'text-xs font-semibold opacity-60';
     this.requestUpdate();
 
     try {
       const tabId = this._toolTestTabIdValue ? Number(this._toolTestTabIdValue) : undefined;
-      const response = await sendRuntimeRequest<ToolDebugResponse>(BRIDGE_METHODS.extensionToolDebugCall, {
-        toolName: this._currentToolTestSelection.toolName,
-        tabId,
-        args: parsedArgs,
-      });
+      const response = await sendRuntimeRequest<ToolDebugResponse>(
+        BRIDGE_METHODS.extensionToolDebugCall,
+        {
+          toolName: this._currentToolTestSelection.toolName,
+          tabId,
+          args: parsedArgs,
+        },
+      );
 
-      this._toolTestStatusText = response.ok ? "Success" : "Failed";
-      this._toolTestStatusClass = `text-xs font-semibold ${response.ok ? "text-success" : "text-error"}`;
-      this._toolTestOutput = formatJson(response.ok ? response.result ?? {} : { error: response.error ?? "Unknown error" });
+      this._toolTestStatusText = response.ok ? 'Success' : 'Failed';
+      this._toolTestStatusClass = `text-xs font-semibold ${response.ok ? 'text-success' : 'text-error'}`;
+      this._toolTestOutput = formatJson(
+        response.ok ? (response.result ?? {}) : { error: response.error ?? 'Unknown error' },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this._toolTestStatusText = message;
-      this._toolTestStatusClass = "text-xs font-semibold text-error";
+      this._toolTestStatusClass = 'text-xs font-semibold text-error';
       this._toolTestOutput = formatJson({ error: message });
     } finally {
       this._toolTestRunning = false;
@@ -718,7 +879,8 @@ export class SidePanelApp extends LitElement {
     if (reset.toolTestArgs !== undefined) this._toolTestArgs = reset.toolTestArgs;
     if (reset.toolTestOutput !== undefined) this._toolTestOutput = reset.toolTestOutput;
     if (reset.toolTestStatusText !== undefined) this._toolTestStatusText = reset.toolTestStatusText;
-    if (reset.toolTestStatusClass !== undefined) this._toolTestStatusClass = reset.toolTestStatusClass;
+    if (reset.toolTestStatusClass !== undefined)
+      this._toolTestStatusClass = reset.toolTestStatusClass;
   }
 
   // ─── Navigation / Iframe ───────────────────────────────────────
@@ -728,26 +890,27 @@ export class SidePanelApp extends LitElement {
   }
 
   private _manageIframe(): void {
-    const container = this._iframeContainer ?? this.shadowRoot?.querySelector<HTMLElement>("#iframeContainer");
+    const container =
+      this._iframeContainer ?? this.shadowRoot?.querySelector<HTMLElement>('#iframeContainer');
     if (!container) {
-      console.warn("[side-panel] _manageIframe: #iframeContainer not found in shadow DOM");
+      console.warn('[side-panel] _manageIframe: #iframeContainer not found in shadow DOM');
       return;
     }
 
     // Clean up previous
-    window.removeEventListener("message", this._boundMessageHandler);
+    window.removeEventListener('message', this._boundMessageHandler);
     this._currentIframe?.remove();
     this._currentIframe = null;
 
     // Load extension's built-in loader page — it probes target and shows UI internally
     const loaderUrl = buildLoaderUrl(this._currentUrl);
 
-    this._currentIframe = document.createElement("iframe");
+    this._currentIframe = document.createElement('iframe');
     this._currentIframe.src = loaderUrl;
-    this._currentIframe.allow = "clipboard-read; clipboard-write";
+    this._currentIframe.allow = 'clipboard-read; clipboard-write';
     this._urlBarVisible = false;
 
-    window.addEventListener("message", this._boundMessageHandler);
+    window.addEventListener('message', this._boundMessageHandler);
     container.appendChild(this._currentIframe);
   }
 
@@ -755,23 +918,28 @@ export class SidePanelApp extends LitElement {
   private _boundMessageHandler = createBoundMessageHandler();
 
   // ─── Event Handlers ────────────────────────────────────────────
-  private _handleTabClick(tab: "tools" | "context" | "feedback" | "diagnosis"): void {
-    console.log("[side-panel] _handleTabClick called with:", tab, "current _activeTab:", this._activeTab);
+  private _handleTabClick(tab: 'tools' | 'context' | 'feedback' | 'diagnosis'): void {
+    console.log(
+      '[side-panel] _handleTabClick called with:',
+      tab,
+      'current _activeTab:',
+      this._activeTab,
+    );
     this._activeTab = tab;
-    console.log("[side-panel] _activeTab set to:", this._activeTab, "about to requestUpdate");
+    console.log('[side-panel] _activeTab set to:', this._activeTab, 'about to requestUpdate');
     this.requestUpdate();
-    console.log("[side-panel] requestUpdate done");
-    if (tab === "tools") {
+    console.log('[side-panel] requestUpdate done');
+    if (tab === 'tools') {
       void this._loadPageTools();
-    } else if (tab === "context") {
+    } else if (tab === 'context') {
       void this._loadContextManifest();
-    } else if (tab === "feedback") {
+    } else if (tab === 'feedback') {
       void this._loadFeedbackSnapshot();
     }
   }
 
   private _handleGoClick(): void {
-    const input = this.shadowRoot!.querySelector<HTMLInputElement>("#urlInput");
+    const input = this.shadowRoot!.querySelector<HTMLInputElement>('#urlInput');
     if (input) {
       this._navigateTo(input.value.trim());
       this.updateComplete.then(() => this._manageIframe());
@@ -779,7 +947,7 @@ export class SidePanelApp extends LitElement {
   }
 
   private _handleUrlKeydown(event: KeyboardEvent): void {
-    if (event.key === "Enter") {
+    if (event.key === 'Enter') {
       const input = event.target as HTMLInputElement;
       this._navigateTo(input.value.trim());
       this.updateComplete.then(() => this._manageIframe());
@@ -789,11 +957,14 @@ export class SidePanelApp extends LitElement {
   private async _handleReconnect(): Promise<void> {
     this._refreshing = true;
     await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
-    setTimeout(() => { this._refreshing = false; void this._refreshStatus(); }, 800);
+    setTimeout(() => {
+      this._refreshing = false;
+      void this._refreshStatus();
+    }, 800);
   }
 
   private _handleOpenTab(): void {
-    const input = this.shadowRoot!.querySelector<HTMLInputElement>("#urlInput");
+    const input = this.shadowRoot!.querySelector<HTMLInputElement>('#urlInput');
     const url = input?.value.trim();
     if (url) {
       void chrome.tabs.create({ url });
@@ -807,16 +978,17 @@ export class SidePanelApp extends LitElement {
 
   private _handleToolsPanelChange(event: Event): void {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement) || target.type !== "checkbox") return;
+    if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') return;
 
     const { root, scope, tabId, namespace, instanceId, toolName } = target.dataset;
     if (!scope || !tabId) return;
     // Built-in tree nodes (namespace/instance/tool) follow the builtin root uniformly to avoid mistakenly writing to the page preference tree when reusing page scope.
-    const resolvedRoot: "builtin" | "page" = (root === "builtin" || scope === "builtin") ? "builtin" : "page";
+    const resolvedRoot: 'builtin' | 'page' =
+      root === 'builtin' || scope === 'builtin' ? 'builtin' : 'page';
 
     void this._updateScopeEnabled({
       root: resolvedRoot,
-      tabId: resolvedRoot === "builtin" ? undefined : Number(tabId),
+      tabId: resolvedRoot === 'builtin' ? undefined : Number(tabId),
       namespace,
       instanceId,
       toolName,
@@ -826,12 +998,12 @@ export class SidePanelApp extends LitElement {
 
   private _handleToolsPanelClick(event: Event): void {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement) || target.dataset.action !== "test-tool") return;
+    if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'test-tool') return;
 
     this._openToolTestPanel({
-      root: (target.dataset.root as "builtin" | "page") ?? "page",
-      toolName: target.dataset.toolName ?? "",
-      label: target.dataset.label ?? target.dataset.toolName ?? "Tool",
+      root: (target.dataset.root as 'builtin' | 'page') ?? 'page',
+      toolName: target.dataset.toolName ?? '',
+      label: target.dataset.label ?? target.dataset.toolName ?? 'Tool',
       tabId: target.dataset.tabId ? Number(target.dataset.tabId) : undefined,
       inputSchema: target.dataset.schema ? safeParseJson(target.dataset.schema) : {},
     });
@@ -839,7 +1011,7 @@ export class SidePanelApp extends LitElement {
 
   private _handleContextResourceClick(event: Event): void {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement) || target.dataset.action !== "read-resource") return;
+    if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'read-resource') return;
     const resourceId = target.dataset.resourceId;
     if (resourceId) {
       void this._loadContextResource(resourceId);
@@ -848,7 +1020,7 @@ export class SidePanelApp extends LitElement {
 
   private _handleContextSkillClick(event: Event): void {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement) || target.dataset.action !== "preview-skill") return;
+    if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'preview-skill') return;
     const skillId = target.dataset.skillId;
     if (skillId) {
       void this._loadContextSkillPrompt(skillId);
@@ -872,23 +1044,27 @@ export class SidePanelApp extends LitElement {
 
   private _handleFeedbackPriorityChange(event: Event): void {
     const input = event.target as HTMLSelectElement;
-    this._feedbackPriority = input.value as SidepanelFeedbackDraft["priority"];
+    this._feedbackPriority = input.value as SidepanelFeedbackDraft['priority'];
   }
 
   // ─── Render Tools Tree Content ─────────────────────────────────
   private _renderToolsTreeContent(): TemplateResult {
     if (!this._toolTreeResponse) {
-      return renderToolsEmpty("No tools loaded.");
+      return renderToolsEmpty('No tools loaded.');
     }
 
     const filteredTabs = this._toolTreeResponse.tabs
       .map((tab) => filterTab(tab, this._currentFilter))
-      .filter((tab): tab is ToolTreeResponse["tabs"][number] => tab !== null);
+      .filter((tab): tab is ToolTreeResponse['tabs'][number] => tab !== null);
 
     if (filteredTabs.length === 0) {
       const builtinTools = filterBuiltins(this._toolTreeResponse.builtins, this._currentFilter);
       if (builtinTools.totalTools === 0) {
-        return renderToolsEmpty(this._currentFilter ? `No tools match '${this._currentFilter}'.` : "No tools discovered yet.");
+        return renderToolsEmpty(
+          this._currentFilter
+            ? `No tools match '${this._currentFilter}'.`
+            : 'No tools discovered yet.',
+        );
       }
       return renderBuiltinsNode(builtinTools);
     }
@@ -902,39 +1078,126 @@ export class SidePanelApp extends LitElement {
 
   // ─── Main Render ───────────────────────────────────────────────
   override render() {
-    console.log("[side-panel] render() called, _activeTab =", this._activeTab);
+    console.log('[side-panel] render() called, _activeTab =', this._activeTab);
     const toolsCount = this._toolTreeResponse
       ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled)`
-      : "";
+      : '';
 
     return html`
       <!-- Header: status-dot (clickable refresh) / title / icon-nav (right) -->
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-base-100 border-b border-base-300 shrink-0">
-        <button class="w-4 h-4 rounded-full shrink-0 flex items-center justify-center ${this._refreshing ? "bg-base-300" : (this._connected ? "bg-success" : "bg-error")} hover:opacity-80 transition-all duration-200 cursor-pointer border-none p-0 overflow-hidden" @click=${this._handleReconnect} title="${this._refreshing ? "Refreshing..." : "Click to refresh"}">
-          <svg class="w-3 h-3 text-white transition-opacity duration-200 ${this._refreshing ? "animate-spin opacity-100" : "opacity-0"}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-            <polyline points="21 3 21 9 15 9"/>
+      <div
+        class="flex items-center gap-2 px-3 py-1.5 bg-base-100 border-b border-base-300 shrink-0"
+      >
+        <button
+          class="w-4 h-4 rounded-full shrink-0 flex items-center justify-center ${this._refreshing
+            ? 'bg-base-300'
+            : this._connected
+              ? 'bg-success'
+              : 'bg-error'} hover:opacity-80 transition-all duration-200 cursor-pointer border-none p-0 overflow-hidden"
+          @click=${this._handleReconnect}
+          title="${this._refreshing ? 'Refreshing...' : 'Click to refresh'}"
+        >
+          <svg
+            class="w-3 h-3 text-white transition-opacity duration-200 ${this._refreshing
+              ? 'animate-spin opacity-100'
+              : 'opacity-0'}"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            <polyline points="21 3 21 9 15 9" />
           </svg>
         </button>
         <span class="font-semibold text-sm truncate">Page Context Bridge</span>
         <div role="tablist" class="tabs tabs-boxed ml-auto bg-transparent border-none gap-0.5">
-          <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "tools" })}" @click=${() => this._handleTabClick("tools")} title="Tools">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'tools' })}"
+            @click=${() => this._handleTabClick('tools')}
+            title="Tools"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
+              />
+            </svg>
           </button>
-          <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "context" })}" @click=${() => this._handleTabClick("context")} title="Context">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'context' })}"
+            @click=${() => this._handleTabClick('context')}
+            title="Context"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
           </button>
-          <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "feedback" })}" @click=${() => this._handleTabClick("feedback")} title="Feedback">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'feedback' })}"
+            @click=${() => this._handleTabClick('feedback')}
+            title="Feedback"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
           </button>
-          <button role="tab" class="tab tab-xs px-2 ${classMap({ "tab-active": this._activeTab === "diagnosis" })}" @click=${() => this._handleTabClick("diagnosis")} title="Diagnosis">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'diagnosis' })}"
+            @click=${() => this._handleTabClick('diagnosis')}
+            title="Diagnosis"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
           </button>
         </div>
       </div>
 
       ${renderToolsTab({
-        active: this._activeTab === "tools",
+        active: this._activeTab === 'tools',
         toolsCount,
         currentFilter: this._currentFilter,
         currentToolTestSelection: this._currentToolTestSelection,
@@ -959,9 +1222,8 @@ export class SidePanelApp extends LitElement {
         onResetToolTestArgs: this._resetToolTestArgs,
         onRunToolDebugCall: () => void this._runToolDebugCall(),
       })}
-
       ${renderContextTab({
-        active: this._activeTab === "context",
+        active: this._activeTab === 'context',
         contextAppValue: this._contextAppValue,
         contextSceneValue: this._contextSceneValue,
         contextTabValue: this._contextTabValue,
@@ -986,7 +1248,7 @@ export class SidePanelApp extends LitElement {
       } as RenderContextTabInput)}
 
       <!-- Feedback Tab -->
-      ${this._activeTab === "feedback"
+      ${this._activeTab === 'feedback'
         ? renderFeedbackTab({
             snapshot: this._feedbackSnapshot,
             loading: this._feedbackLoading,
@@ -1001,7 +1263,8 @@ export class SidePanelApp extends LitElement {
             onPriorityChange: this._handleFeedbackPriorityChange,
             onSubmit: () => void this._submitFeedback(),
             onToggleMode: (annotationId, mode) => this._setFeedbackActionMode(annotationId, mode),
-            onActionInput: (annotationId, field, event) => this._handleFeedbackActionInput(annotationId, field, event),
+            onActionInput: (annotationId, field, event) =>
+              this._handleFeedbackActionInput(annotationId, field, event),
             onClaim: (annotationId) => void this._claimFeedbackAnnotation(annotationId),
             onReply: (annotationId) => void this._replyFeedbackAnnotation(annotationId),
             onResolve: (annotationId) => void this._resolveFeedbackAnnotation(annotationId),
@@ -1010,15 +1273,30 @@ export class SidePanelApp extends LitElement {
         : html`<div class="tab-content flex flex-col flex-1 min-h-0"></div>`}
 
       <!-- Diagnosis Tab -->
-      <div class="tab-content ${classMap({ active: this._activeTab === "diagnosis" })} flex flex-col flex-1 min-h-0">
-        ${when(this._urlBarVisible, () => html`
-          <div class="flex items-center gap-1.5 px-3 py-1.5 bg-base-100 border-b border-base-300 shrink-0">
-            <input type="text" id="urlInput" .value=${this._currentUrl} @keydown=${this._handleUrlKeydown} placeholder="Enter URL to embed..." class="input input-sm input-bordered flex-1 font-mono" />
-            <button class="btn btn-sm btn-primary" @click=${this._handleGoClick}>Go</button>
-          </div>
-        `)}
-        <div class="iframe-container flex-1 relative bg-base-100" id="iframeContainer">
-        </div>
+      <div
+        class="tab-content ${classMap({
+          active: this._activeTab === 'diagnosis',
+        })} flex flex-col flex-1 min-h-0"
+      >
+        ${when(
+          this._urlBarVisible,
+          () => html`
+            <div
+              class="flex items-center gap-1.5 px-3 py-1.5 bg-base-100 border-b border-base-300 shrink-0"
+            >
+              <input
+                type="text"
+                id="urlInput"
+                .value=${this._currentUrl}
+                @keydown=${this._handleUrlKeydown}
+                placeholder="Enter URL to embed..."
+                class="input input-sm input-bordered flex-1 font-mono"
+              />
+              <button class="btn btn-sm btn-primary" @click=${this._handleGoClick}>Go</button>
+            </div>
+          `,
+        )}
+        <div class="iframe-container flex-1 relative bg-base-100" id="iframeContainer"></div>
       </div>
     `;
   }
@@ -1026,6 +1304,6 @@ export class SidePanelApp extends LitElement {
 
 declare global {
   interface HTMLElementTagNameMap {
-    "side-panel-app": SidePanelApp;
+    'side-panel-app': SidePanelApp;
   }
 }

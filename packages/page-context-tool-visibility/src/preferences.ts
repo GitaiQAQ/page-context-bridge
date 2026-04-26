@@ -1,8 +1,8 @@
 /**
  * Preference engine and tool tree builder.
  */
-import type { PageToolEntry, PageToolSpec } from "./types";
-import { BUILTIN_RUNTIME_NAMESPACE } from "@page-context/builtin-tools";
+import type { PageToolEntry, PageToolSpec } from './types';
+import { BUILTIN_RUNTIME_NAMESPACE } from '@page-context/builtin-tools';
 
 /**
  * Default allowlist for builtin runtime tools.
@@ -11,13 +11,13 @@ import { BUILTIN_RUNTIME_NAMESPACE } from "@page-context/builtin-tools";
  * All other builtin runtime tools are disabled unless explicitly enabled in preferences.
  */
 const DEFAULT_ENABLED_BUILTIN_RUNTIME_TOOLS = new Set<string>([
-  "builtin.list_tabs",
-  "builtin.get_page_info",
-  "builtin.get_selected_text",
-  "builtin.get_element_text",
-  "builtin.get_element_html",
-  "builtin.query_elements",
-  "builtin.get_console_logs",
+  'builtin.list_tabs',
+  'builtin.get_page_info',
+  'builtin.get_selected_text',
+  'builtin.get_element_text',
+  'builtin.get_element_html',
+  'builtin.query_elements',
+  'builtin.get_console_logs',
 ]);
 
 export interface PageToolPreferences {
@@ -46,7 +46,7 @@ export interface InstancePreference {
 }
 
 export interface ToolTreeTab {
-  kind: "tab";
+  kind: 'tab';
   tabId: number;
   title: string;
   url: string;
@@ -57,7 +57,7 @@ export interface ToolTreeTab {
 }
 
 export interface ToolTreeNamespace {
-  kind: "namespace";
+  kind: 'namespace';
   tabId: number;
   namespace: string;
   totalTools: number;
@@ -66,7 +66,7 @@ export interface ToolTreeNamespace {
 }
 
 export interface ToolTreeInstance {
-  kind: "instance";
+  kind: 'instance';
   tabId: number;
   namespace: string;
   instanceId: string;
@@ -76,7 +76,7 @@ export interface ToolTreeInstance {
 }
 
 export interface ToolTreeTool {
-  kind: "tool";
+  kind: 'tool';
   tabId: number;
   namespace: string;
   instanceId: string;
@@ -96,7 +96,7 @@ export interface ToolTreeResponse {
 }
 
 export interface ToolScopeInput {
-  root?: "builtin" | "page";
+  root?: 'builtin' | 'page';
   tabId?: number;
   namespace?: string;
   instanceId?: string;
@@ -109,7 +109,7 @@ export interface ToolScopeEntriesInput {
 }
 
 export interface ToolTreeBuiltins {
-  kind: "builtins";
+  kind: 'builtins';
   totalTools: number;
   enabledTools: number;
   namespaces: ToolTreeBuiltinNamespace[];
@@ -117,7 +117,7 @@ export interface ToolTreeBuiltins {
 }
 
 export interface ToolTreeBuiltinNamespace {
-  kind: "builtin-namespace";
+  kind: 'builtin-namespace';
   namespace: string;
   totalTools: number;
   enabledTools: number;
@@ -125,7 +125,7 @@ export interface ToolTreeBuiltinNamespace {
 }
 
 export interface ToolTreeBuiltinInstance {
-  kind: "builtin-instance";
+  kind: 'builtin-instance';
   namespace: string;
   instanceId: string;
   totalTools: number;
@@ -134,7 +134,7 @@ export interface ToolTreeBuiltinInstance {
 }
 
 export interface ToolTreeBuiltinTool {
-  kind: "builtin-tool";
+  kind: 'builtin-tool';
   namespace: string;
   instanceId: string;
   toolName: string;
@@ -153,28 +153,38 @@ interface TabLike {
   active?: boolean;
 }
 
-export function getEnabledToolsForTab(entries: PageToolEntry[] | undefined, preferences: PageToolPreferences, tabId: number): PageToolSpec[] {
-  return (entries ?? [])
-    .flatMap((entry) => entry.tools.filter((tool) => isToolEnabled(preferences, {
-      root: "page",
-      tabId,
-      namespace: tool._namespace ?? entry.namespace,
-      instanceId: tool._instanceId ?? entry.instanceId,
-      toolName: tool.name,
-    })));
+export function getEnabledToolsForTab(
+  entries: PageToolEntry[] | undefined,
+  preferences: PageToolPreferences,
+  tabId: number,
+): PageToolSpec[] {
+  return (entries ?? []).flatMap((entry) =>
+    entry.tools.filter((tool) =>
+      isToolEnabled(preferences, {
+        root: 'page',
+        tabId,
+        namespace: tool._namespace ?? entry.namespace,
+        instanceId: tool._instanceId ?? entry.instanceId,
+        toolName: tool.name,
+      }),
+    ),
+  );
 }
 
-export function getEnabledBuiltinTools(tools: PageToolSpec[], preferences: PageToolPreferences): PageToolSpec[] {
+export function getEnabledBuiltinTools(
+  tools: PageToolSpec[],
+  preferences: PageToolPreferences,
+): PageToolSpec[] {
   return tools.filter((tool) => {
     if (isBridgeControlBuiltinTool(tool)) {
       return true;
     }
-    return isToolEnabled(preferences, { root: "builtin", toolName: tool.name });
+    return isToolEnabled(preferences, { root: 'builtin', toolName: tool.name });
   });
 }
 
 export function isToolEnabled(preferences: PageToolPreferences, scope: ToolScopeInput): boolean {
-  if (scope.root === "builtin") {
+  if (scope.root === 'builtin') {
     if (scope.toolName && isBridgeControlBuiltinToolName(scope.toolName)) {
       return true;
     }
@@ -243,7 +253,7 @@ export function setScopeEnabled(
   enabled: boolean,
   entries?: ToolScopeEntriesInput,
 ): PageToolPreferences {
-  if (scope.root === "builtin") {
+  if (scope.root === 'builtin') {
     const next: PageToolPreferences = {
       ...preferences,
       builtins: {
@@ -282,7 +292,9 @@ export function setScopeEnabled(
   }
 
   const next: PageToolPreferences = {
-    builtins: preferences.builtins ? { ...preferences.builtins, tools: { ...(preferences.builtins.tools ?? {}) } } : undefined,
+    builtins: preferences.builtins
+      ? { ...preferences.builtins, tools: { ...(preferences.builtins.tools ?? {}) } }
+      : undefined,
     tabs: { ...(preferences.tabs ?? {}) },
   };
   const tabId = String(scope.tabId);
@@ -306,7 +318,9 @@ export function setScopeEnabled(
 
   if (!scope.instanceId) {
     namespacePreference.enabled = enabled;
-    namespacePreference.instances = enabled ? {} : buildNamespaceInstanceOverrides(entries?.pageEntries);
+    namespacePreference.instances = enabled
+      ? {}
+      : buildNamespaceInstanceOverrides(entries?.pageEntries);
     return next;
   }
 
@@ -334,7 +348,10 @@ function buildBuiltinToolOverrides(tools: PageToolSpec[] | undefined): Record<st
   return buildBuiltinToolOverridesWithValue(tools, false);
 }
 
-function buildBuiltinToolOverridesWithValue(tools: PageToolSpec[] | undefined, value: boolean): Record<string, boolean> {
+function buildBuiltinToolOverridesWithValue(
+  tools: PageToolSpec[] | undefined,
+  value: boolean,
+): Record<string, boolean> {
   return Object.fromEntries(
     (tools ?? [])
       .filter((tool) => !isBridgeControlBuiltinTool(tool))
@@ -363,16 +380,25 @@ function applyBuiltinScopeOverrides(
   }
 }
 
-function applyBuiltinToolOverride(overrides: Record<string, boolean>, toolName: string, enabled: boolean): void {
+function applyBuiltinToolOverride(
+  overrides: Record<string, boolean>,
+  toolName: string,
+  enabled: boolean,
+): void {
   overrides[toolName] = enabled;
 }
 
-function buildTabNamespaceOverrides(entries: PageToolEntry[] | undefined): Record<string, NamespacePreference> {
+function buildTabNamespaceOverrides(
+  entries: PageToolEntry[] | undefined,
+): Record<string, NamespacePreference> {
   const overrides: Record<string, NamespacePreference> = {};
   const entriesByNamespace = new Map<string, PageToolEntry[]>();
 
   for (const entry of entries ?? []) {
-    entriesByNamespace.set(entry.namespace, [...(entriesByNamespace.get(entry.namespace) ?? []), entry]);
+    entriesByNamespace.set(entry.namespace, [
+      ...(entriesByNamespace.get(entry.namespace) ?? []),
+      entry,
+    ]);
   }
 
   for (const [namespace, namespaceEntries] of entriesByNamespace.entries()) {
@@ -385,7 +411,9 @@ function buildTabNamespaceOverrides(entries: PageToolEntry[] | undefined): Recor
   return overrides;
 }
 
-function buildNamespaceInstanceOverrides(entries: PageToolEntry[] | undefined): Record<string, InstancePreference> {
+function buildNamespaceInstanceOverrides(
+  entries: PageToolEntry[] | undefined,
+): Record<string, InstancePreference> {
   return Object.fromEntries(
     (entries ?? []).map((entry) => [
       entry.instanceId,
@@ -409,9 +437,19 @@ export function buildToolTree(
 ): ToolTreeResponse {
   const treeTabs = tabs
     .filter((tab) => tab.id != null && (pageToolsByTab.get(tab.id) ?? []).length > 0)
-    .map((tab) => buildTabNode(tab as Required<Pick<TabLike, "id">> & TabLike, pageToolsByTab.get(tab.id!) ?? [], preferences))
+    .map((tab) =>
+      buildTabNode(
+        tab as Required<Pick<TabLike, 'id'>> & TabLike,
+        pageToolsByTab.get(tab.id!) ?? [],
+        preferences,
+      ),
+    )
     .filter((tab) => tab.totalTools > 0)
-    .sort((left, right) => Number(Boolean(right.active)) - Number(Boolean(left.active)) || left.title.localeCompare(right.title));
+    .sort(
+      (left, right) =>
+        Number(Boolean(right.active)) - Number(Boolean(left.active)) ||
+        left.title.localeCompare(right.title),
+    );
 
   const builtins = buildBuiltinNode(builtinTools, preferences);
 
@@ -423,7 +461,10 @@ export function buildToolTree(
   };
 }
 
-function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreferences): ToolTreeBuiltins {
+function buildBuiltinNode(
+  tools: PageToolSpec[],
+  preferences: PageToolPreferences,
+): ToolTreeBuiltins {
   const dedupedByName = new Map<string, PageToolSpec>();
   for (const tool of tools) {
     if (!dedupedByName.has(tool.name)) {
@@ -435,23 +476,27 @@ function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreference
     .map((tool) => {
       const path = parseBuiltinToolPath(tool.name);
       return {
-        kind: "builtin-tool" as const,
+        kind: 'builtin-tool' as const,
         namespace: path.namespace,
         instanceId: path.instanceId,
         toolName: tool.name,
         label: path.label,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        enabled: isToolEnabled(preferences, { root: "builtin", toolName: tool.name }),
+        enabled: isToolEnabled(preferences, { root: 'builtin', toolName: tool.name }),
         readOnly: isReadOnlyTool(tool),
         bridgeControl: isBridgeControlBuiltinTool(tool),
       };
     })
-    .sort((left, right) => left.namespace.localeCompare(right.namespace) || left.label.localeCompare(right.label));
+    .sort(
+      (left, right) =>
+        left.namespace.localeCompare(right.namespace) || left.label.localeCompare(right.label),
+    );
 
   const namespacesMap = new Map<string, Map<string, ToolTreeBuiltinTool[]>>();
   for (const tool of builtinTools) {
-    const byInstance = namespacesMap.get(tool.namespace) ?? new Map<string, ToolTreeBuiltinTool[]>();
+    const byInstance =
+      namespacesMap.get(tool.namespace) ?? new Map<string, ToolTreeBuiltinTool[]>();
     byInstance.set(tool.instanceId, [...(byInstance.get(tool.instanceId) ?? []), tool]);
     namespacesMap.set(tool.namespace, byInstance);
   }
@@ -460,7 +505,7 @@ function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreference
     .map(([namespace, byInstance]) => {
       const instances = Array.from(byInstance.entries())
         .map(([instanceId, instanceTools]) => ({
-          kind: "builtin-instance" as const,
+          kind: 'builtin-instance' as const,
           namespace,
           instanceId,
           totalTools: instanceTools.length,
@@ -470,7 +515,7 @@ function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreference
         .sort((left, right) => left.instanceId.localeCompare(right.instanceId));
 
       return {
-        kind: "builtin-namespace" as const,
+        kind: 'builtin-namespace' as const,
         namespace,
         totalTools: instances.reduce((sum, instance) => sum + instance.totalTools, 0),
         enabledTools: instances.reduce((sum, instance) => sum + instance.enabledTools, 0),
@@ -480,7 +525,7 @@ function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreference
     .sort((left, right) => left.namespace.localeCompare(right.namespace));
 
   return {
-    kind: "builtins",
+    kind: 'builtins',
     totalTools: namespaces.reduce((sum, namespace) => sum + namespace.totalTools, 0),
     enabledTools: namespaces.reduce((sum, namespace) => sum + namespace.enabledTools, 0),
     namespaces,
@@ -488,35 +533,48 @@ function buildBuiltinNode(tools: PageToolSpec[], preferences: PageToolPreference
   };
 }
 
-function parseBuiltinToolPath(toolName: string): { namespace: string; instanceId: string; label: string } {
-  const firstDot = toolName.indexOf(".");
+function parseBuiltinToolPath(toolName: string): {
+  namespace: string;
+  instanceId: string;
+  label: string;
+} {
+  const firstDot = toolName.indexOf('.');
   if (firstDot < 0) {
-    return { namespace: "builtin", instanceId: "default", label: toolName };
+    return { namespace: 'builtin', instanceId: 'default', label: toolName };
   }
-  const namespace = toolName.slice(0, firstDot) || "builtin";
+  const namespace = toolName.slice(0, firstDot) || 'builtin';
   const suffix = toolName.slice(firstDot + 1);
   return {
     namespace,
-    instanceId: "default",
+    instanceId: 'default',
     label: suffix || toolName,
   };
 }
 
-function buildTabNode(tab: Required<Pick<TabLike, "id">> & TabLike, entries: PageToolEntry[], preferences: PageToolPreferences): ToolTreeTab {
+function buildTabNode(
+  tab: Required<Pick<TabLike, 'id'>> & TabLike,
+  entries: PageToolEntry[],
+  preferences: PageToolPreferences,
+): ToolTreeTab {
   const entriesByNamespace = new Map<string, PageToolEntry[]>();
   for (const entry of entries) {
-    entriesByNamespace.set(entry.namespace, [...(entriesByNamespace.get(entry.namespace) ?? []), entry]);
+    entriesByNamespace.set(entry.namespace, [
+      ...(entriesByNamespace.get(entry.namespace) ?? []),
+      entry,
+    ]);
   }
 
   const namespaces = [...entriesByNamespace.entries()]
-    .map(([namespace, namespaceEntries]) => buildNamespaceNode(tab.id, namespace, namespaceEntries, preferences))
+    .map(([namespace, namespaceEntries]) =>
+      buildNamespaceNode(tab.id, namespace, namespaceEntries, preferences),
+    )
     .sort((left, right) => left.namespace.localeCompare(right.namespace));
 
   return {
-    kind: "tab",
+    kind: 'tab',
     tabId: tab.id,
     title: tab.title || `Tab ${tab.id}`,
-    url: tab.url || "",
+    url: tab.url || '',
     active: Boolean(tab.active),
     totalTools: namespaces.reduce((sum, namespace) => sum + namespace.totalTools, 0),
     enabledTools: namespaces.reduce((sum, namespace) => sum + namespace.enabledTools, 0),
@@ -524,13 +582,18 @@ function buildTabNode(tab: Required<Pick<TabLike, "id">> & TabLike, entries: Pag
   };
 }
 
-function buildNamespaceNode(tabId: number, namespace: string, entries: PageToolEntry[], preferences: PageToolPreferences): ToolTreeNamespace {
+function buildNamespaceNode(
+  tabId: number,
+  namespace: string,
+  entries: PageToolEntry[],
+  preferences: PageToolPreferences,
+): ToolTreeNamespace {
   const instances = entries
     .map((entry) => buildInstanceNode(tabId, entry, preferences))
     .sort((left, right) => left.instanceId.localeCompare(right.instanceId));
 
   return {
-    kind: "namespace",
+    kind: 'namespace',
     tabId,
     namespace,
     totalTools: instances.reduce((sum, instance) => sum + instance.totalTools, 0),
@@ -539,10 +602,14 @@ function buildNamespaceNode(tabId: number, namespace: string, entries: PageToolE
   };
 }
 
-function buildInstanceNode(tabId: number, entry: PageToolEntry, preferences: PageToolPreferences): ToolTreeInstance {
+function buildInstanceNode(
+  tabId: number,
+  entry: PageToolEntry,
+  preferences: PageToolPreferences,
+): ToolTreeInstance {
   const tools = entry.tools
     .map((tool) => ({
-      kind: "tool" as const,
+      kind: 'tool' as const,
       tabId,
       namespace: entry.namespace,
       instanceId: entry.instanceId,
@@ -551,7 +618,7 @@ function buildInstanceNode(tabId: number, entry: PageToolEntry, preferences: Pag
       description: tool.description,
       inputSchema: tool.inputSchema,
       enabled: isToolEnabled(preferences, {
-        root: "page",
+        root: 'page',
         tabId,
         namespace: entry.namespace,
         instanceId: entry.instanceId,
@@ -562,7 +629,7 @@ function buildInstanceNode(tabId: number, entry: PageToolEntry, preferences: Pag
     .sort((left, right) => left.label.localeCompare(right.label));
 
   return {
-    kind: "instance",
+    kind: 'instance',
     tabId,
     namespace: entry.namespace,
     instanceId: entry.instanceId,
@@ -573,12 +640,15 @@ function buildInstanceNode(tabId: number, entry: PageToolEntry, preferences: Pag
 }
 
 function getDisplayName(tool: PageToolSpec, namespace: string, instanceId: string): string {
-  const prefix = instanceId === "default" ? `${namespace}.` : `${namespace}.${instanceId}.`;
+  const prefix = instanceId === 'default' ? `${namespace}.` : `${namespace}.${instanceId}.`;
   return tool.name.startsWith(prefix) ? tool.name.slice(prefix.length) : tool.name;
 }
 
 function isReadOnlyTool(tool: PageToolSpec): boolean {
-  return Boolean((tool.annotations as { readOnlyHint?: boolean } | undefined)?.readOnlyHint || (tool._meta as { readOnly?: boolean } | undefined)?.readOnly);
+  return Boolean(
+    (tool.annotations as { readOnlyHint?: boolean } | undefined)?.readOnlyHint ||
+    (tool._meta as { readOnly?: boolean } | undefined)?.readOnly,
+  );
 }
 
 function isBridgeControlBuiltinTool(tool: PageToolSpec): boolean {
@@ -589,5 +659,5 @@ function isBridgeControlBuiltinTool(tool: PageToolSpec): boolean {
 }
 
 function isBridgeControlBuiltinToolName(name: string): boolean {
-  return name.startsWith("extension.") || name.startsWith("feedback.");
+  return name.startsWith('extension.') || name.startsWith('feedback.');
 }

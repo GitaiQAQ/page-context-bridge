@@ -1,14 +1,29 @@
-import { BRIDGE_METHODS, type PageContextManifest } from "@page-context/shared-protocol";
-import { collectBridgeControlToolSpecs } from "@page-context/builtin-tools";
+import { BRIDGE_METHODS, type PageContextManifest } from '@page-context/shared-protocol';
+import { collectBridgeControlToolSpecs } from '@page-context/builtin-tools';
 
-import { ensureMainWorldBridgeHostOnTab, type MainWorldBridgeHostInstaller } from "@page-context/agentation";
-import { discoverPageToolsInTab, sleep } from "./bg-page-context";
-import { log, queueNotification } from "./bg-ws-connection";
-import { getBuiltinToolDefinitions } from "@page-context/tool-executor";
-import { flattenPageTools, normalizePageToolEntries, type PageToolEntry, type PageToolSpec } from "@page-context/tool-visibility";
-import { buildToolTree, getEnabledBuiltinTools, getEnabledToolsForTab, isToolEnabled, setScopeEnabled, type PageToolPreferences } from "@page-context/tool-visibility";
+import {
+  ensureMainWorldBridgeHostOnTab,
+  type MainWorldBridgeHostInstaller,
+} from '@page-context/agentation';
+import { discoverPageToolsInTab, sleep } from './bg-page-context';
+import { log, queueNotification } from './bg-ws-connection';
+import { getBuiltinToolDefinitions } from '@page-context/tool-executor';
+import {
+  flattenPageTools,
+  normalizePageToolEntries,
+  type PageToolEntry,
+  type PageToolSpec,
+} from '@page-context/tool-visibility';
+import {
+  buildToolTree,
+  getEnabledBuiltinTools,
+  getEnabledToolsForTab,
+  isToolEnabled,
+  setScopeEnabled,
+  type PageToolPreferences,
+} from '@page-context/tool-visibility';
 
-const PAGE_TOOL_PREFERENCES_KEY = "pageToolPreferences";
+const PAGE_TOOL_PREFERENCES_KEY = 'pageToolPreferences';
 
 export interface PageToolState {
   pageToolPreferences: PageToolPreferences;
@@ -65,7 +80,8 @@ export function ensurePageToolPreferencesLoaded(state: PageToolState): Promise<v
     state.pageToolPreferencesReady = chrome.storage.local
       .get({ [PAGE_TOOL_PREFERENCES_KEY]: {} })
       .then((result) => {
-        state.pageToolPreferences = (result[PAGE_TOOL_PREFERENCES_KEY] as PageToolPreferences | undefined) ?? {};
+        state.pageToolPreferences =
+          (result[PAGE_TOOL_PREFERENCES_KEY] as PageToolPreferences | undefined) ?? {};
       });
   }
 
@@ -88,7 +104,11 @@ export function publishPageToolsForTab(state: PageToolState, tabId: number): voi
   void ensurePageToolPreferencesLoaded(state).then(() => {
     queueNotification(BRIDGE_METHODS.bridgePageToolsRegistered, {
       tabId,
-      tools: getEnabledToolsForTab(state.pageToolsByTab.get(tabId), state.pageToolPreferences, tabId),
+      tools: getEnabledToolsForTab(
+        state.pageToolsByTab.get(tabId),
+        state.pageToolPreferences,
+        tabId,
+      ),
     });
   });
 }
@@ -98,28 +118,55 @@ export async function buildPageToolsTreeResponse(state: PageToolState) {
   return buildToolTree(tabs, state.pageToolsByTab, getBuiltinTools(), state.pageToolPreferences);
 }
 
-export function filterManifestByPreferences(state: PageToolState, tabId: number, manifest: PageContextManifest): PageContextManifest {
-  const enabledPageToolNames = new Set(getEnabledToolsForTab(state.pageToolsByTab.get(tabId), state.pageToolPreferences, tabId).map((tool) => tool.name));
+export function filterManifestByPreferences(
+  state: PageToolState,
+  tabId: number,
+  manifest: PageContextManifest,
+): PageContextManifest {
+  const enabledPageToolNames = new Set(
+    getEnabledToolsForTab(state.pageToolsByTab.get(tabId), state.pageToolPreferences, tabId).map(
+      (tool) => tool.name,
+    ),
+  );
   const enabledBuiltinToolNames = new Set(
-    getEnabledBuiltinTools(getBuiltinTools(), state.pageToolPreferences)
-      .map((tool) => tool.name),
+    getEnabledBuiltinTools(getBuiltinTools(), state.pageToolPreferences).map((tool) => tool.name),
   );
   const enabledNamespaces = new Set(
     manifest.namespaces
-      .filter((entry: PageContextManifest["namespaces"][number]) => isToolEnabled(state.pageToolPreferences, { root: "page", tabId, namespace: entry.namespace }))
-      .map((entry: PageContextManifest["namespaces"][number]) => entry.namespace),
+      .filter((entry: PageContextManifest['namespaces'][number]) =>
+        isToolEnabled(state.pageToolPreferences, {
+          root: 'page',
+          tabId,
+          namespace: entry.namespace,
+        }),
+      )
+      .map((entry: PageContextManifest['namespaces'][number]) => entry.namespace),
   );
 
   return {
     ...manifest,
-    namespaces: manifest.namespaces.filter((entry: PageContextManifest["namespaces"][number]) => enabledNamespaces.has(entry.namespace)),
-    resources: manifest.resources.filter((entry: PageContextManifest["resources"][number]) => enabledNamespaces.has(entry.namespace)),
+    namespaces: manifest.namespaces.filter((entry: PageContextManifest['namespaces'][number]) =>
+      enabledNamespaces.has(entry.namespace),
+    ),
+    resources: manifest.resources.filter((entry: PageContextManifest['resources'][number]) =>
+      enabledNamespaces.has(entry.namespace),
+    ),
     skills: manifest.skills
-      .filter((entry: PageContextManifest["skills"][number]) => enabledNamespaces.has(entry.namespace))
-      .map((entry: PageContextManifest["skills"][number]) => ({
+      .filter((entry: PageContextManifest['skills'][number]) =>
+        enabledNamespaces.has(entry.namespace),
+      )
+      .map((entry: PageContextManifest['skills'][number]) => ({
         ...entry,
-        resourceIds: (entry.resourceIds ?? []).filter((resourceId: string) => manifest.resources.some((resource: PageContextManifest["resources"][number]) => resource.id === resourceId && enabledNamespaces.has(resource.namespace))),
-        toolNames: (entry.toolNames ?? []).filter((toolName: string) => enabledPageToolNames.has(toolName) || enabledBuiltinToolNames.has(toolName)),
+        resourceIds: (entry.resourceIds ?? []).filter((resourceId: string) =>
+          manifest.resources.some(
+            (resource: PageContextManifest['resources'][number]) =>
+              resource.id === resourceId && enabledNamespaces.has(resource.namespace),
+          ),
+        ),
+        toolNames: (entry.toolNames ?? []).filter(
+          (toolName: string) =>
+            enabledPageToolNames.has(toolName) || enabledBuiltinToolNames.has(toolName),
+        ),
       })),
   };
 }
@@ -138,9 +185,11 @@ export async function discoverPageToolsForTab(
   }
 
   const discoveryPromise = (async () => {
-    await ensureMainWorldBridgeHostOnTab(tabId, installPageContextBridgeHostInMainWorld).catch((error: unknown) => {
-      log("Ensure MAIN world host failed before discovery", tabId, error);
-    });
+    await ensureMainWorldBridgeHostOnTab(tabId, installPageContextBridgeHostInMainWorld).catch(
+      (error: unknown) => {
+        log('Ensure MAIN world host failed before discovery', tabId, error);
+      },
+    );
 
     const delays = [0, 500, 1_500, 3_000];
     for (const delay of delays) {
@@ -159,7 +208,7 @@ export async function discoverPageToolsForTab(
         publishPageToolsForTab(state, tabId);
         return normalized;
       } catch (error) {
-        log("Page tool discovery failed", tabId, error);
+        log('Page tool discovery failed', tabId, error);
         break;
       }
     }
@@ -197,7 +246,12 @@ export async function discoverPageToolsAfterTabReload(
       if (delay > 0) {
         await sleep(delay);
       }
-      const entries = await discoverPageToolsForTab(state, tabId, installPageContextBridgeHostInMainWorld, true);
+      const entries = await discoverPageToolsForTab(
+        state,
+        tabId,
+        installPageContextBridgeHostInMainWorld,
+        true,
+      );
       if (entries.length > 0) {
         return;
       }

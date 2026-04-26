@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
 
 // Keep consistent with HOST_ID in src/agentation-main.tsx, used for CSS inline injection target
-const AGENTATION_MAIN_HOST_ID = "__pc_agentation_main__";
+const AGENTATION_MAIN_HOST_ID = '__pc_agentation_main__';
 
 function copyStaticFiles() {
   return {
@@ -60,7 +60,9 @@ function injectCssLinks() {
         if (cssFiles.length === 0) continue;
 
         let html = readFileSync(htmlPath, 'utf8');
-        const linkTags = cssFiles.map((css) => `  <link rel="stylesheet" href="${css}" />`).join('\n');
+        const linkTags = cssFiles
+          .map((css) => `  <link rel="stylesheet" href="${css}" />`)
+          .join('\n');
         html = html.replace('</head>', `${linkTags}\n</head>`);
         writeFileSync(htmlPath, html);
       }
@@ -92,7 +94,10 @@ function renameUnderscoreFiles() {
             const war = manifest.web_accessible_resources;
             if (Array.isArray(war)) {
               for (const entry of war) {
-                if (Array.isArray(entry.resources) && !entry.resources.includes('content-script.css')) {
+                if (
+                  Array.isArray(entry.resources) &&
+                  !entry.resources.includes('content-script.css')
+                ) {
                   entry.resources.push('content-script.css');
                 }
               }
@@ -108,15 +113,18 @@ function renameUnderscoreFiles() {
       // chromeExtension plugin preserves src/ prefix, actual output is dist/src/agentation-main-entry.js
       // background injects via chrome.scripting.executeScript({ world: "MAIN", files: ["agentation-main.js"] })
       const allFiles = readdirSync(distDir);
-      const mainEntryJs = allFiles.find((f) => f === 'agentation-main.js')
-        ?? (() => {
+      const mainEntryJs =
+        allFiles.find((f) => f === 'agentation-main.js') ??
+        (() => {
           // Search subdirectories (chromeExtension may preserve src/ path prefix)
           for (const dir of ['src']) {
             try {
               const subFiles = readdirSync(resolve(distDir, dir));
               const found = subFiles.find((f) => /agentation-main/.test(f));
               if (found) return `${dir}/${found}`;
-            } catch { /* directory does not exist */ }
+            } catch {
+              /* directory does not exist */
+            }
           }
           return null;
         })();
@@ -200,13 +208,19 @@ function renameUnderscoreFiles() {
 }
 
 export default defineConfig({
-  plugins: [tailwindcss(), chromeExtension() as any, copyStaticFiles(), injectCssLinks(), renameUnderscoreFiles()],
+  plugins: [
+    tailwindcss(),
+    chromeExtension() as any,
+    copyStaticFiles(),
+    injectCssLinks(),
+    renameUnderscoreFiles(),
+  ],
   define: {
     // Compile-time constant for version display in agentation source code, provided here by extension build side.
-    __VERSION__: JSON.stringify("3.0.2-src-poc"),
+    __VERSION__: JSON.stringify('3.0.2-src-poc'),
     // agentation toolbar uses process.env.NODE_ENV to determine whether to enable React component detection.
     // In extension scenarios, target pages may be dev or prod, but component detection capability should always be enabled.
-    'process.env.NODE_ENV': JSON.stringify("development"),
+    'process.env.NODE_ENV': JSON.stringify('development'),
   },
   esbuild: {
     jsx: 'automatic',

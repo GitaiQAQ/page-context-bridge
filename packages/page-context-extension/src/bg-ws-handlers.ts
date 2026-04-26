@@ -2,9 +2,14 @@
  * WS entry point and extension control method aggregator.
  * Handles only routing and orchestration; holds no implicit global state outside this module.
  */
-import { BRIDGE_METHODS, RpcProtocolError, RPC_ERROR_CODES } from "@page-context/shared-protocol";
+import { BRIDGE_METHODS, RpcProtocolError, RPC_ERROR_CODES } from '@page-context/shared-protocol';
 
-import { ensureAgentationMainOnTab, ensureMainWorldBridgeHostOnTab, getMainWorldInjectionTarget, type MainWorldBridgeHostInstaller } from "@page-context/agentation";
+import {
+  ensureAgentationMainOnTab,
+  ensureMainWorldBridgeHostOnTab,
+  getMainWorldInjectionTarget,
+  type MainWorldBridgeHostInstaller,
+} from '@page-context/agentation';
 import {
   buildPageToolsTreeResponse,
   discoverPageToolsForTab,
@@ -17,12 +22,20 @@ import {
   publishBuiltinTools,
   publishPageToolsForTab,
   type PageToolState,
-} from "./bg-page-tools";
-import { getRawPageContextManifest, getPageContextSkill, readPageContextResource } from "./bg-page-context";
-import { executeToolCall } from "@page-context/tool-executor";
-import { buildContextManifestFilterDebug } from "./context-manifest-filter-debug";
-import type { PageToolSpec } from "@page-context/tool-visibility";
-import { getEnabledBuiltinTools, getEnabledToolsForTab, setScopeEnabled } from "@page-context/tool-visibility";
+} from './bg-page-tools';
+import {
+  getRawPageContextManifest,
+  getPageContextSkill,
+  readPageContextResource,
+} from './bg-page-context';
+import { executeToolCall } from '@page-context/tool-executor';
+import { buildContextManifestFilterDebug } from './context-manifest-filter-debug';
+import type { PageToolSpec } from '@page-context/tool-visibility';
+import {
+  getEnabledBuiltinTools,
+  getEnabledToolsForTab,
+  setScopeEnabled,
+} from '@page-context/tool-visibility';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -57,7 +70,9 @@ export interface ExtensionControlHandlers {
   handleExtensionContextResourceRead(params: unknown): Promise<unknown>;
   handleExtensionContextSkillGet(params: unknown): Promise<unknown>;
   handleExtensionPageToolsSetEnabled(params: unknown): Promise<unknown>;
-  handleExtensionToolDebugCall(params: unknown): Promise<{ ok: boolean; result?: unknown; error?: string }>;
+  handleExtensionToolDebugCall(
+    params: unknown,
+  ): Promise<{ ok: boolean; result?: unknown; error?: string }>;
 }
 
 export interface WsHandlers extends ExtensionControlHandlers {
@@ -70,7 +85,9 @@ export interface WsHandlers extends ExtensionControlHandlers {
 interface CreateWsHandlersDeps {
   pageToolState: PageToolState;
   inFlightToolCalls: Map<string, string>;
-  listTabs: () => Promise<Array<{ id: number | undefined; url?: string; title?: string; active?: boolean }>>;
+  listTabs: () => Promise<
+    Array<{ id: number | undefined; url?: string; title?: string; active?: boolean }>
+  >;
   installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller;
   bridgeConnection: WsBridgeConnectionDeps;
 }
@@ -105,7 +122,12 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
 
   async function handleExtensionReconnect(): Promise<{ ok: true }> {
     // Must pass the same set of callbacks back to the connection layer so reconnection behaves identically to the first connection.
-    await deps.bridgeConnection.forceReconnect(onToolCall, onToolsList, onTabsList, onBridgeWsExtensionRequest);
+    await deps.bridgeConnection.forceReconnect(
+      onToolCall,
+      onToolsList,
+      onTabsList,
+      onBridgeWsExtensionRequest,
+    );
     return { ok: true };
   }
 
@@ -118,31 +140,53 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     return await buildPageToolsTreeResponse(deps.pageToolState);
   }
 
-  async function handleExtensionPageToolsRefresh(params: unknown): Promise<{ tools: PageToolSpec[] }> {
+  async function handleExtensionPageToolsRefresh(
+    params: unknown,
+  ): Promise<{ tools: PageToolSpec[] }> {
     const tabId = Number((params as { tabId?: number })?.tabId ?? 0);
     if (!tabId) {
-      throw new Error("No tabId provided");
+      throw new Error('No tabId provided');
     }
     // Refresh and discovery share the same pipeline to prevent two implementations from drifting apart over time.
-    await discoverPageToolsForTab(deps.pageToolState, tabId, deps.installPageContextBridgeHostInMainWorld, true);
+    await discoverPageToolsForTab(
+      deps.pageToolState,
+      tabId,
+      deps.installPageContextBridgeHostInMainWorld,
+      true,
+    );
     return { tools: getFlattenedPageToolsForTab(deps.pageToolState, tabId) };
   }
 
   async function handleExtensionContextManifestGet(params: unknown): Promise<unknown> {
     const tabId = Number((params as { tabId?: number })?.tabId ?? 0);
     if (!tabId) {
-      throw new Error("No tabId provided");
+      throw new Error('No tabId provided');
     }
     const rawManifest = await getRawPageContextManifest(tabId);
-    const manifest = rawManifest ? filterManifestByPreferences(deps.pageToolState, tabId, rawManifest) : null;
+    const manifest = rawManifest
+      ? filterManifestByPreferences(deps.pageToolState, tabId, rawManifest)
+      : null;
     const enabledPageToolNames = new Set(
-      getEnabledToolsForTab(deps.pageToolState.pageToolsByTab.get(tabId), deps.pageToolState.pageToolPreferences, tabId).map((tool) => tool.name),
+      getEnabledToolsForTab(
+        deps.pageToolState.pageToolsByTab.get(tabId),
+        deps.pageToolState.pageToolPreferences,
+        tabId,
+      ).map((tool) => tool.name),
     );
-    const enabledBuiltinToolNames = new Set(getEnabledBuiltinTools(getBuiltinTools(), deps.pageToolState.pageToolPreferences).map((tool) => tool.name));
+    const enabledBuiltinToolNames = new Set(
+      getEnabledBuiltinTools(getBuiltinTools(), deps.pageToolState.pageToolPreferences).map(
+        (tool) => tool.name,
+      ),
+    );
     return {
       manifest,
       rawManifest,
-      debug: buildContextManifestFilterDebug(rawManifest, manifest, enabledPageToolNames, enabledBuiltinToolNames),
+      debug: buildContextManifestFilterDebug(
+        rawManifest,
+        manifest,
+        enabledPageToolNames,
+        enabledBuiltinToolNames,
+      ),
     };
   }
 
@@ -150,7 +194,7 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     const payload = params as { tabId?: number; resourceId?: string };
     const tabId = Number(payload.tabId ?? 0);
     if (!tabId || !payload.resourceId) {
-      throw new Error("tabId and resourceId are required");
+      throw new Error('tabId and resourceId are required');
     }
     return await readPageContextResource(tabId, payload.resourceId);
   }
@@ -159,30 +203,43 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     const payload = params as { tabId?: number; skillId?: string; input?: JsonRecord };
     const tabId = Number(payload.tabId ?? 0);
     if (!tabId || !payload.skillId) {
-      throw new Error("tabId and skillId are required");
+      throw new Error('tabId and skillId are required');
     }
     return { prompt: await getPageContextSkill(tabId, payload.skillId, payload.input) };
   }
 
   async function handleExtensionPageToolsSetEnabled(params: unknown): Promise<unknown> {
-    const payload = params as { root?: "builtin" | "page"; tabId?: number; namespace?: string; instanceId?: string; toolName?: string; enabled: boolean };
-    const pageEntries = payload.root === "builtin" || payload.tabId == null
-      ? undefined
-      : (deps.pageToolState.pageToolsByTab.get(payload.tabId) ?? []).filter((entry) => {
-          if (payload.namespace && entry.namespace !== payload.namespace) {
-            return false;
-          }
-          if (payload.instanceId && entry.instanceId !== payload.instanceId) {
-            return false;
-          }
-          return true;
-        });
-    deps.pageToolState.pageToolPreferences = setScopeEnabled(deps.pageToolState.pageToolPreferences, payload, payload.enabled, {
-      builtinTools: payload.root === "builtin" ? getBuiltinTools() : undefined,
-      pageEntries,
-    });
+    const payload = params as {
+      root?: 'builtin' | 'page';
+      tabId?: number;
+      namespace?: string;
+      instanceId?: string;
+      toolName?: string;
+      enabled: boolean;
+    };
+    const pageEntries =
+      payload.root === 'builtin' || payload.tabId == null
+        ? undefined
+        : (deps.pageToolState.pageToolsByTab.get(payload.tabId) ?? []).filter((entry) => {
+            if (payload.namespace && entry.namespace !== payload.namespace) {
+              return false;
+            }
+            if (payload.instanceId && entry.instanceId !== payload.instanceId) {
+              return false;
+            }
+            return true;
+          });
+    deps.pageToolState.pageToolPreferences = setScopeEnabled(
+      deps.pageToolState.pageToolPreferences,
+      payload,
+      payload.enabled,
+      {
+        builtinTools: payload.root === 'builtin' ? getBuiltinTools() : undefined,
+        pageEntries,
+      },
+    );
     await persistPageToolPreferences(deps.pageToolState);
-    if (payload.root === "builtin") {
+    if (payload.root === 'builtin') {
       publishBuiltinTools(deps.pageToolState);
     } else if (payload.tabId != null) {
       publishPageToolsForTab(deps.pageToolState, payload.tabId);
@@ -190,10 +247,12 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     return await buildPageToolsTreeResponse(deps.pageToolState);
   }
 
-  async function handleExtensionToolDebugCall(params: unknown): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  async function handleExtensionToolDebugCall(
+    params: unknown,
+  ): Promise<{ ok: boolean; result?: unknown; error?: string }> {
     const payload = params as { toolName?: string; args?: JsonRecord; tabId?: number };
     if (!payload.toolName) {
-      throw new Error("No toolName provided");
+      throw new Error('No toolName provided');
     }
 
     try {
@@ -228,7 +287,11 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
         return await handleExtensionPageToolsSetEnabled(params);
       case BRIDGE_METHODS.extensionMainWorldHostEnsure: {
         const target = getMainWorldInjectionTarget(params);
-        return await ensureMainWorldBridgeHostOnTab(target.tabId, deps.installPageContextBridgeHostInMainWorld, target.frameId);
+        return await ensureMainWorldBridgeHostOnTab(
+          target.tabId,
+          deps.installPageContextBridgeHostInMainWorld,
+          target.frameId,
+        );
       }
       case BRIDGE_METHODS.extensionAgentationMainEnsure: {
         const target = getMainWorldInjectionTarget(params);
@@ -243,7 +306,10 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
       case BRIDGE_METHODS.extensionToolDebugCall:
         return await handleExtensionToolDebugCall(params);
       default:
-        throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled WS method: ${method}`);
+        throw new RpcProtocolError(
+          RPC_ERROR_CODES.methodNotFound,
+          `Unhandled WS method: ${method}`,
+        );
     }
   }
 

@@ -6,7 +6,7 @@ import type {
   ContextSkillPrompt,
   PageContextManifest,
   ToolSpec,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
 export type ToolInput = Record<string, unknown>;
 
@@ -67,4 +67,7 @@ export interface UserscriptBridgeAdapter {
   getSceneHint?(): string | undefined;
 }
 
-export type UserscriptBridgeAdapterFactory = (win: Window, doc: Document) => UserscriptBridgeAdapter;
+export type UserscriptBridgeAdapterFactory = (
+  win: Window,
+  doc: Document,
+) => UserscriptBridgeAdapter;

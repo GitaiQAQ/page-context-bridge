@@ -3,34 +3,37 @@
  * Handles resource and prompt (skill) registration on MCP servers.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { PageContextManifest } from "@page-context/shared-protocol";
-import { z } from "zod";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { PageContextManifest } from '@page-context/shared-protocol';
+import { z } from 'zod';
 
 import type {
   ExtensionRpcCaller,
   RegisteredContextPrompt,
   RegisteredContextResource,
   ServerHandleStore,
-} from "./registry-types.js";
-import type { RegistryTabState } from "./registry-tab-state.js";
+} from './registry-types.js';
+import type { RegistryTabState } from './registry-tab-state.js';
 import {
   buildContextPromptName,
   buildContextResourceName,
   buildContextResourceUri,
   createTextResponse,
   getOrCreateServerHandleMap,
-} from "./registry-utils.js";
+} from './registry-utils.js';
 
 export function registerContextManifestOnServer(input: {
   state: RegistryTabState;
   mcpServer: McpServer;
-  rpcCaller: Pick<ExtensionRpcCaller, "readContextResource" | "getContextSkillPrompt">;
+  rpcCaller: Pick<ExtensionRpcCaller, 'readContextResource' | 'getContextSkillPrompt'>;
   tabId: number;
   manifest: PageContextManifest;
 }): void {
   const { state, mcpServer, rpcCaller, tabId, manifest } = input;
-  const resourceHandles = getOrCreateServerHandleMap(state.contextResourceHandlesByServer, mcpServer);
+  const resourceHandles = getOrCreateServerHandleMap(
+    state.contextResourceHandlesByServer,
+    mcpServer,
+  );
   const promptHandles = getOrCreateServerHandleMap(state.contextPromptHandlesByServer, mcpServer);
 
   for (const resource of manifest.resources) {
@@ -46,7 +49,7 @@ export function registerContextManifestOnServer(input: {
       {
         title: resource.title,
         description: resource.description,
-        mimeType: resource.mimeType ?? "application/json",
+        mimeType: resource.mimeType ?? 'application/json',
       },
       async (uri) => {
         const payload = await rpcCaller.readContextResource(tabId, resource.id);
@@ -54,7 +57,7 @@ export function registerContextManifestOnServer(input: {
           contents: [
             {
               uri: uri.href,
-              mimeType: payload.mimeType ?? resource.mimeType ?? "application/json",
+              mimeType: payload.mimeType ?? resource.mimeType ?? 'application/json',
               text: payload.text,
             },
           ],
@@ -86,9 +89,9 @@ export function registerContextManifestOnServer(input: {
           description: skill.description,
           messages: [
             {
-              role: "user",
+              role: 'user',
               content: {
-                type: "text",
+                type: 'text',
                 text: promptText,
               },
             },
@@ -132,7 +135,7 @@ export function unregisterContextManifestFromServer(input: {
 export function syncContextManifestOnAllServers(input: {
   state: RegistryTabState;
   mcpServers: Iterable<McpServer>;
-  rpcCaller: Pick<ExtensionRpcCaller, "readContextResource" | "getContextSkillPrompt">;
+  rpcCaller: Pick<ExtensionRpcCaller, 'readContextResource' | 'getContextSkillPrompt'>;
   tabId: number;
   manifest: PageContextManifest | null;
 }): void {

@@ -10,16 +10,16 @@
  * - Callbacks bridge across worlds via CustomEvent to ISOLATED world's content-script
  */
 
-import { Agentation, type Annotation as AgentationAnnotation } from "./agentation-source-runtime";
-import { Component, type ErrorInfo, type ReactNode } from "react";
-import { flushSync } from "react-dom";
-import { createRoot, type Root } from "react-dom/client";
+import { Agentation, type Annotation as AgentationAnnotation } from './agentation-source-runtime';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import { createRoot, type Root } from 'react-dom/client';
 
 // ── Constants ──
 
-const HOST_ID = "__pc_agentation_main__";
-const CONTAINER_ATTR = "data-pc-agentation-main-container";
-const EVENT_PREFIX = "page-context:agentation";
+const HOST_ID = '__pc_agentation_main__';
+const CONTAINER_ATTR = 'data-pc-agentation-main-container';
+const EVENT_PREFIX = 'page-context:agentation';
 
 // ── Types ──
 
@@ -66,16 +66,16 @@ export function installAgentationInMainWorld(): void {
 
 function mountAgentation(body: HTMLElement): void {
   // 1. Create Shadow DOM host for style isolation
-  const host = document.createElement("div");
+  const host = document.createElement('div');
   host.id = HOST_ID;
   // host itself doesn't participate in layout, pointer-events allow portal'd toolbar to be interactive
-  host.style.cssText = "all:initial;position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;";
+  host.style.cssText = 'all:initial;position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;';
   body.appendChild(host);
 
-  const shadow = host.attachShadow({ mode: "open" });
+  const shadow = host.attachShadow({ mode: 'open' });
 
-  const container = document.createElement("div");
-  container.setAttribute(CONTAINER_ATTR, "");
+  const container = document.createElement('div');
+  container.setAttribute(CONTAINER_ATTR, '');
   shadow.appendChild(container);
 
   // CSS is inlined into JS by post-build script, injected automatically via MutationObserver after host appears
@@ -88,7 +88,7 @@ function mountAgentation(body: HTMLElement): void {
     root.render(
       <AgentationMainErrorBoundary
         onError={(error, info) => {
-          console.error("[AGENTATION-MAIN] render failed", error, info);
+          console.error('[AGENTATION-MAIN] render failed', error, info);
         }}
       >
         <AgentationMainBridge />
@@ -111,21 +111,21 @@ function dispatchToIsolatedWorld(action: string, payload: unknown): void {
 }
 
 function handleAnnotationAdd(annotation: AgentationAnnotation): void {
-  dispatchToIsolatedWorld("annotation:add", {
+  dispatchToIsolatedWorld('annotation:add', {
     annotation,
     timestamp: Date.now(),
   } satisfies AnnotationBridgePayload);
 }
 
 function handleAnnotationUpdate(annotation: AgentationAnnotation): void {
-  dispatchToIsolatedWorld("annotation:update", {
+  dispatchToIsolatedWorld('annotation:update', {
     annotation,
     timestamp: Date.now(),
   } satisfies AnnotationBridgePayload);
 }
 
 function handleAnnotationDelete(annotation: AgentationAnnotation): void {
-  dispatchToIsolatedWorld("annotation:delete", {
+  dispatchToIsolatedWorld('annotation:delete', {
     annotation,
     timestamp: Date.now(),
   } satisfies AnnotationBridgePayload);

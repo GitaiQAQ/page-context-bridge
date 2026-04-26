@@ -39,9 +39,7 @@ class Logger {
   }
 
   private formatMessage(entry: LogEntry): string {
-    const context = entry.context
-      ? ' ' + JSON.stringify(entry.context)
-      : '';
+    const context = entry.context ? ' ' + JSON.stringify(entry.context) : '';
     return `[${entry.timestamp}] [${entry.level.toUpperCase()}] ${entry.message}${context}\n`;
   }
 
@@ -72,7 +70,11 @@ class Logger {
     }
   }
 
-  private createEntry(level: LogLevel, message: string, context?: Record<string, unknown>): LogEntry {
+  private createEntry(
+    level: LogLevel,
+    message: string,
+    context?: Record<string, unknown>,
+  ): LogEntry {
     return {
       timestamp: new Date().toISOString(),
       level,

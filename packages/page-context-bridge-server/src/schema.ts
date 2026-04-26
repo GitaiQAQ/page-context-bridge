@@ -1,4 +1,4 @@
-import { z, type ZodRawShape, type ZodTypeAny } from "zod";
+import { z, type ZodRawShape, type ZodTypeAny } from 'zod';
 
 type PrimitiveLiteral = string | number | boolean | null | undefined | bigint;
 
@@ -57,11 +57,17 @@ export function toZodSchema(schema?: JsonSchemaLike, context?: SchemaContext): Z
   }
 
   if (schema.oneOf && schema.oneOf.length > 0) {
-    return applyCommonModifiers(createUnionSchema(schema.oneOf.map((entry) => toZodSchema(entry, resolvedContext))), schema);
+    return applyCommonModifiers(
+      createUnionSchema(schema.oneOf.map((entry) => toZodSchema(entry, resolvedContext))),
+      schema,
+    );
   }
 
   if (schema.anyOf && schema.anyOf.length > 0) {
-    return applyCommonModifiers(createUnionSchema(schema.anyOf.map((entry) => toZodSchema(entry, resolvedContext))), schema);
+    return applyCommonModifiers(
+      createUnionSchema(schema.anyOf.map((entry) => toZodSchema(entry, resolvedContext))),
+      schema,
+    );
   }
 
   if (schema.allOf && schema.allOf.length > 0) {
@@ -85,12 +91,14 @@ export function toZodSchema(schema?: JsonSchemaLike, context?: SchemaContext): Z
   }
 
   const normalizedTypes = normalizeTypes(schema);
-  const nonNullTypes = normalizedTypes.filter((type) => type !== "null");
-  const nullable = schema.nullable === true || normalizedTypes.includes("null");
+  const nonNullTypes = normalizedTypes.filter((type) => type !== 'null');
+  const nullable = schema.nullable === true || normalizedTypes.includes('null');
 
   let baseSchema: ZodTypeAny;
   if (nonNullTypes.length > 1) {
-    baseSchema = createUnionSchema(nonNullTypes.map((type) => createPrimitiveSchema(type, schema, resolvedContext)));
+    baseSchema = createUnionSchema(
+      nonNullTypes.map((type) => createPrimitiveSchema(type, schema, resolvedContext)),
+    );
   } else {
     baseSchema = createPrimitiveSchema(nonNullTypes[0], schema, resolvedContext);
   }
@@ -105,7 +113,7 @@ export function toZodSchema(schema?: JsonSchemaLike, context?: SchemaContext): Z
 function normalizeObjectRoot(schema: JsonSchemaLike): JsonSchemaLike {
   if (schema.type === undefined && schema.properties) {
     return {
-      type: "object",
+      type: 'object',
       ...schema,
     };
   }
@@ -116,21 +124,25 @@ function normalizeTypes(schema: JsonSchemaLike): string[] {
   if (Array.isArray(schema.type) && schema.type.length > 0) {
     return schema.type;
   }
-  if (typeof schema.type === "string") {
+  if (typeof schema.type === 'string') {
     return [schema.type];
   }
   if (schema.properties) {
-    return ["object"];
+    return ['object'];
   }
   if (schema.items) {
-    return ["array"];
+    return ['array'];
   }
-  return ["string"];
+  return ['string'];
 }
 
-function createPrimitiveSchema(type: string | undefined, schema: JsonSchemaLike, context: SchemaContext): ZodTypeAny {
+function createPrimitiveSchema(
+  type: string | undefined,
+  schema: JsonSchemaLike,
+  context: SchemaContext,
+): ZodTypeAny {
   switch (type) {
-    case "number": {
+    case 'number': {
       let numberSchema = z.number();
       if (schema.minimum !== undefined) {
         numberSchema = numberSchema.min(schema.minimum);
@@ -140,7 +152,7 @@ function createPrimitiveSchema(type: string | undefined, schema: JsonSchemaLike,
       }
       return numberSchema;
     }
-    case "integer": {
+    case 'integer': {
       let integerSchema = z.number().int();
       if (schema.minimum !== undefined) {
         integerSchema = integerSchema.min(schema.minimum);
@@ -150,15 +162,15 @@ function createPrimitiveSchema(type: string | undefined, schema: JsonSchemaLike,
       }
       return integerSchema;
     }
-    case "boolean":
+    case 'boolean':
       return z.boolean();
-    case "array":
+    case 'array':
       return createArraySchema(schema, context);
-    case "object":
+    case 'object':
       return createObjectSchema(schema, context);
-    case "null":
+    case 'null':
       return z.null();
-    case "string":
+    case 'string':
     default:
       return createStringSchema(schema);
   }
@@ -180,9 +192,13 @@ function createStringSchema(schema: JsonSchemaLike): ZodTypeAny {
 
 function createArraySchema(schema: JsonSchemaLike, context: SchemaContext): ZodTypeAny {
   if (Array.isArray(schema.items) && schema.items.length > 0) {
-    return z.tuple(schema.items.map((item) => toZodSchema(item, context)) as [ZodTypeAny, ...ZodTypeAny[]]);
+    return z.tuple(
+      schema.items.map((item) => toZodSchema(item, context)) as [ZodTypeAny, ...ZodTypeAny[]],
+    );
   }
-  return z.array(toZodSchema(Array.isArray(schema.items) ? schema.items[0] : schema.items, context));
+  return z.array(
+    toZodSchema(Array.isArray(schema.items) ? schema.items[0] : schema.items, context),
+  );
 }
 
 function createObjectSchema(schema: JsonSchemaLike, context: SchemaContext): ZodTypeAny {
@@ -198,7 +214,7 @@ function createObjectSchema(schema: JsonSchemaLike, context: SchemaContext): Zod
   }
 
   let objectSchema = z.object(shape);
-  if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
     objectSchema = objectSchema.catchall(toZodSchema(schema.additionalProperties, context));
   } else if (schema.additionalProperties === true) {
     objectSchema = objectSchema.catchall(z.any());
@@ -221,12 +237,12 @@ function createRefSchema(schema: JsonSchemaLike, context: SchemaContext): ZodTyp
     return base;
   }
 
-  return toZodSchema({
-    allOf: [
-      { $ref: ref },
-      siblingSchema,
-    ],
-  }, context);
+  return toZodSchema(
+    {
+      allOf: [{ $ref: ref }, siblingSchema],
+    },
+    context,
+  );
 }
 
 function resolveRefSchema(ref: string, context: SchemaContext): ZodTypeAny {
@@ -235,7 +251,7 @@ function resolveRefSchema(ref: string, context: SchemaContext): ZodTypeAny {
     return cached;
   }
 
-  if (!ref.startsWith("#")) {
+  if (!ref.startsWith('#')) {
     throw new Error(`Unsupported external $ref: ${ref}`);
   }
 
@@ -253,15 +269,15 @@ function resolveRefSchema(ref: string, context: SchemaContext): ZodTypeAny {
 }
 
 function resolveJsonPointer(root: JsonSchemaLike, ref: string): unknown {
-  if (ref === "#") {
+  if (ref === '#') {
     return root;
   }
 
   const segments = ref
-    .replace(/^#\/?/, "")
-    .split("/")
+    .replace(/^#\/?/, '')
+    .split('/')
     .filter(Boolean)
-    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+    .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
 
   let current: unknown = root;
   for (const segment of segments) {
@@ -331,7 +347,9 @@ function createSchemaContext(root: JsonSchemaLike): SchemaContext {
 }
 
 function isPrimitiveLiteral(value: unknown): value is PrimitiveLiteral {
-  return value === null || ["string", "number", "boolean", "undefined", "bigint"].includes(typeof value);
+  return (
+    value === null || ['string', 'number', 'boolean', 'undefined', 'bigint'].includes(typeof value)
+  );
 }
 
 function deepEqual(left: unknown, right: unknown): boolean {
@@ -363,5 +381,5 @@ function deepEqual(left: unknown, right: unknown): boolean {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }

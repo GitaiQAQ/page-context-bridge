@@ -1,4 +1,4 @@
-import type { PageContextManifest } from "@page-context/shared-protocol";
+import type { PageContextManifest } from '@page-context/shared-protocol';
 
 export interface ContextManifestDiff {
   rawNamespaces: number;
@@ -13,7 +13,10 @@ export interface ContextManifestDiff {
   sceneChanged: boolean;
 }
 
-export function buildContextManifestDiff(rawManifest: PageContextManifest | null, effectiveManifest: PageContextManifest | null): ContextManifestDiff {
+export function buildContextManifestDiff(
+  rawManifest: PageContextManifest | null,
+  effectiveManifest: PageContextManifest | null,
+): ContextManifestDiff {
   const rawNamespaces = rawManifest?.namespaces.map((entry) => entry.namespace) ?? [];
   const effectiveNamespaces = effectiveManifest?.namespaces.map((entry) => entry.namespace) ?? [];
   const rawResources = rawManifest?.resources.map((entry) => entry.id) ?? [];
@@ -31,7 +34,7 @@ export function buildContextManifestDiff(rawManifest: PageContextManifest | null
     rawSkills: rawSkills.length,
     effectiveSkills: effectiveSkills.length,
     hiddenSkills: diff(rawSkills, effectiveSkills),
-    sceneChanged: (rawManifest?.scene ?? "") !== (effectiveManifest?.scene ?? ""),
+    sceneChanged: (rawManifest?.scene ?? '') !== (effectiveManifest?.scene ?? ''),
   };
 }
 

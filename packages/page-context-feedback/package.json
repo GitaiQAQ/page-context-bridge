@@ -1,1 +1,35 @@
-{"name": "@page-context/feedback", "version": "0.0.1", "description": "Feedback feature module — annotation CRUD, agent push, UI components, and MCP tool registration. Extracted from core packages to decouple from agentation.", "type": "module", "main": "dist/index.js", "exports": { ".": "./dist/index.js", "./package.json": "./package.json" }, "files": ["dist"], "scripts": {"build": "vite build --config vite.config.ts", "dev": "tsx src/index.ts", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run"}, "dependencies": {"@page-context/shared-protocol": "workspace:*", "lit": "^3.2.0", "zod": "^3.23.1"}, "peerDependencies": {"@page-context/mcp-bridge": "workspace:*", "@page-context/bridge-extension": "workspace:*"}, "keywords": ["page-context", "feedback", "annotation"], "license": "MIT"}
+{
+  "name": "@page-context/feedback",
+  "version": "0.0.1",
+  "description": "Feedback feature module — annotation CRUD, agent push, UI components, and MCP tool registration. Extracted from core packages to decouple from agentation.",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build --config vite.config.ts",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@page-context/shared-protocol": "workspace:*",
+    "lit": "^3.2.0",
+    "zod": "^3.23.1"
+  },
+  "peerDependencies": {
+    "@page-context/mcp-bridge": "workspace:*",
+    "@page-context/bridge-extension": "workspace:*"
+  },
+  "keywords": [
+    "page-context",
+    "feedback",
+    "annotation"
+  ],
+  "license": "MIT"
+}

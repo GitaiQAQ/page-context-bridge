@@ -1,6 +1,6 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { join } from "node:path";
-import type { FeedbackAnnotation, FeedbackPushAgentStatus } from "@page-context/shared-protocol";
+import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { join } from 'node:path';
+import type { FeedbackAnnotation, FeedbackPushAgentStatus } from '@page-context/shared-protocol';
 
 function getRuntimeEnv(): NodeJS.ProcessEnv {
   const globalWithProcess = globalThis as typeof globalThis & {
@@ -28,12 +28,12 @@ export interface LocalFeedbackAgentPushAdapterOptions {
     command: string,
     args: readonly string[],
     options: SpawnOptions,
-  ) => Pick<ChildProcess, "on" | "unref">;
+  ) => Pick<ChildProcess, 'on' | 'unref'>;
   log?: (message: string) => void;
 }
 
-const ENABLED_VALUES = new Set(["1", "true", "yes", "on"]);
-const DEFAULT_RUNTIME_DIR_NAME = ".feedback-agent-opencode";
+const ENABLED_VALUES = new Set(['1', 'true', 'yes', 'on']);
+const DEFAULT_RUNTIME_DIR_NAME = '.feedback-agent-opencode';
 
 /**
  * Create local auto-push adapter from environment variables.
@@ -48,7 +48,7 @@ export function createFeedbackAgentPushAdapterFromEnv(
     return null;
   }
 
-  const opencodeBin = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_BIN) ?? "opencode";
+  const opencodeBin = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_BIN) ?? 'opencode';
   const workingDirectory = pickFirstNonEmpty(env.FEEDBACK_AGENT_CWD) ?? process.cwd();
   const model = pickFirstNonEmpty(env.FEEDBACK_PUSH_MODEL) ?? undefined;
   const agentName = pickFirstNonEmpty(env.FEEDBACK_PUSH_NAME) ?? undefined;
@@ -73,18 +73,26 @@ export function createFeedbackPushAgentStatusFromEnv(
   const enabled = isEnvEnabled(env.FEEDBACK_PUSH_AGENT_ENABLED);
   return createFeedbackPushAgentStatus({
     enabled,
-    mode: enabled ? "local-opencode" : "disabled",
+    mode: enabled ? 'local-opencode' : 'disabled',
   });
 }
 
-export function buildFeedbackAgentSpawnEnv(env: NodeJS.ProcessEnv, workingDirectory: string): NodeJS.ProcessEnv {
-  const runtimeRoot = pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_RUNTIME_ROOT)
-    ?? join(workingDirectory, DEFAULT_RUNTIME_DIR_NAME);
-  const home = pickFirstNonEmpty(env.FEEDBACK_PUSH_HOME) ?? join(runtimeRoot, "home");
-  const xdgConfigHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_CONFIG_HOME) ?? join(runtimeRoot, "config");
-  const xdgDataHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_DATA_HOME) ?? join(runtimeRoot, "data");
-  const xdgStateHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_STATE_HOME) ?? join(runtimeRoot, "state");
-  const xdgCacheHome = pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_CACHE_HOME) ?? join(runtimeRoot, "cache");
+export function buildFeedbackAgentSpawnEnv(
+  env: NodeJS.ProcessEnv,
+  workingDirectory: string,
+): NodeJS.ProcessEnv {
+  const runtimeRoot =
+    pickFirstNonEmpty(env.FEEDBACK_PUSH_AGENT_RUNTIME_ROOT) ??
+    join(workingDirectory, DEFAULT_RUNTIME_DIR_NAME);
+  const home = pickFirstNonEmpty(env.FEEDBACK_PUSH_HOME) ?? join(runtimeRoot, 'home');
+  const xdgConfigHome =
+    pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_CONFIG_HOME) ?? join(runtimeRoot, 'config');
+  const xdgDataHome =
+    pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_DATA_HOME) ?? join(runtimeRoot, 'data');
+  const xdgStateHome =
+    pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_STATE_HOME) ?? join(runtimeRoot, 'state');
+  const xdgCacheHome =
+    pickFirstNonEmpty(env.FEEDBACK_PUSH_XDG_CACHE_HOME) ?? join(runtimeRoot, 'cache');
 
   return {
     ...env,
@@ -99,17 +107,20 @@ export function buildFeedbackAgentSpawnEnv(env: NodeJS.ProcessEnv, workingDirect
 /**
  * Minimal bridge-side local push: only responsible for "new annotation -> one opencode run".
  */
-export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, FeedbackAgentPushStatusReader {
+export class LocalFeedbackAgentPushAdapter
+  implements FeedbackAgentPushAdapter, FeedbackAgentPushStatusReader
+{
   private readonly launchedAnnotationIds = new Set<string>();
-  private readonly spawnProcess: NonNullable<LocalFeedbackAgentPushAdapterOptions["spawnProcess"]>;
+  private readonly spawnProcess: NonNullable<LocalFeedbackAgentPushAdapterOptions['spawnProcess']>;
   private readonly log: (message: string) => void;
   private readonly pushAgentStatus: FeedbackPushAgentStatus = createFeedbackPushAgentStatus({
     enabled: true,
-    mode: "local-opencode",
+    mode: 'local-opencode',
   });
 
   constructor(private readonly options: LocalFeedbackAgentPushAdapterOptions) {
-    this.spawnProcess = options.spawnProcess ?? ((command, args, spawnOptions) => spawn(command, args, spawnOptions));
+    this.spawnProcess =
+      options.spawnProcess ?? ((command, args, spawnOptions) => spawn(command, args, spawnOptions));
     this.log = options.log ?? defaultLog;
   }
 
@@ -121,9 +132,9 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
     if (this.launchedAnnotationIds.has(annotation.id)) return;
     this.launchedAnnotationIds.add(annotation.id);
 
-    const args: string[] = ["run"];
-    if (this.options.model) args.push("-m", this.options.model);
-    if (this.options.agentName) args.push("-agent", this.options.agentName);
+    const args: string[] = ['run'];
+    if (this.options.model) args.push('-m', this.options.model);
+    if (this.options.agentName) args.push('-agent', this.options.agentName);
     args.push(buildFeedbackAgentPrompt(this.options.tenantId, annotation));
     const attemptedAt = new Date().toISOString();
 
@@ -132,19 +143,23 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
         cwd: this.options.workingDirectory,
         env: this.options.spawnEnv,
         detached: true,
-        stdio: "ignore",
+        stdio: 'ignore',
         windowsHide: true,
       });
-      child.on("error", (error: unknown) => {
-        this.recordLaunchResult(annotation, attemptedAt, "failed", toErrorMessage(error));
-        this.log(`[feedback-agent-push] spawn error annotation=${annotation.id}: ${toErrorMessage(error)}`);
+      child.on('error', (error: unknown) => {
+        this.recordLaunchResult(annotation, attemptedAt, 'failed', toErrorMessage(error));
+        this.log(
+          `[feedback-agent-push] spawn error annotation=${annotation.id}: ${toErrorMessage(error)}`,
+        );
       });
       child.unref();
-      this.recordLaunchResult(annotation, attemptedAt, "success");
-      this.log(`[feedback-agent-push] launched annotation=${annotation.id} session=${annotation.sessionId}`);
+      this.recordLaunchResult(annotation, attemptedAt, 'success');
+      this.log(
+        `[feedback-agent-push] launched annotation=${annotation.id} session=${annotation.sessionId}`,
+      );
     } catch (error) {
       const failureReason = toErrorMessage(error);
-      this.recordLaunchResult(annotation, attemptedAt, "failed", failureReason);
+      this.recordLaunchResult(annotation, attemptedAt, 'failed', failureReason);
       this.log(`[feedback-agent-push] launch failed annotation=${annotation.id}: ${failureReason}`);
     }
   }
@@ -152,7 +167,7 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
   private recordLaunchResult(
     annotation: FeedbackAnnotation,
     attemptedAt: string,
-    result: "success" | "failed",
+    result: 'success' | 'failed',
     failureReason?: string,
   ): void {
     this.pushAgentStatus.lastLaunch = {
@@ -160,38 +175,38 @@ export class LocalFeedbackAgentPushAdapter implements FeedbackAgentPushAdapter, 
       sessionId: annotation.sessionId,
       attemptedAt,
       result,
-      failureReason: result === "failed" ? normalizeFailureReason(failureReason) : undefined,
+      failureReason: result === 'failed' ? normalizeFailureReason(failureReason) : undefined,
     };
   }
 }
 
 export function buildFeedbackAgentPrompt(tenantId: string, annotation: FeedbackAnnotation): string {
-  const body = annotation.body.trim() || "(empty)";
+  const body = annotation.body.trim() || '(empty)';
   const lines = [
-    "You are a local agent triggered by bridge, need to handle a new feedback annotation.",
+    'You are a local agent triggered by bridge, need to handle a new feedback annotation.',
     `tenant_id: ${tenantId}`,
     `annotation_id: ${annotation.id}`,
     `session_id: ${annotation.sessionId}`,
-    "",
-    "First call and only call existing feedback.* MCP tools to advance the process:",
+    '',
+    'First call and only call existing feedback.* MCP tools to advance the process:',
     `1) feedback_get_annotation({"annotationId":"${annotation.id}"})`,
     `2) feedback.claim({"annotationId":"${annotation.id}"})`,
     `3) feedback.reply({"annotationId":"${annotation.id}","body":"Your action plan"})`,
     `4) After completion, feedback.resolve({"annotationId":"${annotation.id}","resolution":"Your conclusion"})`,
-    "",
-    "Below is the original user feedback:",
+    '',
+    'Below is the original user feedback:',
     body,
   ];
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 export function createFeedbackPushAgentStatus(input: {
   enabled: boolean;
-  mode: FeedbackPushAgentStatus["mode"];
+  mode: FeedbackPushAgentStatus['mode'];
 }): FeedbackPushAgentStatus {
   return {
     enabled: input.enabled,
-    readiness: input.enabled ? "ready" : "disabled",
+    readiness: input.enabled ? 'ready' : 'disabled',
     mode: input.mode,
     lastLaunch: null,
   };
@@ -218,7 +233,7 @@ function toErrorMessage(error: unknown): string {
 
 function normalizeFailureReason(reason: string | undefined): string {
   const text = reason?.trim();
-  return text && text.length > 0 ? text : "unknown launch failure";
+  return text && text.length > 0 ? text : 'unknown launch failure';
 }
 
 function cloneFeedbackPushAgentStatus(status: FeedbackPushAgentStatus): FeedbackPushAgentStatus {
@@ -226,9 +241,7 @@ function cloneFeedbackPushAgentStatus(status: FeedbackPushAgentStatus): Feedback
     enabled: status.enabled,
     readiness: status.readiness,
     mode: status.mode,
-    lastLaunch: status.lastLaunch
-      ? { ...status.lastLaunch }
-      : null,
+    lastLaunch: status.lastLaunch ? { ...status.lastLaunch } : null,
   };
 }
 

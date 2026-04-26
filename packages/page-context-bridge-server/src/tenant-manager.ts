@@ -3,8 +3,8 @@
  * Each session gets a random ID, owns its own McpRegistry, and is fully isolated.
  */
 
-import type { McpRegistry } from "./mcp-registry.js";
-import { log } from "./mcp-registry.js";
+import type { McpRegistry } from './mcp-registry.js';
+import { log } from './mcp-registry.js';
 
 export interface Tenant {
   id: string;
@@ -15,8 +15,8 @@ export interface Tenant {
 }
 
 export interface ExtensionSlot {
-  ws: import("ws").WebSocket;
-  peer: import("@page-context/shared-protocol").RpcPeer;
+  ws: import('ws').WebSocket;
+  peer: import('@page-context/shared-protocol').RpcPeer;
   ready: boolean;
   sessionId: string | null;
   lastHeartbeatAt: number;
@@ -79,10 +79,10 @@ export class TenantManager {
 
   /** Extract tenant ID from URL path. Returns "default" if no /{id} prefix found. */
   static extractTenantId(urlPath: string): string {
-    const path = urlPath.split("?")[0].replace(/\/+$/, "");
+    const path = urlPath.split('?')[0].replace(/\/+$/, '');
     // Match first path segment that looks like a tenant ID
     const match = path.match(/^\/([a-zA-Z0-9_.-]+)(?:\/|$)/);
-    return match?.[1] ?? "default";
+    return match?.[1] ?? 'default';
   }
 
   /** Start periodic cleanup of idle tenants (no ext + no MCP clients for > 30 min). */
@@ -92,8 +92,8 @@ export class TenantManager {
       const now = Date.now();
       for (const [id, tenant] of this.tenants.entries()) {
         const hasExtension = tenant.extension !== null;
-        const hasClients = tenant.registry.getPageToolsByTab().size > 0
-          || tenant.registry.getServerCount() > 0;
+        const hasClients =
+          tenant.registry.getPageToolsByTab().size > 0 || tenant.registry.getServerCount() > 0;
         if (!hasExtension && !hasClients && now - tenant.lastActivityAt > idleMs) {
           this.remove(id);
         }

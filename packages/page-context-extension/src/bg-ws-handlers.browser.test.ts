@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BRIDGE_METHODS, RpcProtocolError, RPC_ERROR_CODES } from "@page-context/shared-protocol";
+import { BRIDGE_METHODS, RpcProtocolError, RPC_ERROR_CODES } from '@page-context/shared-protocol';
 
 function makePageToolState(overrides?: Record<string, unknown>) {
   return {
@@ -31,14 +31,14 @@ function installChromeMock(): void {
       },
     },
     runtime: {
-      id: "test-ext",
-      getManifest: () => ({ version: "0.0.0" }),
+      id: 'test-ext',
+      getManifest: () => ({ version: '0.0.0' }),
       sendMessage: vi.fn(),
     },
   };
 }
 
-describe("createWsHandlers", () => {
+describe('createWsHandlers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetModules();
@@ -54,25 +54,27 @@ describe("createWsHandlers", () => {
     const deps = {
       pageToolState: makePageToolState(),
       inFlightToolCalls,
-      listTabs: vi.fn().mockResolvedValue([{ id: 1, url: "https://example.com", title: "Example", active: true }]),
+      listTabs: vi
+        .fn()
+        .mockResolvedValue([{ id: 1, url: 'https://example.com', title: 'Example', active: true }]),
       installPageContextBridgeHostInMainWorld: vi.fn(),
       bridgeConnection: {
         getWsReady: vi.fn().mockReturnValue(true),
-        getSessionId: vi.fn().mockReturnValue("session-1"),
+        getSessionId: vi.fn().mockReturnValue('session-1'),
         forceReconnect: vi.fn().mockResolvedValue(undefined),
       },
       ...overrides,
     };
-    const { createWsHandlers } = await import("./bg-ws-handlers.js");
+    const { createWsHandlers } = await import('./bg-ws-handlers.js');
     return createWsHandlers(deps as Parameters<typeof createWsHandlers>[0]);
   }
 
-  describe("buildExtensionStatusResponse()", () => {
-    it("returns connected status from bridgeConnection", async () => {
+  describe('buildExtensionStatusResponse()', () => {
+    it('returns connected status from bridgeConnection', async () => {
       const handlers = await createHandlers({
         bridgeConnection: {
           getWsReady: vi.fn().mockReturnValue(true),
-          getSessionId: vi.fn().mockReturnValue("session-abc"),
+          getSessionId: vi.fn().mockReturnValue('session-abc'),
           forceReconnect: vi.fn(),
         },
       });
@@ -80,10 +82,10 @@ describe("createWsHandlers", () => {
 
       expect(status.connected).toBe(true);
       expect(status.wsUrl).toBeNull();
-      expect(status.sessionId).toBe("session-abc");
+      expect(status.sessionId).toBe('session-abc');
     });
 
-    it("reports pending tool calls count", async () => {
+    it('reports pending tool calls count', async () => {
       const deps = {
         bridgeConnection: {
           getWsReady: vi.fn().mockReturnValue(true),
@@ -93,13 +95,15 @@ describe("createWsHandlers", () => {
       };
       const handlers = await createHandlers(deps);
       // Access inFlightToolCalls through closure
-      const state = handlers as unknown as { buildExtensionStatusResponse(): { pendingToolCalls: number } };
+      const state = handlers as unknown as {
+        buildExtensionStatusResponse(): { pendingToolCalls: number };
+      };
       // We can't directly access inFlightToolCalls from outside, test via status shape
       const status1 = handlers.buildExtensionStatusResponse();
       expect(status1.pendingToolCalls).toBe(0);
     });
 
-    it("reports disconnected when WS not ready", async () => {
+    it('reports disconnected when WS not ready', async () => {
       const handlers = await createHandlers({
         bridgeConnection: {
           getWsReady: vi.fn().mockReturnValue(false),
@@ -114,10 +118,12 @@ describe("createWsHandlers", () => {
     });
   });
 
-  describe("handleExtensionReconnect()", () => {
-    it("calls forceReconnect and returns ok", async () => {
+  describe('handleExtensionReconnect()', () => {
+    it('calls forceReconnect and returns ok', async () => {
       const forceReconnect = vi.fn().mockResolvedValue(undefined);
-      const handlers = await createHandlers({ bridgeConnection: { forceReconnect, getWsReady: vi.fn(), getSessionId: vi.fn() } as never });
+      const handlers = await createHandlers({
+        bridgeConnection: { forceReconnect, getWsReady: vi.fn(), getSessionId: vi.fn() } as never,
+      });
       const result = await handlers.handleExtensionReconnect();
 
       expect(result).toEqual({ ok: true });
@@ -125,133 +131,156 @@ describe("createWsHandlers", () => {
     });
   });
 
-  describe("handleExtensionPageToolsGet()", () => {
-    it("returns tools for given tabId", async () => {
+  describe('handleExtensionPageToolsGet()', () => {
+    it('returns tools for given tabId', async () => {
       const handlers = await createHandlers();
       const result = handlers.handleExtensionPageToolsGet({ tabId: 42 });
 
-      expect(result).toHaveProperty("tools");
+      expect(result).toHaveProperty('tools');
       expect(Array.isArray(result.tools)).toBe(true);
     });
 
-    it("defaults to tabId 0 when not provided", async () => {
+    it('defaults to tabId 0 when not provided', async () => {
       const handlers = await createHandlers();
       const result = handlers.handleExtensionPageToolsGet({});
 
-      expect(result).toHaveProperty("tools");
+      expect(result).toHaveProperty('tools');
     });
   });
 
-  describe("handleExtensionPageToolsRefresh()", () => {
-    it("throws when no tabId provided", async () => {
+  describe('handleExtensionPageToolsRefresh()', () => {
+    it('throws when no tabId provided', async () => {
       const handlers = await createHandlers();
-      await expect(handlers.handleExtensionPageToolsRefresh({})).rejects.toThrow("No tabId provided");
+      await expect(handlers.handleExtensionPageToolsRefresh({})).rejects.toThrow(
+        'No tabId provided',
+      );
     });
 
-    it("throws when tabId is 0", async () => {
+    it('throws when tabId is 0', async () => {
       const handlers = await createHandlers();
-      await expect(handlers.handleExtensionPageToolsRefresh({ tabId: 0 })).rejects.toThrow("No tabId provided");
-    });
-  });
-
-  describe("handleExtensionContextManifestGet()", () => {
-    it("throws when no tabId provided", async () => {
-      const handlers = await createHandlers();
-      await expect(handlers.handleExtensionContextManifestGet({})).rejects.toThrow("No tabId provided");
+      await expect(handlers.handleExtensionPageToolsRefresh({ tabId: 0 })).rejects.toThrow(
+        'No tabId provided',
+      );
     });
   });
 
-  describe("handleExtensionContextResourceRead()", () => {
-    it("throws when tabId missing", async () => {
+  describe('handleExtensionContextManifestGet()', () => {
+    it('throws when no tabId provided', async () => {
       const handlers = await createHandlers();
-      await expect(handlers.handleExtensionContextResourceRead({ resourceId: "res-1" })).rejects.toThrow("tabId and resourceId are required");
-    });
-
-    it("throws when resourceId missing", async () => {
-      const handlers = await createHandlers();
-      await expect(handlers.handleExtensionContextResourceRead({ tabId: 1 })).rejects.toThrow("tabId and resourceId are required");
+      await expect(handlers.handleExtensionContextManifestGet({})).rejects.toThrow(
+        'No tabId provided',
+      );
     });
   });
 
-  describe("handleExtensionContextSkillGet()", () => {
-    it("throws when tabId missing", async () => {
+  describe('handleExtensionContextResourceRead()', () => {
+    it('throws when tabId missing', async () => {
       const handlers = await createHandlers();
-      await expect(handlers.handleExtensionContextSkillGet({ skillId: "skill-1" })).rejects.toThrow("tabId and skillId are required");
+      await expect(
+        handlers.handleExtensionContextResourceRead({ resourceId: 'res-1' }),
+      ).rejects.toThrow('tabId and resourceId are required');
     });
 
-    it("throws when skillId missing", async () => {
+    it('throws when resourceId missing', async () => {
       const handlers = await createHandlers();
-      await expect(handlers.handleExtensionContextSkillGet({ tabId: 1 })).rejects.toThrow("tabId and skillId are required");
+      await expect(handlers.handleExtensionContextResourceRead({ tabId: 1 })).rejects.toThrow(
+        'tabId and resourceId are required',
+      );
     });
   });
 
-  describe("handleExtensionToolDebugCall()", () => {
-    it("throws when no toolName provided", async () => {
+  describe('handleExtensionContextSkillGet()', () => {
+    it('throws when tabId missing', async () => {
+      const handlers = await createHandlers();
+      await expect(handlers.handleExtensionContextSkillGet({ skillId: 'skill-1' })).rejects.toThrow(
+        'tabId and skillId are required',
+      );
+    });
+
+    it('throws when skillId missing', async () => {
+      const handlers = await createHandlers();
+      await expect(handlers.handleExtensionContextSkillGet({ tabId: 1 })).rejects.toThrow(
+        'tabId and skillId are required',
+      );
+    });
+  });
+
+  describe('handleExtensionToolDebugCall()', () => {
+    it('throws when no toolName provided', async () => {
       const handlers = await createHandlers();
       await expect(handlers.handleExtensionToolDebugCall({})).rejects.toThrow();
     });
   });
 
-  describe("onBridgeWsExtensionRequest() - routing", () => {
-    it("routes extensionStatusGet correctly", async () => {
+  describe('onBridgeWsExtensionRequest() - routing', () => {
+    it('routes extensionStatusGet correctly', async () => {
       const handlers = await createHandlers();
-      const result = await handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionStatusGet, {});
-      expect(result).toHaveProperty("connected");
+      const result = await handlers.onBridgeWsExtensionRequest(
+        BRIDGE_METHODS.extensionStatusGet,
+        {},
+      );
+      expect(result).toHaveProperty('connected');
     });
 
-    it("routes extensionReconnect correctly", async () => {
+    it('routes extensionReconnect correctly', async () => {
       const handlers = await createHandlers();
-      const result = await handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionReconnect, {});
+      const result = await handlers.onBridgeWsExtensionRequest(
+        BRIDGE_METHODS.extensionReconnect,
+        {},
+      );
       expect(result).toEqual({ ok: true });
     });
 
-    it("routes extensionPageToolsGet correctly", async () => {
+    it('routes extensionPageToolsGet correctly', async () => {
       const handlers = await createHandlers();
-      const result = await handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionPageToolsGet, { tabId: 1 });
-      expect(result).toHaveProperty("tools");
+      const result = await handlers.onBridgeWsExtensionRequest(
+        BRIDGE_METHODS.extensionPageToolsGet,
+        { tabId: 1 },
+      );
+      expect(result).toHaveProperty('tools');
     });
 
-    it("routes extensionPageToolsDiscover/Refresh correctly", async () => {
+    it('routes extensionPageToolsDiscover/Refresh correctly', async () => {
       const handlers = await createHandlers();
       // With valid tabId, validation passes but discovery fails due to incomplete chrome mock
       await expect(
-        handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionPageToolsDiscover, { tabId: 1 }),
+        handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionPageToolsDiscover, {
+          tabId: 1,
+        }),
       ).rejects.toThrow();
     });
 
-    it("routes extensionContextManifestGet correctly", async () => {
+    it('routes extensionContextManifestGet correctly', async () => {
       const handlers = await createHandlers();
       await expect(
         handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionContextManifestGet, {}),
-      ).rejects.toThrow("No tabId provided");
+      ).rejects.toThrow('No tabId provided');
     });
 
-    it("routes extensionContextResourceRead correctly", async () => {
+    it('routes extensionContextResourceRead correctly', async () => {
       const handlers = await createHandlers();
       await expect(
         handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionContextResourceRead, {}),
-      ).rejects.toThrow("tabId and resourceId are required");
+      ).rejects.toThrow('tabId and resourceId are required');
     });
 
-    it("routes extensionContextSkillGet correctly", async () => {
+    it('routes extensionContextSkillGet correctly', async () => {
       const handlers = await createHandlers();
       await expect(
         handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionContextSkillGet, {}),
-      ).rejects.toThrow("tabId and skillId are required");
+      ).rejects.toThrow('tabId and skillId are required');
     });
 
-    it("routes extensionToolDebugCall correctly", async () => {
+    it('routes extensionToolDebugCall correctly', async () => {
       const handlers = await createHandlers();
       await expect(
         handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionToolDebugCall, {}),
-      ).rejects.toThrow("No toolName provided");
+      ).rejects.toThrow('No toolName provided');
     });
 
-    it("throws error for unknown methods", async () => {
+    it('throws error for unknown methods', async () => {
       const handlers = await createHandlers();
-      await expect(
-        handlers.onBridgeWsExtensionRequest("unknown.method", {}),
-      ).rejects.toThrow();
+      await expect(handlers.onBridgeWsExtensionRequest('unknown.method', {})).rejects.toThrow();
     });
   });
 });

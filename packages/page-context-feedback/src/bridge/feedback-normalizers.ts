@@ -3,10 +3,12 @@
  * No state dependencies — safe to import from any module.
  */
 
-import type { FeedbackUiAnchor } from "@page-context/shared-protocol";
+import type { FeedbackUiAnchor } from '@page-context/shared-protocol';
 
 /** Normalizes a UI anchor by cleaning and validating fields. Returns undefined if the result has no meaningful content. */
-export function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): FeedbackUiAnchor | undefined {
+export function normalizeUiAnchor(
+  anchor: FeedbackUiAnchor | undefined,
+): FeedbackUiAnchor | undefined {
   if (!anchor) return undefined;
 
   const framePath = Array.isArray(anchor.framePath)
@@ -14,7 +16,8 @@ export function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): Feedbac
     : undefined;
   const textRange = normalizeUiTextRange(anchor.textRange);
   const rect = normalizeUiRect(anchor.rect);
-  const meta = anchor.meta && Object.keys(anchor.meta).length > 0 ? cloneValue(anchor.meta) : undefined;
+  const meta =
+    anchor.meta && Object.keys(anchor.meta).length > 0 ? cloneValue(anchor.meta) : undefined;
 
   const normalized: FeedbackUiAnchor = {
     elementId: normalizeText(anchor.elementId),
@@ -28,8 +31,14 @@ export function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): Feedbac
   };
 
   if (
-    normalized.elementId || normalized.cssSelector || normalized.xpath ||
-    normalized.textQuote || normalized.framePath || normalized.textRange || normalized.rect || normalized.meta
+    normalized.elementId ||
+    normalized.cssSelector ||
+    normalized.xpath ||
+    normalized.textQuote ||
+    normalized.framePath ||
+    normalized.textRange ||
+    normalized.rect ||
+    normalized.meta
   ) {
     return normalized;
   }
@@ -38,22 +47,28 @@ export function normalizeUiAnchor(anchor: FeedbackUiAnchor | undefined): Feedbac
 
 /** Normalizes a UI rect, discarding invalid geometric data (NaN, negative dimensions). */
 export function normalizeUiRect(
-  rect: FeedbackUiAnchor["rect"] | undefined,
-): FeedbackUiAnchor["rect"] | undefined {
+  rect: FeedbackUiAnchor['rect'] | undefined,
+): FeedbackUiAnchor['rect'] | undefined {
   if (!rect) return undefined;
   const x = Number(rect.x);
   const y = Number(rect.y);
   const width = Number(rect.width);
   const height = Number(rect.height);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return undefined;
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  )
+    return undefined;
   if (width < 0 || height < 0) return undefined;
   return { x, y, width, height };
 }
 
 /** Normalizes a text range to [start, end] with non-negative integer validation. */
 export function normalizeUiTextRange(
-  range: FeedbackUiAnchor["textRange"] | undefined,
-): FeedbackUiAnchor["textRange"] | undefined {
+  range: FeedbackUiAnchor['textRange'] | undefined,
+): FeedbackUiAnchor['textRange'] | undefined {
   if (!range) return undefined;
   const start = Number(range.start);
   const end = Number(range.end);

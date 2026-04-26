@@ -8,13 +8,13 @@ import {
   RPC_ERROR_CODES,
   RpcPeer,
   RpcProtocolError,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-const DEFAULT_MCP_WS_URL = "ws://127.0.0.1:22335/default";
+const DEFAULT_MCP_WS_URL = 'ws://127.0.0.1:22335/default';
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const MCP_WS_URL_KEY = "mcpWsUrl";
+const MCP_WS_URL_KEY = 'mcpWsUrl';
 
 export interface SessionRegisterResult {
   sessionId: string;
@@ -84,7 +84,10 @@ export function getRpcPeer(): RpcPeer | null {
 }
 
 async function defaultOnExtensionRequest(method: string): Promise<never> {
-  throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unhandled WS extension method: ${method}`);
+  throw new RpcProtocolError(
+    RPC_ERROR_CODES.methodNotFound,
+    `Unhandled WS extension method: ${method}`,
+  );
 }
 
 // Unified bridge request entry: other background modules do not need to operate RpcPeer directly.
@@ -94,7 +97,7 @@ export async function requestBridge<TResult = unknown>(
   options?: { timeoutMs?: number },
 ): Promise<TResult> {
   if (!wsReady || !rpcPeer) {
-    throw new Error("Bridge is not connected");
+    throw new Error('Bridge is not connected');
   }
   return await rpcPeer.request<TResult>(method, params, options);
 }
@@ -105,7 +108,9 @@ export function resetConnectPromise(): void {
 
 export function queueNotification(method: string, params?: unknown): void {
   if (wsReady && rpcPeer) {
-    rpcPeer.notify(method, params).catch((error: unknown) => log(`Failed to notify ${method}`, error));
+    rpcPeer
+      .notify(method, params)
+      .catch((error: unknown) => log(`Failed to notify ${method}`, error));
     return;
   }
 
@@ -128,9 +133,11 @@ function ensureHeartbeatTimer(): void {
     if (!wsReady || !rpcPeer || !sessionId) {
       return;
     }
-    rpcPeer.notify(BRIDGE_METHODS.sessionHeartbeat, { sentAt: Date.now() }).catch((error: unknown) => {
-      log("Heartbeat failed", error);
-    });
+    rpcPeer
+      .notify(BRIDGE_METHODS.sessionHeartbeat, { sentAt: Date.now() })
+      .catch((error: unknown) => {
+        log('Heartbeat failed', error);
+      });
   }, HEARTBEAT_INTERVAL_MS);
 }
 
@@ -190,7 +197,10 @@ export async function connectWebSocket(
   onToolCall: (params: unknown, requestId: string) => Promise<unknown>,
   onToolsList: () => Promise<unknown>,
   onTabsList: () => Promise<unknown>,
-  onExtensionRequest: (method: string, params: unknown) => Promise<unknown> = defaultOnExtensionRequest,
+  onExtensionRequest: (
+    method: string,
+    params: unknown,
+  ) => Promise<unknown> = defaultOnExtensionRequest,
 ): Promise<void> {
   reconnectHandlers = { onToolCall, onToolsList, onTabsList, onExtensionRequest };
 
@@ -215,8 +225,8 @@ export async function connectWebSocket(
       defaultTimeoutMs: 30_000,
       getMeta: () => ({
         sessionId: sessionId ?? undefined,
-        source: "extension",
-        target: "bridge",
+        source: 'extension',
+        target: 'bridge',
       }),
     });
 
@@ -257,17 +267,19 @@ export async function connectWebSocket(
         if (ws !== socket || epoch !== wsEpoch || !rpcPeer) {
           return;
         }
-        void rpcPeer.receive(String(event.data)).catch((error: unknown) => log("Failed to process bridge message", error));
+        void rpcPeer
+          .receive(String(event.data))
+          .catch((error: unknown) => log('Failed to process bridge message', error));
       };
 
       socket.onerror = (error: Event) => {
         if (ws !== socket || epoch !== wsEpoch) {
           return;
         }
-        log("WebSocket error", error);
+        log('WebSocket error', error);
         // End the handshake proactively if it's not completed to avoid hanging connectPromise.
         if (!opened) {
-          rejectOnce(new Error("WebSocket errored before open"));
+          rejectOnce(new Error('WebSocket errored before open'));
           // Re-use onclose cleanup and reconnection logic to avoid duplicate handling.
           socket.close();
         }
@@ -277,32 +289,36 @@ export async function connectWebSocket(
         if (ws !== socket || epoch !== wsEpoch) {
           return;
         }
-        log("WebSocket closed");
+        log('WebSocket closed');
         if (!opened) {
           rejectOnce(new Error(`WebSocket closed before open (code=${event.code})`));
         }
         wsReady = false;
         sessionId = null;
-        rpcPeer?.failAllPending("Bridge transport closed");
+        rpcPeer?.failAllPending('Bridge transport closed');
         ws = null;
         scheduleReconnect();
       };
     });
 
     try {
-      const result = await rpcPeer.request<SessionRegisterResult>(BRIDGE_METHODS.sessionRegister, {
-        extensionId: chrome.runtime.id,
-        version: chrome.runtime.getManifest().version,
-      }, { timeoutMs: 5_000 });
+      const result = await rpcPeer.request<SessionRegisterResult>(
+        BRIDGE_METHODS.sessionRegister,
+        {
+          extensionId: chrome.runtime.id,
+          version: chrome.runtime.getManifest().version,
+        },
+        { timeoutMs: 5_000 },
+      );
       sessionId = result.sessionId;
       wsReady = true;
       reconnectAttempts = 0;
       clearReconnectTimer();
       ensureHeartbeatTimer();
       await flushQueuedNotifications();
-      log("Bridge session ready", sessionId);
+      log('Bridge session ready', sessionId);
     } catch (error: unknown) {
-      log("Bridge session register failed", error);
+      log('Bridge session register failed', error);
       socket.close();
     }
   })();
@@ -318,7 +334,10 @@ export function forceReconnect(
   onToolCall: (params: unknown, requestId: string) => Promise<unknown>,
   onToolsList: () => Promise<unknown>,
   onTabsList: () => Promise<unknown>,
-  onExtensionRequest: (method: string, params: unknown) => Promise<unknown> = defaultOnExtensionRequest,
+  onExtensionRequest: (
+    method: string,
+    params: unknown,
+  ) => Promise<unknown> = defaultOnExtensionRequest,
 ): Promise<void> {
   clearReconnectTimer();
   reconnectAttempts = 0;
@@ -338,5 +357,5 @@ export function initDefaultWsUrl(): Promise<void> {
 }
 
 export function log(...args: unknown[]): void {
-  console.log("[PAGE-CONTEXT-BG]", ...args);
+  console.log('[PAGE-CONTEXT-BG]', ...args);
 }

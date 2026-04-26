@@ -2,18 +2,32 @@
  * Lifecycle listener registrar.
  * Centralizes chrome event binding so that background.ts retains only assembly responsibility.
  */
-import { BRIDGE_METHODS } from "@page-context/shared-protocol";
+import { BRIDGE_METHODS } from '@page-context/shared-protocol';
 
-import { clearPageTools, discoverPageToolsAfterTabReload, discoverPageToolsForTab, ensurePageToolPreferencesLoaded, publishBuiltinTools, publishPageToolsForTab, type PageToolState } from "./bg-page-tools";
-import type { MainWorldBridgeHostInstaller } from "@page-context/agentation";
-import { createRuntimeListener } from "./runtime-rpc";
-import type { WsHandlers } from "./bg-ws-handlers";
+import {
+  clearPageTools,
+  discoverPageToolsAfterTabReload,
+  discoverPageToolsForTab,
+  ensurePageToolPreferencesLoaded,
+  publishBuiltinTools,
+  publishPageToolsForTab,
+  type PageToolState,
+} from './bg-page-tools';
+import type { MainWorldBridgeHostInstaller } from '@page-context/agentation';
+import { createRuntimeListener } from './runtime-rpc';
+import type { WsHandlers } from './bg-ws-handlers';
 
 interface RegisterLifecycleListenersDeps {
   pageToolState: PageToolState;
   installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller;
-  runtimeMessageHandler: (message: { method: string; params?: unknown }, sender: chrome.runtime.MessageSender) => Promise<unknown>;
-  wsHandlers: Pick<WsHandlers, "onToolCall" | "onToolsList" | "onTabsList" | "onBridgeWsExtensionRequest">;
+  runtimeMessageHandler: (
+    message: { method: string; params?: unknown },
+    sender: chrome.runtime.MessageSender,
+  ) => Promise<unknown>;
+  wsHandlers: Pick<
+    WsHandlers,
+    'onToolCall' | 'onToolsList' | 'onTabsList' | 'onBridgeWsExtensionRequest'
+  >;
   queueNotification(method: string, params?: unknown): void;
   connectWebSocket(
     onToolCall: (params: unknown, requestId: string) => Promise<unknown>,
@@ -34,19 +48,21 @@ export function registerLifecycleListeners(deps: RegisterLifecycleListenersDeps)
       tabId: activeInfo.tabId,
       windowId: activeInfo.windowId,
     });
-    void discoverPageToolsForTab(deps.pageToolState, activeInfo.tabId, deps.installPageContextBridgeHostInMainWorld).catch((error) =>
-      deps.log("Discovery on tab activation failed", error),
-    );
+    void discoverPageToolsForTab(
+      deps.pageToolState,
+      activeInfo.tabId,
+      deps.installPageContextBridgeHostInMainWorld,
+    ).catch((error) => deps.log('Discovery on tab activation failed', error));
   });
 
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.status === "loading") {
+    if (changeInfo.status === 'loading') {
       // Clear stale cache as soon as loading fires to guarantee a "re-discover -> re-publish" flow.
       deps.pageToolState.tabReloadDiscoveryInFlight.delete(tabId);
       clearPageTools(deps.pageToolState, tabId);
     }
 
-    if (changeInfo.status === "complete" || changeInfo.url) {
+    if (changeInfo.status === 'complete' || changeInfo.url) {
       deps.queueNotification(BRIDGE_METHODS.bridgeTabUpdated, {
         tabId,
         url: changeInfo.url,
@@ -54,10 +70,12 @@ export function registerLifecycleListeners(deps: RegisterLifecycleListenersDeps)
       });
     }
 
-    if (changeInfo.status === "complete") {
-      void discoverPageToolsAfterTabReload(deps.pageToolState, tabId, deps.installPageContextBridgeHostInMainWorld).catch((error) =>
-        deps.log("Discovery on tab update failed", error),
-      );
+    if (changeInfo.status === 'complete') {
+      void discoverPageToolsAfterTabReload(
+        deps.pageToolState,
+        tabId,
+        deps.installPageContextBridgeHostInMainWorld,
+      ).catch((error) => deps.log('Discovery on tab update failed', error));
     }
   });
 

@@ -1,8 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from 'vitest';
 
-import { ExtensionControlBridgeProvider, EXTENSION_CONTROL_TOOL_SUFFIXES } from "./extension-control-bridge-provider.js";
+import {
+  ExtensionControlBridgeProvider,
+  EXTENSION_CONTROL_TOOL_SUFFIXES,
+} from './extension-control-bridge-provider.js';
 
-describe("ExtensionControlBridgeProvider", () => {
+describe('ExtensionControlBridgeProvider', () => {
   function createRpc(overrides?: Record<string, unknown>) {
     return {
       getRuntimeStatus: vi.fn().mockResolvedValue({ ok: true, connected: true }),
@@ -19,21 +22,20 @@ describe("ExtensionControlBridgeProvider", () => {
     };
   }
 
-  describe("constructor options", () => {
+  describe('constructor options', () => {
     it("defaults namespace to 'extension'", () => {
       const p = new ExtensionControlBridgeProvider();
       const names = p.getToolNames();
-      expect(names.getRuntimeStatus).toBe("extension.get_runtime_status");
+      expect(names.getRuntimeStatus).toBe('extension.get_runtime_status');
     });
 
-    it("uses custom namespace when provided", () => {
-      const p = new ExtensionControlBridgeProvider({ namespace: "custom" } as never);
+    it('uses custom namespace when provided', () => {
+      const p = new ExtensionControlBridgeProvider({ namespace: 'custom' } as never);
       const names = p.getToolNames();
-      expect(names.getRuntimeStatus).toBe("custom.get_runtime_status");
+      expect(names.getRuntimeStatus).toBe('custom.get_runtime_status');
     });
-  });
 
-    it("includes all 10 tool suffixes", () => {
+    it('includes all 10 tool suffixes', () => {
       const p = new ExtensionControlBridgeProvider();
       const names = p.getToolNames();
       const suffixes = Object.values(EXTENSION_CONTROL_TOOL_SUFFIXES);
@@ -44,16 +46,16 @@ describe("ExtensionControlBridgeProvider", () => {
     });
   });
 
-  describe("registerOnBridge", () => {
-    it("registers all 10 primary", () => {
+  describe('registerOnBridge', () => {
+    it('registers all 10 primary', () => {
       const p = new ExtensionControlBridgeProvider();
       const registerTool = vi.fn((name) => ({ remove: vi.fn() }));
       const rpc = createRpc();
       const handles = p.registerOnBridge(registerTool, rpc);
 
       expect(handles.size).toBe(10);
-      expect(handles.has("extension.get_runtime_status")).toBe(true);
-      expect(handles.has("extension.reconnect")).toBe(true);
+      expect(handles.has('extension.get_runtime_status')).toBe(true);
+      expect(handles.has('extension.reconnect')).toBe(true);
     });
   });
 });

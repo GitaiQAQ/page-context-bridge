@@ -4,35 +4,35 @@
 
 // Feedback RPC methods are maintained separately to facilitate reuse of the same string constants across extension/bridge/MCP three ends.
 export const FEEDBACK_METHODS = {
-  feedbackStateSnapshot: "feedback.state.snapshot",
-  feedbackStateDelta: "feedback.state.delta",
-  feedbackAnnotationCreate: "feedback.annotation.create",
-  feedbackAnnotationUpdate: "feedback.annotation.update",
-  feedbackAnnotationClaim: "feedback.annotation.claim",
-  feedbackAnnotationReply: "feedback.annotation.reply",
-  feedbackAnnotationResolve: "feedback.annotation.resolve",
-  feedbackAnnotationDismiss: "feedback.annotation.dismiss",
-  extensionFeedbackStateSnapshot: "extension.feedback.state.snapshot",
-  extensionFeedbackStateDelta: "extension.feedback.state.delta",
-  extensionFeedbackAnnotationCreate: "extension.feedback.annotation.create",
-  extensionFeedbackAnnotationUpdate: "extension.feedback.annotation.update",
-  extensionFeedbackAnnotationClaim: "extension.feedback.annotation.claim",
-  extensionFeedbackAnnotationReply: "extension.feedback.annotation.reply",
-  extensionFeedbackAnnotationResolve: "extension.feedback.annotation.resolve",
-  extensionFeedbackAnnotationDismiss: "extension.feedback.annotation.dismiss",
+  feedbackStateSnapshot: 'feedback.state.snapshot',
+  feedbackStateDelta: 'feedback.state.delta',
+  feedbackAnnotationCreate: 'feedback.annotation.create',
+  feedbackAnnotationUpdate: 'feedback.annotation.update',
+  feedbackAnnotationClaim: 'feedback.annotation.claim',
+  feedbackAnnotationReply: 'feedback.annotation.reply',
+  feedbackAnnotationResolve: 'feedback.annotation.resolve',
+  feedbackAnnotationDismiss: 'feedback.annotation.dismiss',
+  extensionFeedbackStateSnapshot: 'extension.feedback.state.snapshot',
+  extensionFeedbackStateDelta: 'extension.feedback.state.delta',
+  extensionFeedbackAnnotationCreate: 'extension.feedback.annotation.create',
+  extensionFeedbackAnnotationUpdate: 'extension.feedback.annotation.update',
+  extensionFeedbackAnnotationClaim: 'extension.feedback.annotation.claim',
+  extensionFeedbackAnnotationReply: 'extension.feedback.annotation.reply',
+  extensionFeedbackAnnotationResolve: 'extension.feedback.annotation.resolve',
+  extensionFeedbackAnnotationDismiss: 'extension.feedback.annotation.dismiss',
 } as const;
 
 export type FeedbackAnnotationStatus =
-  | "open"
-  | "claimed"
-  | "in_progress"
-  | "needs_info"
-  | "resolved"
-  | "dismissed";
+  | 'open'
+  | 'claimed'
+  | 'in_progress'
+  | 'needs_info'
+  | 'resolved'
+  | 'dismissed';
 
-export type FeedbackPriority = "low" | "normal" | "high" | "critical";
+export type FeedbackPriority = 'low' | 'normal' | 'high' | 'critical';
 
-export type FeedbackActorSource = "user" | "agent" | "bridge" | "extension";
+export type FeedbackActorSource = 'user' | 'agent' | 'bridge' | 'extension';
 
 export interface FeedbackActor {
   source: FeedbackActorSource;
@@ -49,7 +49,7 @@ export interface FeedbackSession {
   route?: string;
   scene?: string;
   app?: string;
-  status: "active" | "archived";
+  status: 'active' | 'archived';
   createdAt: string;
   updatedAt: string;
   lastEventSeq: number;
@@ -121,7 +121,7 @@ export interface FeedbackThreadMessage {
   annotationId: string;
   author: FeedbackActor;
   body: string;
-  kind: "comment" | "action_note" | "resolution_note";
+  kind: 'comment' | 'action_note' | 'resolution_note';
   createdAt: string;
 }
 
@@ -145,13 +145,13 @@ export interface FeedbackAnnotation {
 }
 
 export type FeedbackEventType =
-  | "session.started"
-  | "annotation.created"
-  | "annotation.updated"
-  | "annotation.claimed"
-  | "annotation.replied"
-  | "annotation.resolved"
-  | "annotation.dismissed";
+  | 'session.started'
+  | 'annotation.created'
+  | 'annotation.updated'
+  | 'annotation.claimed'
+  | 'annotation.replied'
+  | 'annotation.resolved'
+  | 'annotation.dismissed';
 
 export interface FeedbackEvent {
   eventId: string;
@@ -178,7 +178,7 @@ export interface FeedbackPushAgentLastLaunch {
   annotationId: string;
   sessionId: string;
   attemptedAt: string;
-  result: "success" | "failed";
+  result: 'success' | 'failed';
   failureReason?: string;
 }
 
@@ -190,8 +190,8 @@ export interface FeedbackPushAgentLastLaunch {
  */
 export interface FeedbackPushAgentStatus {
   enabled: boolean;
-  readiness: "ready" | "disabled";
-  mode: "local-opencode" | "disabled" | "custom";
+  readiness: 'ready' | 'disabled';
+  mode: 'local-opencode' | 'disabled' | 'custom';
   lastLaunch: FeedbackPushAgentLastLaunch | null;
 }
 
@@ -240,7 +240,7 @@ export interface FeedbackAnnotationReplyParams {
   annotationId: string;
   body: string;
   actor?: FeedbackActor;
-  kind?: FeedbackThreadMessage["kind"];
+  kind?: FeedbackThreadMessage['kind'];
 }
 
 export interface FeedbackAnnotationResolveParams {

@@ -1,6 +1,11 @@
-import type { PageContextManifest } from "@page-context/shared-protocol";
+import type { PageContextManifest } from '@page-context/shared-protocol';
 
-export type ContextFilterReason = "namespace_disabled" | "builtin_tool_disabled" | "page_tool_disabled" | "scene_filtered" | "unknown";
+export type ContextFilterReason =
+  | 'namespace_disabled'
+  | 'builtin_tool_disabled'
+  | 'page_tool_disabled'
+  | 'scene_filtered'
+  | 'unknown';
 
 export interface ContextFilterDebugItem {
   id: string;
@@ -27,10 +32,12 @@ export function buildContextManifestFilterDebug(
   enabledBuiltinToolNames: Set<string>,
 ): ContextManifestFilterDebug {
   const rawNamespaces = rawManifest?.namespaces ?? [];
-  const effectiveNamespaces = new Set((effectiveManifest?.namespaces ?? []).map((entry) => entry.namespace));
+  const effectiveNamespaces = new Set(
+    (effectiveManifest?.namespaces ?? []).map((entry) => entry.namespace),
+  );
   const hiddenNamespaces = rawNamespaces
     .filter((entry) => !effectiveNamespaces.has(entry.namespace))
-    .map((entry) => ({ id: entry.namespace, reason: "namespace_disabled" as const }));
+    .map((entry) => ({ id: entry.namespace, reason: 'namespace_disabled' as const }));
   const hiddenNamespaceSet = new Set(hiddenNamespaces.map((entry) => entry.id));
 
   const rawResources = rawManifest?.resources ?? [];
@@ -39,16 +46,22 @@ export function buildContextManifestFilterDebug(
     .filter((entry) => !effectiveResources.has(entry.id))
     .map((entry) => ({
       id: entry.id,
-      reason: hiddenNamespaceSet.has(entry.namespace) ? "namespace_disabled" as const : "unknown" as const,
+      reason: hiddenNamespaceSet.has(entry.namespace)
+        ? ('namespace_disabled' as const)
+        : ('unknown' as const),
     }));
 
   const rawSkills = rawManifest?.skills ?? [];
-  const effectiveSkills = new Map((effectiveManifest?.skills ?? []).map((entry) => [entry.id, entry]));
+  const effectiveSkills = new Map(
+    (effectiveManifest?.skills ?? []).map((entry) => [entry.id, entry]),
+  );
   const hiddenSkills = rawSkills
     .filter((entry) => !effectiveSkills.has(entry.id))
     .map((entry) => ({
       id: entry.id,
-      reason: hiddenNamespaceSet.has(entry.namespace) ? "namespace_disabled" as const : "unknown" as const,
+      reason: hiddenNamespaceSet.has(entry.namespace)
+        ? ('namespace_disabled' as const)
+        : ('unknown' as const),
     }));
 
   const trimmedSkillTools = rawSkills
@@ -79,13 +92,17 @@ export function buildContextManifestFilterDebug(
     hiddenResources,
     hiddenSkills,
     trimmedSkillTools,
-    sceneChanged: (rawManifest?.scene ?? "") !== (effectiveManifest?.scene ?? ""),
+    sceneChanged: (rawManifest?.scene ?? '') !== (effectiveManifest?.scene ?? ''),
   };
 }
 
-function classifyToolReason(toolName: string, enabledPageToolNames: Set<string>, enabledBuiltinToolNames: Set<string>): ContextFilterReason {
-  if (toolName.includes(".")) {
-    return enabledPageToolNames.has(toolName) ? "unknown" : "page_tool_disabled";
+function classifyToolReason(
+  toolName: string,
+  enabledPageToolNames: Set<string>,
+  enabledBuiltinToolNames: Set<string>,
+): ContextFilterReason {
+  if (toolName.includes('.')) {
+    return enabledPageToolNames.has(toolName) ? 'unknown' : 'page_tool_disabled';
   }
-  return enabledBuiltinToolNames.has(toolName) ? "unknown" : "builtin_tool_disabled";
+  return enabledBuiltinToolNames.has(toolName) ? 'unknown' : 'builtin_tool_disabled';
 }

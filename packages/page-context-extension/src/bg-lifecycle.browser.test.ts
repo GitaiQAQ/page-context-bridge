@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BRIDGE_METHODS } from "@page-context/shared-protocol";
+import { BRIDGE_METHODS } from '@page-context/shared-protocol';
 
 /** Captured chrome event listeners for inspection. */
 interface CapturedListeners {
@@ -59,9 +59,11 @@ function installChromeMock(): () => void {
         }),
       },
       onUpdated: {
-        addListener: vi.fn((fn: (tabId: number, info: { status?: string; url?: string }) => void) => {
-          captured.tabsOnUpdated.push(fn);
-        }),
+        addListener: vi.fn(
+          (fn: (tabId: number, info: { status?: string; url?: string }) => void) => {
+            captured.tabsOnUpdated.push(fn);
+          },
+        ),
       },
       onRemoved: {
         addListener: vi.fn((fn: (tabId: number) => void) => {
@@ -91,7 +93,7 @@ function installChromeMock(): () => void {
   };
 }
 
-describe("registerLifecycleListeners", () => {
+describe('registerLifecycleListeners', () => {
   let cleanup: () => void;
   const log = vi.fn();
 
@@ -125,18 +127,18 @@ describe("registerLifecycleListeners", () => {
   }
 
   async function registerWithDeps(deps: Record<string, unknown>) {
-    const { registerLifecycleListeners } = await import("./bg-lifecycle.js");
+    const { registerLifecycleListeners } = await import('./bg-lifecycle.js');
     registerLifecycleListeners(deps as Parameters<typeof registerLifecycleListeners>[0]);
   }
 
-  it("registers runtime.onMessage listener", async () => {
+  it('registers runtime.onMessage listener', async () => {
     await registerWithDeps(makeDeps());
 
     expect(chrome.runtime.onMessage.addListener).toHaveBeenCalled();
     expect(captured.runtimeOnMessage).toHaveLength(1);
   });
 
-  it("registers all expected tab event listeners", async () => {
+  it('registers all expected tab event listeners', async () => {
     await registerWithDeps(makeDeps());
 
     expect(chrome.tabs.onActivated.addListener).toHaveBeenCalled();
@@ -147,7 +149,7 @@ describe("registerLifecycleListeners", () => {
     expect(captured.tabsOnRemoved).toHaveLength(1);
   });
 
-  it("registers lifecycle listeners (installed + startup)", async () => {
+  it('registers lifecycle listeners (installed + startup)', async () => {
     await registerWithDeps(makeDeps());
 
     expect(chrome.runtime.onInstalled.addListener).toHaveBeenCalled();
@@ -156,28 +158,28 @@ describe("registerLifecycleListeners", () => {
     expect(captured.runtimeOnStartup).toHaveLength(1);
   });
 
-  describe("tabs.onActivated handler", () => {
-    it("queues tab activated notification", async () => {
+  describe('tabs.onActivated handler', () => {
+    it('queues tab activated notification', async () => {
       const queueNotif = vi.fn();
       await registerWithDeps({ ...makeDeps(), queueNotification: queueNotif });
 
       const activateHandler = captured.tabsOnActivated[0];
-      if (!activateHandler) throw new Error("No activation handler");
+      if (!activateHandler) throw new Error('No activation handler');
       activateHandler({ tabId: 42, windowId: 1 });
 
-      expect(queueNotif).toHaveBeenCalledWith(
-        BRIDGE_METHODS.bridgeTabActivated,
-        { tabId: 42, windowId: 1 },
-      );
+      expect(queueNotif).toHaveBeenCalledWith(BRIDGE_METHODS.bridgeTabActivated, {
+        tabId: 42,
+        windowId: 1,
+      });
     });
   });
 
-  describe("tabs.onUpdated handler", () => {
-    it("clears tools and discovery in-flight on loading", async () => {
+  describe('tabs.onUpdated handler', () => {
+    it('clears tools and discovery in-flight on loading', async () => {
       const flightMap = new Map<number, boolean>();
       flightMap.set(5, true);
       const toolsMap = new Map<number, unknown[]>();
-      toolsMap.set(5, [{ name: "old-tool" }]);
+      toolsMap.set(5, [{ name: 'old-tool' }]);
       const state = makePageToolState({
         tabReloadDiscoveryInFlight: flightMap,
         pageToolsByTab: toolsMap,
@@ -185,40 +187,40 @@ describe("registerLifecycleListeners", () => {
       await registerWithDeps({ ...makeDeps(), pageToolState: state });
 
       const updateHandler = captured.tabsOnUpdated[0];
-      if (!updateHandler) throw new Error("No update handler");
-      updateHandler(5, { status: "loading" });
+      if (!updateHandler) throw new Error('No update handler');
+      updateHandler(5, { status: 'loading' });
 
       expect(state.tabReloadDiscoveryInFlight.has(5)).toBe(false);
       expect(state.pageToolsByTab.has(5)).toBe(false);
     });
 
-    it("queues notification on complete or url change", async () => {
+    it('queues notification on complete or url change', async () => {
       const queueNotif = vi.fn();
       await registerWithDeps({ ...makeDeps(), queueNotification: queueNotif });
 
       const updateHandler = captured.tabsOnUpdated[0];
-      if (!updateHandler) throw new Error("No update handler");
+      if (!updateHandler) throw new Error('No update handler');
 
-      updateHandler(3, { status: "complete" });
-      expect(queueNotif).toHaveBeenCalledWith(
-        BRIDGE_METHODS.bridgeTabUpdated,
-        { tabId: 3, status: "complete" },
-      );
+      updateHandler(3, { status: 'complete' });
+      expect(queueNotif).toHaveBeenCalledWith(BRIDGE_METHODS.bridgeTabUpdated, {
+        tabId: 3,
+        status: 'complete',
+      });
 
-      updateHandler(4, { url: "https://new.com" });
-      expect(queueNotif).toHaveBeenCalledWith(
-        BRIDGE_METHODS.bridgeTabUpdated,
-        { tabId: 4, url: "https://new.com" },
-      );
+      updateHandler(4, { url: 'https://new.com' });
+      expect(queueNotif).toHaveBeenCalledWith(BRIDGE_METHODS.bridgeTabUpdated, {
+        tabId: 4,
+        url: 'https://new.com',
+      });
     });
   });
 
-  describe("tabs.onRemoved handler", () => {
-    it("cleans up tab state", async () => {
+  describe('tabs.onRemoved handler', () => {
+    it('cleans up tab state', async () => {
       const flightMap2 = new Map<number, boolean>();
       flightMap2.set(7, true);
       const toolsMap2 = new Map<number, unknown[]>();
-      toolsMap2.set(7, [{ name: "removed-tool" }]);
+      toolsMap2.set(7, [{ name: 'removed-tool' }]);
       const state = makePageToolState({
         tabReloadDiscoveryInFlight: flightMap2,
         pageToolsByTab: toolsMap2,
@@ -226,7 +228,7 @@ describe("registerLifecycleListeners", () => {
       await registerWithDeps({ ...makeDeps(), pageToolState: state });
 
       const removeHandler = captured.tabsOnRemoved[0];
-      if (!removeHandler) throw new Error("No remove handler");
+      if (!removeHandler) throw new Error('No remove handler');
       removeHandler(7);
 
       expect(state.tabReloadDiscoveryInFlight.has(7)).toBe(false);
@@ -234,15 +236,19 @@ describe("registerLifecycleListeners", () => {
     });
   });
 
-  describe("runtime.onInstalled handler", () => {
-    it("initializes default WS URL and connects WebSocket", async () => {
+  describe('runtime.onInstalled handler', () => {
+    it('initializes default WS URL and connects WebSocket', async () => {
       const connectWs = vi.fn().mockResolvedValue(undefined);
       const initUrl = vi.fn().mockResolvedValue(undefined);
 
-      await registerWithDeps({ ...makeDeps(), connectWebSocket: connectWs, initDefaultWsUrl: initUrl });
+      await registerWithDeps({
+        ...makeDeps(),
+        connectWebSocket: connectWs,
+        initDefaultWsUrl: initUrl,
+      });
 
       const installedHandler = captured.runtimeOnInstalled[0];
-      if (!installedHandler) throw new Error("No installed handler");
+      if (!installedHandler) throw new Error('No installed handler');
       installedHandler();
 
       expect(initUrl).toHaveBeenCalled();
@@ -250,22 +256,22 @@ describe("registerLifecycleListeners", () => {
     });
   });
 
-  describe("runtime.onStartup handler", () => {
-    it("connects WebSocket on startup", async () => {
+  describe('runtime.onStartup handler', () => {
+    it('connects WebSocket on startup', async () => {
       const connectWs = vi.fn().mockResolvedValue(undefined);
 
       await registerWithDeps({ ...makeDeps(), connectWebSocket: connectWs });
 
       const startupHandler = captured.runtimeOnStartup[0];
-      if (!startupHandler) throw new Error("No startup handler");
+      if (!startupHandler) throw new Error('No startup handler');
       startupHandler();
 
       expect(connectWs).toHaveBeenCalled();
     });
   });
 
-  describe("initial connection", () => {
-    it("connects WebSocket immediately on registration", async () => {
+  describe('initial connection', () => {
+    it('connects WebSocket immediately on registration', async () => {
       const connectWs = vi.fn().mockResolvedValue(undefined);
 
       await registerWithDeps({ ...makeDeps(), connectWebSocket: connectWs });
@@ -275,8 +281,8 @@ describe("registerLifecycleListeners", () => {
     });
   });
 
-  describe("keep-alive timer", () => {
-    it("sets up keep-alive interval calling getPlatformInfo", async () => {
+  describe('keep-alive timer', () => {
+    it('sets up keep-alive interval calling getPlatformInfo', async () => {
       await registerWithDeps(makeDeps());
 
       // Advance time to trigger keep-alive

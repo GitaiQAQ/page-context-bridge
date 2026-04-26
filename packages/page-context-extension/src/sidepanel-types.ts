@@ -7,16 +7,16 @@ import type {
   ContextSkillDescriptor,
   FeedbackPriority,
   PageContextManifest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import type { ContextManifestFilterDebug } from "./context-manifest-filter-debug";
+import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
 
 export interface RuntimeStatus {
   connected: boolean;
 }
 
 export interface ToolTreeTool {
-  kind: "tool";
+  kind: 'tool';
   tabId: number;
   namespace: string;
   instanceId: string;
@@ -29,7 +29,7 @@ export interface ToolTreeTool {
 }
 
 export interface ToolTreeInstance {
-  kind: "instance";
+  kind: 'instance';
   tabId: number;
   namespace: string;
   instanceId: string;
@@ -39,7 +39,7 @@ export interface ToolTreeInstance {
 }
 
 export interface ToolTreeNamespace {
-  kind: "namespace";
+  kind: 'namespace';
   tabId: number;
   namespace: string;
   totalTools: number;
@@ -48,7 +48,7 @@ export interface ToolTreeNamespace {
 }
 
 export interface ToolTreeTab {
-  kind: "tab";
+  kind: 'tab';
   tabId: number;
   title: string;
   url: string;
@@ -66,7 +66,7 @@ export interface ToolTreeResponse {
 }
 
 export interface ToolTreeBuiltins {
-  kind: "builtins";
+  kind: 'builtins';
   totalTools: number;
   enabledTools: number;
   namespaces: ToolTreeBuiltinNamespace[];
@@ -78,7 +78,7 @@ export interface ToolTreeBuiltins {
 }
 
 export interface ToolTreeBuiltinNamespace {
-  kind: "builtin-namespace";
+  kind: 'builtin-namespace';
   namespace: string;
   totalTools: number;
   enabledTools: number;
@@ -86,7 +86,7 @@ export interface ToolTreeBuiltinNamespace {
 }
 
 export interface ToolTreeBuiltinInstance {
-  kind: "builtin-instance";
+  kind: 'builtin-instance';
   namespace: string;
   instanceId: string;
   totalTools: number;
@@ -95,7 +95,7 @@ export interface ToolTreeBuiltinInstance {
 }
 
 export interface ToolTreeBuiltinTool {
-  kind: "builtin-tool";
+  kind: 'builtin-tool';
   namespace: string;
   instanceId: string;
   toolName: string;
@@ -114,7 +114,7 @@ export interface ToolDebugResponse {
 }
 
 export interface ToolTestSelection {
-  root: "builtin" | "page";
+  root: 'builtin' | 'page';
   toolName: string;
   label: string;
   tabId?: number;

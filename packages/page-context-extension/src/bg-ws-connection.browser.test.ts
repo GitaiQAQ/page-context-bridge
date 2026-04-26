@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 class FakeRpcPeer {
   private static nextSessionId = 0;
@@ -46,7 +46,7 @@ class FakeWebSocket {
 
   close(): void {
     this.readyState = FakeWebSocket.CLOSED;
-    this.onclose?.(new CloseEvent("close", { code: 1000 }));
+    this.onclose?.(new CloseEvent('close', { code: 1000 }));
   }
 
   emitOpen(): void {
@@ -56,32 +56,32 @@ class FakeWebSocket {
 
   emitClose(code = 1006): void {
     this.readyState = FakeWebSocket.CLOSED;
-    this.onclose?.(new CloseEvent("close", { code }));
+    this.onclose?.(new CloseEvent('close', { code }));
   }
 }
 
 const BRIDGE_METHODS = {
-  bridgeToolCall: "bridge/toolCall",
-  bridgeToolsList: "bridge/toolsList",
-  bridgeTabsList: "bridge/tabsList",
-  sessionRegister: "session/register",
-  sessionHeartbeat: "session/heartbeat",
-  extensionStatusGet: "extension.status.get",
-  extensionReconnect: "extension.session.reconnect",
-  extensionPageToolsGet: "extension.pageTools.get",
-  extensionPageToolsTreeGet: "extension.pageTools.tree.get",
-  extensionPageToolsDiscover: "extension.pageTools.discover",
-  extensionPageToolsRefresh: "extension.pageTools.refresh",
-  extensionPageToolsSetEnabled: "extension.pageTools.setEnabled",
-  extensionToolDebugCall: "extension.tool.debug.call",
-  extensionMainWorldHostEnsure: "extension.mainWorld.host.ensure",
-  extensionAgentationMainEnsure: "extension.agentation.main.ensure",
-  extensionContextManifestGet: "extension.context.manifest.get",
-  extensionContextResourceRead: "extension.context.resource.read",
-  extensionContextSkillGet: "extension.context.skill.get",
+  bridgeToolCall: 'bridge/toolCall',
+  bridgeToolsList: 'bridge/toolsList',
+  bridgeTabsList: 'bridge/tabsList',
+  sessionRegister: 'session/register',
+  sessionHeartbeat: 'session/heartbeat',
+  extensionStatusGet: 'extension.status.get',
+  extensionReconnect: 'extension.session.reconnect',
+  extensionPageToolsGet: 'extension.pageTools.get',
+  extensionPageToolsTreeGet: 'extension.pageTools.tree.get',
+  extensionPageToolsDiscover: 'extension.pageTools.discover',
+  extensionPageToolsRefresh: 'extension.pageTools.refresh',
+  extensionPageToolsSetEnabled: 'extension.pageTools.setEnabled',
+  extensionToolDebugCall: 'extension.tool.debug.call',
+  extensionMainWorldHostEnsure: 'extension.mainWorld.host.ensure',
+  extensionAgentationMainEnsure: 'extension.agentation.main.ensure',
+  extensionContextManifestGet: 'extension.context.manifest.get',
+  extensionContextResourceRead: 'extension.context.resource.read',
+  extensionContextSkillGet: 'extension.context.skill.get',
 } as const;
 
-vi.mock("@page-context/shared-protocol", () => ({
+vi.mock('@page-context/shared-protocol', () => ({
   BRIDGE_METHODS,
   RpcPeer: FakeRpcPeer,
 }));
@@ -95,27 +95,28 @@ function installChromeMock(): void {
       },
     },
     runtime: {
-      id: "test-extension-id",
-      getManifest: () => ({ version: "0.0.0-test" }),
+      id: 'test-extension-id',
+      getManifest: () => ({ version: '0.0.0-test' }),
     },
   };
 }
 
-describe("connectWebSocket", () => {
+describe('connectWebSocket', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetModules();
     FakeWebSocket.instances = [];
     FakeRpcPeer.registeredMethods = [];
-    (globalThis as { WebSocket: typeof WebSocket }).WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    (globalThis as { WebSocket: typeof WebSocket }).WebSocket =
+      FakeWebSocket as unknown as typeof WebSocket;
     installChromeMock();
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
-  it("fails fast when socket closes before open and allows next connect", async () => {
-    const wsModule = await import("./bg-ws-connection");
+  it('fails fast when socket closes before open and allows next connect', async () => {
+    const wsModule = await import('./bg-ws-connection');
     const noop = vi.fn(async () => ({}));
 
     // First connection closes directly during handshake: should fail immediately, not hang.
@@ -123,10 +124,10 @@ describe("connectWebSocket", () => {
     await flushMicrotasks();
     const firstSocket = FakeWebSocket.instances[0];
     if (!firstSocket) {
-      throw new Error("Missing first socket instance");
+      throw new Error('Missing first socket instance');
     }
     firstSocket.emitClose(1006);
-    await expect(firstConnect).rejects.toThrow("before open");
+    await expect(firstConnect).rejects.toThrow('before open');
     expect(wsModule.getWsState().connectPromise).toBeNull();
 
     // Second connection is still available, indicating previous failure doesn't block global connectPromise.
@@ -134,22 +135,22 @@ describe("connectWebSocket", () => {
     await flushMicrotasks();
     const secondSocket = FakeWebSocket.instances[1];
     if (!secondSocket) {
-      throw new Error("Missing second socket instance");
+      throw new Error('Missing second socket instance');
     }
     secondSocket.emitOpen();
     await expect(secondConnect).resolves.toBeUndefined();
     expect(wsModule.getWsReady()).toBe(true);
   });
 
-  it("registers ws-forward extension methods including ensure main-world routes", async () => {
-    const wsModule = await import("./bg-ws-connection");
+  it('registers ws-forward extension methods including ensure main-world routes', async () => {
+    const wsModule = await import('./bg-ws-connection');
     const noop = vi.fn(async () => ({}));
 
     const connectPromise = wsModule.connectWebSocket(noop, noop, noop);
     await flushMicrotasks();
     const socket = FakeWebSocket.instances[0];
     if (!socket) {
-      throw new Error("Missing socket instance");
+      throw new Error('Missing socket instance');
     }
     socket.emitOpen();
     await connectPromise;

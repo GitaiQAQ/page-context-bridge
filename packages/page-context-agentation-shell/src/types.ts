@@ -1,4 +1,4 @@
-import type { FeedbackUiAdapter, FeedbackUiRect } from "@page-context/shared-protocol";
+import type { FeedbackUiAdapter, FeedbackUiRect } from '@page-context/shared-protocol';
 
 /**
  * Minimal snapshot of each aggregated element in multi-select mode.
@@ -24,7 +24,7 @@ export interface AgentationShellDeps {
   adapter: FeedbackUiAdapter;
   doc?: Document;
   win?: Window;
-  logger?: (level: "debug" | "error", message: string, extra?: unknown) => void;
+  logger?: (level: 'debug' | 'error', message: string, extra?: unknown) => void;
 }
 
 /**

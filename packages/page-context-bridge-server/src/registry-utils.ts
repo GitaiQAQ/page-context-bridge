@@ -2,13 +2,19 @@ import type {
   ContextResourceDescriptor,
   ContextSkillDescriptor,
   FeedbackActor,
-} from "@page-context/shared-protocol";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+} from '@page-context/shared-protocol';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import type { FeedbackAgentPushAdapter, FeedbackAgentPushStatusReader } from "./feedback-agent-push.js";
-import type { PageToolSpec, ServerHandleStore } from "./registry-types.js";
+import type {
+  FeedbackAgentPushAdapter,
+  FeedbackAgentPushStatusReader,
+} from './feedback-agent-push.js';
+import type { PageToolSpec, ServerHandleStore } from './registry-types.js';
 
-export function getOrCreateServerHandleMap<T>(store: ServerHandleStore<T>, server: McpServer): Map<string, T> {
+export function getOrCreateServerHandleMap<T>(
+  store: ServerHandleStore<T>,
+  server: McpServer,
+): Map<string, T> {
   let handles = store.get(server);
   if (!handles) {
     handles = new Map<string, T>();
@@ -29,16 +35,22 @@ export function normalizePageToolName(tool: PageToolSpec): string {
   return toolName;
 }
 
-export function buildContextResourceName(tabId: number, resource: ContextResourceDescriptor): string {
-  return `tab.${tabId}.resource.${resource.namespace}.${resource.id.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+export function buildContextResourceName(
+  tabId: number,
+  resource: ContextResourceDescriptor,
+): string {
+  return `tab.${tabId}.resource.${resource.namespace}.${resource.id.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
 }
 
-export function buildContextResourceUri(tabId: number, resource: ContextResourceDescriptor): string {
+export function buildContextResourceUri(
+  tabId: number,
+  resource: ContextResourceDescriptor,
+): string {
   return `context://tab/${tabId}/resource/${resource.namespace}/${encodeURIComponent(resource.id)}`;
 }
 
 export function buildContextPromptName(tabId: number, skill: ContextSkillDescriptor): string {
-  return `tab.${tabId}.skill.${skill.namespace}.${skill.id.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+  return `tab.${tabId}.skill.${skill.namespace}.${skill.id.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
 }
 
 export function uniqueStrings(values: string[]): string[] {
@@ -54,7 +66,7 @@ export function createFeedbackActor(input: FeedbackActor): FeedbackActor {
 }
 
 export function createTextResponse(text: string) {
-  return { content: [{ type: "text" as const, text }] };
+  return { content: [{ type: 'text' as const, text }] };
 }
 
 export function expandBuiltinToolNameAliases(toolNames: string[]): Set<string> {
@@ -65,9 +77,12 @@ export function expandBuiltinToolNameAliases(toolNames: string[]): Set<string> {
 export function isFeedbackAgentPushStatusReader(
   adapter: FeedbackAgentPushAdapter | null,
 ): adapter is FeedbackAgentPushAdapter & FeedbackAgentPushStatusReader {
-  return !!adapter && typeof (adapter as unknown as FeedbackAgentPushStatusReader).getPushAgentStatus === "function";
+  return (
+    !!adapter &&
+    typeof (adapter as unknown as FeedbackAgentPushStatusReader).getPushAgentStatus === 'function'
+  );
 }
 
 export function log(...args: unknown[]): void {
-  process.stderr.write(`[PAGE-CONTEXT-BRIDGE] ${args.map(String).join(" ")}\n`);
+  process.stderr.write(`[PAGE-CONTEXT-BRIDGE] ${args.map(String).join(' ')}\n`);
 }

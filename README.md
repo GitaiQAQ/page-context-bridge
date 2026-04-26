@@ -88,12 +88,15 @@ Core constraints:
 ## User Stories
 
 ### 1. Automated Root Cause Analysis
+
 > As a Technical Support Engineer, I want to invoke a specialized "Diagnosis Agent" that automatically checks hidden configuration rules, so that I can identify why a complex form is invalid in seconds instead of checking multiple dashboards.
 
 ### 2. Natural Language Interface for Complex Software
+
 > As a SaaS Product Manager, I want to expose my application's internal API as debug tools, so that my users can perform complex bulk operations via natural language.
 
 ### 3. Deep State Inspection
+
 > As a Frontend Developer, I want to ask the agent "Which observable caused this unexpected re-render?", so that the agent can traverse the state tree and pinpoint the exact data change.
 
 ## Repository Layout
@@ -155,20 +158,20 @@ packages/
 
 The extension also provides builtin diagnostics and browser interaction tools that complement page-declared capabilities:
 
-| Tool | Description |
-|------|-------------|
-| `list_tabs` | List open browser tabs |
-| `get_page_info` | Get page title, URL, and metadata |
-| `get_selected_text` | Get currently selected text |
-| `click_element` | Click an element by CSS selector |
-| `get_element_text` | Get text content of an element |
-| `get_element_html` | Get HTML of an element |
-| `query_elements` | Query elements by CSS selector |
-| `fill_input` | Fill an input field (triggers React/Vue change detection) |
-| `execute_js` | Execute JavaScript in page context |
-| `screenshot_tab` | Capture a tab screenshot |
-| `get_console_logs` | Get captured console output |
-| `navigate` | Navigate to a URL |
+| Tool                | Description                                               |
+| ------------------- | --------------------------------------------------------- |
+| `list_tabs`         | List open browser tabs                                    |
+| `get_page_info`     | Get page title, URL, and metadata                         |
+| `get_selected_text` | Get currently selected text                               |
+| `click_element`     | Click an element by CSS selector                          |
+| `get_element_text`  | Get text content of an element                            |
+| `get_element_html`  | Get HTML of an element                                    |
+| `query_elements`    | Query elements by CSS selector                            |
+| `fill_input`        | Fill an input field (triggers React/Vue change detection) |
+| `execute_js`        | Execute JavaScript in page context                        |
+| `screenshot_tab`    | Capture a tab screenshot                                  |
+| `get_console_logs`  | Get captured console output                               |
+| `navigate`          | Navigate to a URL                                         |
 
 ### Page Context Protocol
 
@@ -274,6 +277,7 @@ Requirements:
 5. Select the `packages/page-context-extension/dist/` directory
 
 After loading, the extension will:
+
 - Inject the content script into all pages
 - Start the service worker (background.ts)
 - Provide a popup for connection status
@@ -373,16 +377,32 @@ Pages expose capabilities via `window.__pageContextBridge__`:
 ```ts
 // Minimal page integration
 window.__pageContextBridge__ = {
-  version: "0.1.0",
-  listNamespaces() { return ["catalog"] },
-  getNamespace(ns) { /* return namespace object */ },
-  getScene() { return "catalog-list" },
-  listResources() { /* return resource descriptors */ },
-  readResource(id) { /* return resource payload */ },
-  listSkills() { /* return skill descriptors */ },
-  getSkill(id, input?) { /* return skill prompt */ },
-  getManifest() { /* return full manifest */ },
-}
+  version: '0.1.0',
+  listNamespaces() {
+    return ['catalog'];
+  },
+  getNamespace(ns) {
+    /* return namespace object */
+  },
+  getScene() {
+    return 'catalog-list';
+  },
+  listResources() {
+    /* return resource descriptors */
+  },
+  readResource(id) {
+    /* return resource payload */
+  },
+  listSkills() {
+    /* return skill descriptors */
+  },
+  getSkill(id, input?) {
+    /* return skill prompt */
+  },
+  getManifest() {
+    /* return full manifest */
+  },
+};
 ```
 
 See the [Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md) for the complete specification and [example-page-core.ts](./packages/page-context-extension/src/example-page-core.ts) for a full implementation.
@@ -392,6 +412,7 @@ See the [Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md) f
 > **Warning**: The `execute_js` builtin tool executes arbitrary JavaScript in the page context. This is by design to allow deep page inspection, but represents a significant attack surface. Use with caution in production environments.
 
 Key security properties:
+
 - The MCP bridge server runs locally and has no authentication — it relies on local network isolation
 - CORS is set to `*` on the static asset server — intended for local development only
 - Page tool discovery uses Chrome's scripting API with proper isolation boundaries
@@ -400,6 +421,7 @@ Key security properties:
 ## Current Status
 
 Implemented:
+
 - Monorepo build system (pnpm workspaces + TypeScript + Vite + Vitest)
 - MCP bridge server with SSE and stdio transport
 - Chrome extension (MV3) with service worker, content script, side panel, and popup
@@ -413,6 +435,7 @@ Implemented:
 - 29 unit tests across all packages
 
 Not yet completed:
+
 - E2E tests
 - CI/CD pipeline
 - RPC parameter runtime validation (currently uses type assertions)
@@ -426,6 +449,7 @@ Not yet completed:
 - [Userscript Adapter Package](./packages/page-context-userscripts/README.md)
 
 Userscript build artifacts:
+
 - `packages/page-context-userscripts/dist/react-inspector.user.js`
 - `packages/page-context-userscripts/dist/apollo-client.user.js`
 - `packages/page-context-userscripts/dist/tanstack-query.user.js`

@@ -9,14 +9,11 @@
  * - registry-context-manifest.ts — Context Manifest registration
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { FeedbackCapabilityLinks, PageContextManifest } from "@page-context/shared-protocol";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { FeedbackCapabilityLinks, PageContextManifest } from '@page-context/shared-protocol';
 
-import type { ExtensionRpcCaller, PageToolSpec } from "./registry-types.js";
-import {
-  normalizePageToolName,
-  uniqueStrings,
-} from "./registry-utils.js";
+import type { ExtensionRpcCaller, PageToolSpec } from './registry-types.js';
+import { normalizePageToolName, uniqueStrings } from './registry-utils.js';
 
 // Domain functions — split into focused modules
 import {
@@ -26,7 +23,7 @@ import {
   setPageTools,
   unregisterPageToolsFromAllServers,
   unregisterPageToolsFromServer,
-} from "./registry-page-tools.js";
+} from './registry-page-tools.js';
 
 export {
   deletePageTools,
@@ -35,19 +32,19 @@ export {
   setPageTools,
   unregisterPageToolsFromAllServers,
   unregisterPageToolsFromServer,
-} from "./registry-page-tools.js";
+} from './registry-page-tools.js';
 
 import {
   registerContextManifestOnServer,
   syncContextManifestOnAllServers,
   unregisterContextManifestFromServer,
-} from "./registry-context-manifest.js";
+} from './registry-context-manifest.js';
 
 export {
   registerContextManifestOnServer,
   syncContextManifestOnAllServers,
   unregisterContextManifestFromServer,
-} from "./registry-context-manifest.js";
+} from './registry-context-manifest.js';
 
 /**
  * Tab-scoped registry state container.
@@ -55,9 +52,15 @@ export {
  * does not mix in builtin/feedback control tools.
  */
 export interface RegistryTabState {
-  pageToolHandlesByServer: import("./registry-types.js").ServerHandleStore<import("./registry-types.js").RegisteredPageTool>;
-  contextResourceHandlesByServer: import("./registry-types.js").ServerHandleStore<import("./registry-types.js").RegisteredContextResource>;
-  contextPromptHandlesByServer: import("./registry-types.js").ServerHandleStore<import("./registry-types.js").RegisteredContextPrompt>;
+  pageToolHandlesByServer: import('./registry-types.js').ServerHandleStore<
+    import('./registry-types.js').RegisteredPageTool
+  >;
+  contextResourceHandlesByServer: import('./registry-types.js').ServerHandleStore<
+    import('./registry-types.js').RegisteredContextResource
+  >;
+  contextPromptHandlesByServer: import('./registry-types.js').ServerHandleStore<
+    import('./registry-types.js').RegisteredContextPrompt
+  >;
   pageToolsByTab: Map<number, PageToolSpec[]>;
   pageContextManifestByTab: Map<number, PageContextManifest>;
 }
@@ -68,7 +71,11 @@ export interface RefreshPageToolsForTabInput {
   tabId: number;
   rpcCaller: Pick<
     ExtensionRpcCaller,
-    "refreshPageTools" | "getContextManifest" | "sendToolCall" | "readContextResource" | "getContextSkillPrompt"
+    | 'refreshPageTools'
+    | 'getContextManifest'
+    | 'sendToolCall'
+    | 'readContextResource'
+    | 'getContextSkillPrompt'
   >;
   logger?: (...args: unknown[]) => void;
 }
@@ -88,7 +95,9 @@ export function createRegistryTabState(): RegistryTabState {
   };
 }
 
-export async function refreshPageToolsForTab(input: RefreshPageToolsForTabInput): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
+export async function refreshPageToolsForTab(
+  input: RefreshPageToolsForTabInput,
+): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
   const { state, mcpServers, tabId, rpcCaller, logger = console.log } = input;
 
   // Refresh extension-side tools first, then overwrite local cache so MCP sees results from the same discovery round.
@@ -99,7 +108,9 @@ export async function refreshPageToolsForTab(input: RefreshPageToolsForTabInput)
 
   // Manifest sync failure should not roll back tool refresh; degrade to null per historical behavior and continue.
   const manifest = await rpcCaller.getContextManifest(tabId).catch((error) => {
-    logger(`Refresh manifest failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`);
+    logger(
+      `Refresh manifest failed for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   });
   syncContextManifestOnAllServers({ state, mcpServers, rpcCaller, tabId, manifest });
@@ -122,10 +133,10 @@ export function deriveFeedbackLinksFromTabState(input: {
 
   const linkReasons: string[] = [];
   if (manifest) {
-    linkReasons.push("manifest.namespaces", "manifest.resources", "manifest.skills");
+    linkReasons.push('manifest.namespaces', 'manifest.resources', 'manifest.skills');
   }
   if (relatedToolNames.length > 0) {
-    linkReasons.push("page-tools.registered");
+    linkReasons.push('page-tools.registered');
   }
 
   return {
@@ -143,7 +154,10 @@ export function deriveFeedbackLinksFromTabState(input: {
 export function syncTabStateToNewServer(input: {
   state: RegistryTabState;
   mcpServer: McpServer;
-  rpcCaller: Pick<ExtensionRpcCaller, "sendToolCall" | "readContextResource" | "getContextSkillPrompt">;
+  rpcCaller: Pick<
+    ExtensionRpcCaller,
+    'sendToolCall' | 'readContextResource' | 'getContextSkillPrompt'
+  >;
   logger?: (...args: unknown[]) => void;
 }): void {
   const { state, mcpServer, rpcCaller, logger } = input;

@@ -76,7 +76,7 @@ export class OpenCodeError extends Error {
   constructor(
     public code: ErrorCode,
     message: string,
-    public cause?: unknown
+    public cause?: unknown,
   ) {
     super(message);
     this.name = 'OpenCodeError';

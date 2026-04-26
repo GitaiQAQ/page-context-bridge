@@ -23,5 +23,7 @@
     "@page-context/shared-protocol": "workspace:*"
   },
   "license": "MIT",
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  }
 }

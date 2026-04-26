@@ -5,7 +5,7 @@
  * Historical aliases are intentionally NOT supported.
  */
 
-export const BUILTIN_RUNTIME_NAMESPACE = "builtin";
+export const BUILTIN_RUNTIME_NAMESPACE = 'builtin';
 
 /**
  * Helper for constructing canonical runtime builtin tool names.

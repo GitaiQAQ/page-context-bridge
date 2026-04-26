@@ -31,6 +31,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # 基础质量门禁：代码风格 + 潜在问题检查（在类型检查之前，快速拦截低级问题）
+      - name: Lint
+        run: pnpm lint
+
       - name: Type check
         run: pnpm typecheck
 

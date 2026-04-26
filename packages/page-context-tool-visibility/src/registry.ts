@@ -1,11 +1,14 @@
 /**
  * Registry utilities for page-tool entries.
  */
-import type { PageToolEntry, PageToolSpec } from "./types";
+import type { PageToolEntry, PageToolSpec } from './types';
 
-export function normalizePageToolEntries(rawEntries: Array<{ namespace: string; instanceId: string; tools: PageToolSpec[] }>): PageToolEntry[] {
+export function normalizePageToolEntries(
+  rawEntries: Array<{ namespace: string; instanceId: string; tools: PageToolSpec[] }>,
+): PageToolEntry[] {
   return rawEntries.map((entry) => {
-    const prefix = entry.instanceId !== "default" ? `${entry.namespace}.${entry.instanceId}` : entry.namespace;
+    const prefix =
+      entry.instanceId !== 'default' ? `${entry.namespace}.${entry.instanceId}` : entry.namespace;
     return {
       namespace: entry.namespace,
       instanceId: entry.instanceId,
@@ -20,8 +23,14 @@ export function normalizePageToolEntries(rawEntries: Array<{ namespace: string; 
   });
 }
 
-export function mergePageToolEntry(entries: PageToolEntry[], nextEntry: PageToolEntry): PageToolEntry[] {
-  const filtered = entries.filter((entry) => !(entry.namespace === nextEntry.namespace && entry.instanceId === nextEntry.instanceId));
+export function mergePageToolEntry(
+  entries: PageToolEntry[],
+  nextEntry: PageToolEntry,
+): PageToolEntry[] {
+  const filtered = entries.filter(
+    (entry) =>
+      !(entry.namespace === nextEntry.namespace && entry.instanceId === nextEntry.instanceId),
+  );
   return [...filtered, nextEntry];
 }
 
@@ -40,7 +49,7 @@ export function flattenPageTools(entries: PageToolEntry[] | undefined): PageTool
 
 function stripExistingPrefix(name: string, namespace: string, instanceId: string): string {
   const instancePrefix = `${namespace}.${instanceId}.`;
-  if (instanceId !== "default" && name.startsWith(instancePrefix)) {
+  if (instanceId !== 'default' && name.startsWith(instancePrefix)) {
     return name.slice(instancePrefix.length);
   }
 

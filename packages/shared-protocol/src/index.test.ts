@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 
 import {
   BRIDGE_METHODS,
@@ -8,71 +8,79 @@ import {
   RpcProtocolError,
   parseMessage,
   serializeMessage,
-} from "./index";
+} from './index';
 
-describe("RpcPeer", () => {
-  it("completes request/response roundtrip", async () => {
+describe('RpcPeer', () => {
+  it('completes request/response roundtrip', async () => {
     const wire: string[] = [];
     const client = new RpcPeer({ send: (message) => wire.push(message) });
     const server = new RpcPeer({ send: (message) => wire.push(message) });
 
-    server.register(BRIDGE_METHODS.bridgeTabsList, async () => [{ id: 1, title: "Tab" }]);
+    server.register(BRIDGE_METHODS.bridgeTabsList, async () => [{ id: 1, title: 'Tab' }]);
 
     const pending = client.request(BRIDGE_METHODS.bridgeTabsList);
     await server.receive(wire.shift()!);
     await client.receive(wire.shift()!);
 
-    await expect(pending).resolves.toEqual([{ id: 1, title: "Tab" }]);
+    await expect(pending).resolves.toEqual([{ id: 1, title: 'Tab' }]);
   });
 
-  it("dispatches notifications without waiting for response", async () => {
+  it('dispatches notifications without waiting for response', async () => {
     const sent: string[] = [];
     const peer = new RpcPeer({ send: (message) => sent.push(message) });
 
-    await peer.notify(BRIDGE_METHODS.bridgePageEvent, { type: "demo" });
+    await peer.notify(BRIDGE_METHODS.bridgePageEvent, { type: 'demo' });
 
     const message = parseMessage(sent[0]);
-    expect("id" in message).toBe(false);
+    expect('id' in message).toBe(false);
   });
 
-  it("fails pending requests on disconnect", async () => {
+  it('fails pending requests on disconnect', async () => {
     const peer = new RpcPeer({ send: () => undefined, defaultTimeoutMs: 1000 });
-    const pending = peer.request("demo.method");
+    const pending = peer.request('demo.method');
 
-    peer.failAllPending("transport closed");
+    peer.failAllPending('transport closed');
 
     await expect(pending).rejects.toBeInstanceOf(RpcProtocolError);
   });
 
-  it("serializes valid json-rpc envelopes", () => {
-    const raw = serializeMessage({ jsonrpc: "2.0", method: BRIDGE_METHODS.sessionHeartbeat, params: { ok: true } });
+  it('serializes valid json-rpc envelopes', () => {
+    const raw = serializeMessage({
+      jsonrpc: '2.0',
+      method: BRIDGE_METHODS.sessionHeartbeat,
+      params: { ok: true },
+    });
     expect(parseMessage(raw)).toMatchObject({ method: BRIDGE_METHODS.sessionHeartbeat });
   });
 
-  it("exports feedback method constants through the shared barrel", () => {
-    expect(BRIDGE_METHODS.feedbackStateSnapshot).toBe("feedback.state.snapshot");
-    expect(BRIDGE_METHODS.extensionFeedbackStateDelta).toBe("extension.feedback.state.delta");
-    expect(BRIDGE_METHODS.extensionFeedbackAnnotationCreate).toBe("extension.feedback.annotation.create");
-    expect(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate).toBe("extension.feedback.annotation.update");
-    expect(BRIDGE_METHODS.extensionPageToolsRefresh).toBe("extension.pageTools.refresh");
-    expect(FEEDBACK_METHODS.feedbackAnnotationResolve).toBe("feedback.annotation.resolve");
-    expect(FEEDBACK_METHODS.feedbackAnnotationUpdate).toBe("feedback.annotation.update");
+  it('exports feedback method constants through the shared barrel', () => {
+    expect(BRIDGE_METHODS.feedbackStateSnapshot).toBe('feedback.state.snapshot');
+    expect(BRIDGE_METHODS.extensionFeedbackStateDelta).toBe('extension.feedback.state.delta');
+    expect(BRIDGE_METHODS.extensionFeedbackAnnotationCreate).toBe(
+      'extension.feedback.annotation.create',
+    );
+    expect(BRIDGE_METHODS.extensionFeedbackAnnotationUpdate).toBe(
+      'extension.feedback.annotation.update',
+    );
+    expect(BRIDGE_METHODS.extensionPageToolsRefresh).toBe('extension.pageTools.refresh');
+    expect(FEEDBACK_METHODS.feedbackAnnotationResolve).toBe('feedback.annotation.resolve');
+    expect(FEEDBACK_METHODS.feedbackAnnotationUpdate).toBe('feedback.annotation.update');
   });
 
-  it("keeps feedback create payload backward compatible while supporting uiAnchor", () => {
+  it('keeps feedback create payload backward compatible while supporting uiAnchor', () => {
     // Legacy payload without uiAnchor should still pass type constraints to avoid upgrade blocking.
     const legacyPayload: FeedbackAnnotationCreateParams = {
-      body: "legacy body",
+      body: 'legacy body',
       tabId: 1,
-      url: "https://example.com/legacy",
+      url: 'https://example.com/legacy',
     };
 
     const enhancedPayload: FeedbackAnnotationCreateParams = {
-      body: "new body",
+      body: 'new body',
       tabId: 2,
-      url: "https://example.com/new",
+      url: 'https://example.com/new',
       uiAnchor: {
-        cssSelector: "#submit",
+        cssSelector: '#submit',
         framePath: [0],
         rect: { x: 10, y: 20, width: 30, height: 40 },
         textRange: { start: 0, end: 6 },
@@ -80,6 +88,6 @@ describe("RpcPeer", () => {
     };
 
     expect(legacyPayload.uiAnchor).toBeUndefined();
-    expect(enhancedPayload.uiAnchor?.cssSelector).toBe("#submit");
+    expect(enhancedPayload.uiAnchor?.cssSelector).toBe('#submit');
   });
 });

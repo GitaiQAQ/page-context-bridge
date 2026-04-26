@@ -8,7 +8,7 @@
  * shape of scalar fields and keep arrays/objects as `unknown` for downstream
  * type narrowing — this avoids duplicating the full type definitions here.
  */
-import { z } from "zod";
+import { z } from 'zod';
 
 // --- Bridge Server RPC handlers (extension -> bridge) ---
 
@@ -79,7 +79,7 @@ export const extensionPageToolsRegisterParamsSchema = z.object({
 });
 
 export const extensionPageToolsSetEnabledParamsSchema = z.object({
-  root: z.enum(["builtin", "page"]).optional(),
+  root: z.enum(['builtin', 'page']).optional(),
   tabId: z.number().optional(),
   namespace: z.string().optional(),
   instanceId: z.string().optional(),
@@ -100,7 +100,7 @@ export const bridgeToolCallParamsSchema = z.object({
 });
 
 const feedbackActorSchema = z.object({
-  source: z.enum(["user", "agent", "bridge", "extension"]),
+  source: z.enum(['user', 'agent', 'bridge', 'extension']),
   id: z.string().min(1),
   displayName: z.string().min(1),
 });
@@ -113,13 +113,15 @@ const feedbackUiRectSchema = z.object({
   height: z.number(),
 });
 
-const feedbackUiTextRangeSchema = z.object({
-  start: z.number().int().nonnegative(),
-  end: z.number().int().nonnegative(),
-}).refine((value) => value.end >= value.start, {
-  path: ["end"],
-  message: "end must be greater than or equal to start",
-});
+const feedbackUiTextRangeSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+  })
+  .refine((value) => value.end >= value.start, {
+    path: ['end'],
+    message: 'end must be greater than or equal to start',
+  });
 
 const feedbackUiAnchorSchema = z.object({
   elementId: z.string().optional(),
@@ -144,7 +146,7 @@ export const feedbackStateDeltaParamsSchema = z.object({
 
 export const feedbackAnnotationCreateParamsSchema = z.object({
   body: z.string().trim().min(1),
-  priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).optional(),
   tabId: z.number().int(),
   url: z.string().min(1),
   title: z.string().optional(),
@@ -156,7 +158,7 @@ export const feedbackAnnotationCreateParamsSchema = z.object({
 export const feedbackAnnotationUpdateParamsSchema = z.object({
   annotationId: z.string().min(1),
   body: z.string().trim().min(1),
-  priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'critical']).optional(),
   actor: feedbackActorSchema.optional(),
 });
 
@@ -168,7 +170,7 @@ export const feedbackAnnotationClaimParamsSchema = z.object({
 export const feedbackAnnotationReplyParamsSchema = z.object({
   annotationId: z.string().min(1),
   body: z.string().trim().min(1),
-  kind: z.enum(["comment", "action_note", "resolution_note"]).optional(),
+  kind: z.enum(['comment', 'action_note', 'resolution_note']).optional(),
   actor: feedbackActorSchema.optional(),
 });
 
@@ -191,7 +193,7 @@ export const feedbackAnnotationDismissParamsSchema = z.object({
 export function validateParams<T>(schema: z.ZodType<T>, params: unknown, methodName: string): T {
   const result = schema.safeParse(params);
   if (!result.success) {
-    const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     throw new Error(`Invalid params for ${methodName}: ${issues}`);
   }
   return result.data;

@@ -1,15 +1,15 @@
 import type {
   FeedbackAnnotationCreateParams,
   FeedbackAnnotationUpdateParams,
-} from "@page-context/shared-protocol";
-import type { ActiveTabFeedbackContext } from "./bg-feedback-context";
+} from '@page-context/shared-protocol';
+import type { ActiveTabFeedbackContext } from './bg-feedback-context';
 
 /**
  * Builds params for creating a feedback annotation from runtime payload + captured tab context.
  * Enriches UI anchor with React meta from main world when available.
  */
 export function buildFeedbackAnnotationCreateParams(
-  payload: import("@page-context/shared-protocol").FeedbackRuntimeCreatePayload,
+  payload: import('@page-context/shared-protocol').FeedbackRuntimeCreatePayload,
   context: ActiveTabFeedbackContext,
 ): FeedbackAnnotationCreateParams {
   return {
@@ -23,7 +23,9 @@ export function buildFeedbackAnnotationCreateParams(
   };
 }
 
-export function buildFeedbackAnnotationUpdateParams(payload: import("@page-context/shared-protocol").FeedbackRuntimeUpdatePayload): FeedbackAnnotationUpdateParams {
+export function buildFeedbackAnnotationUpdateParams(
+  payload: import('@page-context/shared-protocol').FeedbackRuntimeUpdatePayload,
+): FeedbackAnnotationUpdateParams {
   return {
     annotationId: payload.annotationId.trim(),
     body: payload.body.trim(),
@@ -31,7 +33,9 @@ export function buildFeedbackAnnotationUpdateParams(payload: import("@page-conte
   };
 }
 
-export function normalizeFeedbackUiAnchor(anchor: FeedbackAnnotationCreateParams["uiAnchor"]): FeedbackAnnotationCreateParams["uiAnchor"] {
+export function normalizeFeedbackUiAnchor(
+  anchor: FeedbackAnnotationCreateParams['uiAnchor'],
+): FeedbackAnnotationCreateParams['uiAnchor'] {
   if (!anchor) return undefined;
 
   const framePath = Array.isArray(anchor.framePath)
@@ -39,7 +43,7 @@ export function normalizeFeedbackUiAnchor(anchor: FeedbackAnnotationCreateParams
     : undefined;
   const textQuote = anchor.textQuote?.trim();
 
-  const normalized: FeedbackAnnotationCreateParams["uiAnchor"] = {
+  const normalized: FeedbackAnnotationCreateParams['uiAnchor'] = {
     elementId: anchor.elementId?.trim() || undefined,
     cssSelector: anchor.cssSelector?.trim() || undefined,
     xpath: anchor.xpath?.trim() || undefined,
@@ -50,9 +54,14 @@ export function normalizeFeedbackUiAnchor(anchor: FeedbackAnnotationCreateParams
     meta: anchor.meta && Object.keys(anchor.meta).length > 0 ? anchor.meta : undefined,
   };
   if (
-    normalized.elementId || normalized.cssSelector || normalized.xpath ||
-    normalized.textQuote || normalized.framePath ||
-    normalized.rect || normalized.textRange || normalized.meta
+    normalized.elementId ||
+    normalized.cssSelector ||
+    normalized.xpath ||
+    normalized.textQuote ||
+    normalized.framePath ||
+    normalized.rect ||
+    normalized.textRange ||
+    normalized.meta
   ) {
     return normalized;
   }

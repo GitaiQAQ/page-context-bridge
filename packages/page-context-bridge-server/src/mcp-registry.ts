@@ -3,7 +3,7 @@
  * Orchestrates only: delegates registration, tab state, and feedback domain logic to helper/service modules.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {
   FeedbackAnnotationClaimParams,
   FeedbackAnnotationCreateParams,
@@ -17,21 +17,24 @@ import type {
   ToolSpec,
   FeedbackPushAgentStatus,
   PageContextManifest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 import {
   BuiltinBridgeProvider,
   ExtensionControlBridgeProvider,
   FeedbackControlBridgeProvider,
   type PageToolEnableUpdate,
-} from "@page-context/builtin-tools";
+} from '@page-context/builtin-tools';
 
 import {
   createFeedbackAgentPushAdapterFromEnv,
   createFeedbackPushAgentStatus,
   createFeedbackPushAgentStatusFromEnv,
   type FeedbackAgentPushAdapter,
-} from "./feedback-agent-push.js";
-import { createRegistryFeedbackService, type RegistryFeedbackService } from "./registry-feedback-service.js";
+} from './feedback-agent-push.js';
+import {
+  createRegistryFeedbackService,
+  type RegistryFeedbackService,
+} from './registry-feedback-service.js';
 import {
   createRegistryRegistrarState,
   registerExtensionToolControlToolsOnServer,
@@ -39,7 +42,7 @@ import {
   syncBuiltinToolsOnAllServers,
   syncBuiltinToolsOnServer,
   type RegistryRegistrarState,
-} from "./registry-registrars.js";
+} from './registry-registrars.js';
 import {
   createRegistryTabState,
   deletePageTools,
@@ -55,14 +58,14 @@ import {
   unregisterPageToolsFromAllServers,
   unregisterPageToolsFromServer,
   type RegistryTabState,
-} from "./registry-tab-state.js";
-import type { ExtensionRpcCaller, PageToolSpec } from "./registry-types.js";
-import { expandBuiltinToolNameAliases, log, normalizePageToolName } from "./registry-utils.js";
-import { getRuntimeEnv } from "./runtime-env.js";
+} from './registry-tab-state.js';
+import type { ExtensionRpcCaller, PageToolSpec } from './registry-types.js';
+import { expandBuiltinToolNameAliases, log, normalizePageToolName } from './registry-utils.js';
+import { getRuntimeEnv } from './runtime-env.js';
 
-export type { PageToolSpec, ExtensionRpcCaller } from "./registry-types.js";
-export type { PageToolEnableUpdate } from "@page-context/builtin-tools";
-export { log } from "./registry-utils.js";
+export type { PageToolSpec, ExtensionRpcCaller } from './registry-types.js';
+export type { PageToolEnableUpdate } from '@page-context/builtin-tools';
+export { log } from './registry-utils.js';
 
 export interface McpRegistryOptions {
   feedbackAgentPushAdapter?: FeedbackAgentPushAdapter | null;
@@ -81,7 +84,7 @@ export class McpRegistry {
 
   constructor(
     private readonly rpcCaller: ExtensionRpcCaller,
-    tenantId = "default",
+    tenantId = 'default',
     options: McpRegistryOptions = {},
   ) {
     const enabledBuiltinToolNames = expandBuiltinToolNameAliases(
@@ -91,14 +94,16 @@ export class McpRegistry {
 
     const runtimeEnv = options.env ?? getRuntimeEnv();
     // Compatibility: allow test injection; fall back to env-based auto-creation only when not injected.
-    const feedbackAgentPushAdapter = options.feedbackAgentPushAdapter !== undefined
-      ? options.feedbackAgentPushAdapter
-      : createFeedbackAgentPushAdapterFromEnv(tenantId, runtimeEnv, (message) => log(message));
-    const feedbackAgentPushStatusFallback = options.feedbackAgentPushStatus
-      ?? (options.feedbackAgentPushAdapter !== undefined
+    const feedbackAgentPushAdapter =
+      options.feedbackAgentPushAdapter !== undefined
+        ? options.feedbackAgentPushAdapter
+        : createFeedbackAgentPushAdapterFromEnv(tenantId, runtimeEnv, (message) => log(message));
+    const feedbackAgentPushStatusFallback =
+      options.feedbackAgentPushStatus ??
+      (options.feedbackAgentPushAdapter !== undefined
         ? createFeedbackPushAgentStatus({
             enabled: feedbackAgentPushAdapter != null,
-            mode: feedbackAgentPushAdapter ? "custom" : "disabled",
+            mode: feedbackAgentPushAdapter ? 'custom' : 'disabled',
           })
         : createFeedbackPushAgentStatusFromEnv(runtimeEnv));
 
@@ -106,7 +111,8 @@ export class McpRegistry {
       tenantId,
       feedbackAgentPushAdapter,
       feedbackAgentPushStatusFallback,
-      deriveFeedbackLinks: (tabId) => deriveFeedbackLinksFromTabState({ state: this.tabState, tabId }),
+      deriveFeedbackLinks: (tabId) =>
+        deriveFeedbackLinksFromTabState({ state: this.tabState, tabId }),
       logger: log,
     });
   }
@@ -237,7 +243,9 @@ export class McpRegistry {
 
   // ── Page tools ──
 
-  async refreshPageToolsForTab(tabId: number): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
+  async refreshPageToolsForTab(
+    tabId: number,
+  ): Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }> {
     return refreshPageToolsForTab({
       state: this.tabState,
       mcpServers: this.mcpServers,
@@ -302,7 +310,11 @@ export class McpRegistry {
 
   // ── Context manifest ──
 
-  registerContextManifestOnServer(mcpServer: McpServer, tabId: number, manifest: PageContextManifest): void {
+  registerContextManifestOnServer(
+    mcpServer: McpServer,
+    tabId: number,
+    manifest: PageContextManifest,
+  ): void {
     registerContextManifestOnServer({
       state: this.tabState,
       mcpServer,

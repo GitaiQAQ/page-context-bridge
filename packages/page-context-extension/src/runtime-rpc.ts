@@ -10,26 +10,44 @@ import {
   type RpcMeta,
   type RpcNotification,
   type RpcRequest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-type RuntimeHandler = (message: RpcRequest | RpcNotification, sender: chrome.runtime.MessageSender) => Promise<unknown> | unknown;
+type RuntimeHandler = (
+  message: RpcRequest | RpcNotification,
+  sender: chrome.runtime.MessageSender,
+) => Promise<unknown> | unknown;
 
-export async function sendRuntimeRequest<TResult>(method: string, params?: unknown): Promise<TResult> {
+export async function sendRuntimeRequest<TResult>(
+  method: string,
+  params?: unknown,
+): Promise<TResult> {
   const response = await chrome.runtime.sendMessage(createRequest(method, params));
   return unwrapRpcResponse<TResult>(response);
 }
 
-export async function sendRuntimeNotification(method: string, params?: unknown, meta?: RpcMeta): Promise<void> {
+export async function sendRuntimeNotification(
+  method: string,
+  params?: unknown,
+  meta?: RpcMeta,
+): Promise<void> {
   await chrome.runtime.sendMessage(createNotification(method, params, meta));
 }
 
-export async function sendTabRequest<TResult>(tabId: number, method: string, params?: unknown): Promise<TResult> {
+export async function sendTabRequest<TResult>(
+  tabId: number,
+  method: string,
+  params?: unknown,
+): Promise<TResult> {
   const response = await chrome.tabs.sendMessage(tabId, createRequest(method, params));
   return unwrapRpcResponse<TResult>(response);
 }
 
 export function createRuntimeListener(handler: RuntimeHandler) {
-  return (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void): boolean => {
+  return (
+    message: unknown,
+    sender: chrome.runtime.MessageSender,
+    sendResponse: (response?: unknown) => void,
+  ): boolean => {
     if (!isRpcRequest(message) && !isRpcNotification(message)) {
       return false;
     }
@@ -60,12 +78,12 @@ export function createRuntimeListener(handler: RuntimeHandler) {
 
 export function unwrapRpcResponse<TResult>(message: unknown): TResult {
   if (!isRpcResponse(message)) {
-    throw new Error("Expected JSON-RPC response envelope");
+    throw new Error('Expected JSON-RPC response envelope');
   }
 
   const rpcMessage = message;
 
-  if ("error" in rpcMessage) {
+  if ('error' in rpcMessage) {
     throw new Error(rpcMessage.error.message);
   }
 
@@ -73,5 +91,5 @@ export function unwrapRpcResponse<TResult>(message: unknown): TResult {
 }
 
 function hasRequestId(message: RpcRequest | RpcNotification): message is RpcRequest {
-  return "id" in message && typeof message.id === "string";
+  return 'id' in message && typeof message.id === 'string';
 }

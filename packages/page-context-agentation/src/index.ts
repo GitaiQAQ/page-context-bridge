@@ -23,8 +23,8 @@ export {
   getMainWorldInjectionTarget,
   type MainWorldBridgeHostInstaller,
   type MainWorldInjectionTarget,
-} from "./main-world/injection";
+} from './main-world/injection';
 
 // ─── React Meta Detection ──────────────────────────────────────────────────
 
-export { enrichUiAnchorReactMetaInMainWorld } from "./react-meta";
+export { enrichUiAnchorReactMetaInMainWorld } from './react-meta';

@@ -1,9 +1,6 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type {
-  ContextResourcePayload,
-  PageContextManifest,
-} from "@page-context/shared-protocol";
-import type { PageToolEnableUpdate } from "@page-context/builtin-tools";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ContextResourcePayload, PageContextManifest } from '@page-context/shared-protocol';
+import type { PageToolEnableUpdate } from '@page-context/builtin-tools';
 
 export interface PageToolSpec {
   name: string;

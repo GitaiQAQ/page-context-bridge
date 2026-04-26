@@ -1,15 +1,20 @@
 const POLL_INTERVAL_MS = 3000;
 
 // Read target from URL hash
-const target = (location.hash || "").replace(/^#/, "") || new URLSearchParams(location.search).get("target") || "";
-const inner = document.getElementById("inner") as HTMLIFrameElement;
-const status = document.getElementById("status")!;
+const target =
+  (location.hash || '').replace(/^#/, '') ||
+  new URLSearchParams(location.search).get('target') ||
+  '';
+const inner = document.getElementById('inner') as HTMLIFrameElement;
+const status = document.getElementById('status')!;
 
 function loadTarget() {
-  status.style.display = "none";
-  inner.style.display = "block";
+  status.style.display = 'none';
+  inner.style.display = 'block';
   inner.src = target;
-  try { parent.postMessage({ type: "sidepanel-probe", ok: true }, "*"); } catch (_) {}
+  try {
+    parent.postMessage({ type: 'sidepanel-probe', ok: true }, '*');
+  } catch (_) {}
 }
 
 function showInitial() {
@@ -24,10 +29,10 @@ function showInitial() {
 }
 
 function showError() {
-  let portInfo = "";
+  let portInfo = '';
   try {
     const url = new URL(target);
-    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80');
     portInfo = `<span style="color:#999;font-size:11px">Target: ${url.hostname}:${port}</span>`;
   } catch (_) {
     portInfo = `<span style="color:#999;font-size:11px">Target: ${target}</span>`;
@@ -46,14 +51,18 @@ function showError() {
     </div>
     <button class="btn-start" id="btnStart">Start Local Service</button>
   `;
-  document.getElementById("btnStart")!.addEventListener("click", () => {
-    try { parent.postMessage({ type: "sidepanel-action", action: "open-opencode" }, "*"); } catch (_) {}
+  document.getElementById('btnStart')!.addEventListener('click', () => {
+    try {
+      parent.postMessage({ type: 'sidepanel-action', action: 'open-opencode' }, '*');
+    } catch (_) {}
   });
-  try { parent.postMessage({ type: "sidepanel-probe", ok: false }, "*"); } catch (_) {}
+  try {
+    parent.postMessage({ type: 'sidepanel-probe', ok: false }, '*');
+  } catch (_) {}
 }
 
 function probe() {
-  fetch(target, { method: "HEAD", cache: "no-store" })
+  fetch(target, { method: 'HEAD', cache: 'no-store' })
     .then(() => loadTarget())
     .catch(() => {
       showError();

@@ -169,16 +169,16 @@ The first implementation should introduce transport-safe shared types. The exact
 
 ```ts
 type FeedbackAnnotationStatus =
-  | "open"
-  | "claimed"
-  | "in_progress"
-  | "needs_info"
-  | "resolved"
-  | "dismissed";
+  | 'open'
+  | 'claimed'
+  | 'in_progress'
+  | 'needs_info'
+  | 'resolved'
+  | 'dismissed';
 
-type FeedbackPriority = "low" | "normal" | "high" | "critical";
+type FeedbackPriority = 'low' | 'normal' | 'high' | 'critical';
 
-type FeedbackActorSource = "user" | "agent" | "bridge" | "extension";
+type FeedbackActorSource = 'user' | 'agent' | 'bridge' | 'extension';
 
 interface FeedbackActor {
   source: FeedbackActorSource;
@@ -195,7 +195,7 @@ interface FeedbackSession {
   route?: string;
   scene?: string;
   app?: string;
-  status: "active" | "archived";
+  status: 'active' | 'archived';
   createdAt: string;
   updatedAt: string;
   lastEventSeq: number;
@@ -238,7 +238,7 @@ interface FeedbackThreadMessage {
   annotationId: string;
   author: FeedbackActor;
   body: string;
-  kind: "comment" | "action_note" | "resolution_note";
+  kind: 'comment' | 'action_note' | 'resolution_note';
   createdAt: string;
 }
 
@@ -268,12 +268,12 @@ interface FeedbackEvent {
   annotationId?: string;
   seq: number;
   eventType:
-    | "session.started"
-    | "annotation.created"
-    | "annotation.claimed"
-    | "annotation.replied"
-    | "annotation.resolved"
-    | "annotation.dismissed";
+    | 'session.started'
+    | 'annotation.created'
+    | 'annotation.claimed'
+    | 'annotation.replied'
+    | 'annotation.resolved'
+    | 'annotation.dismissed';
   occurredAt: string;
   source: FeedbackActorSource;
   payload: Record<string, unknown>;

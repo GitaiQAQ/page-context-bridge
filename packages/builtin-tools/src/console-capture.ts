@@ -6,7 +6,7 @@
  */
 
 export interface ConsoleEntry {
-  level: "log" | "warn" | "error" | "info";
+  level: 'log' | 'warn' | 'error' | 'info';
   timestamp: number;
   args: string;
 }
@@ -21,19 +21,19 @@ export function createConsoleCapture(win: Window, consoleEntries: ConsoleEntry[]
     info: console.info.bind(console),
   };
 
-  const capture = (level: ConsoleEntry["level"], args: unknown[]) => {
+  const capture = (level: ConsoleEntry['level'], args: unknown[]) => {
     const entry: ConsoleEntry = {
       level,
       timestamp: Date.now(),
       args: args
         .map((value) => {
           try {
-            return typeof value === "object" ? JSON.stringify(value) : String(value);
+            return typeof value === 'object' ? JSON.stringify(value) : String(value);
           } catch {
             return String(value);
           }
         })
-        .join(" "),
+        .join(' '),
     };
     consoleEntries.push(entry);
     if (consoleEntries.length > MAX_CONSOLE_ENTRIES) {
@@ -42,23 +42,23 @@ export function createConsoleCapture(win: Window, consoleEntries: ConsoleEntry[]
   };
 
   console.log = (...args: unknown[]) => {
-    capture("log", args);
+    capture('log', args);
     originalConsole.log(...args);
   };
   console.warn = (...args: unknown[]) => {
-    capture("warn", args);
+    capture('warn', args);
     originalConsole.warn(...args);
   };
   console.error = (...args: unknown[]) => {
-    capture("error", args);
+    capture('error', args);
     originalConsole.error(...args);
   };
   console.info = (...args: unknown[]) => {
-    capture("info", args);
+    capture('info', args);
     originalConsole.info(...args);
   };
 
-  win.addEventListener("error", (event) => {
-    capture("error", [`${event.message} at ${event.filename}:${event.lineno}`]);
+  win.addEventListener('error', (event) => {
+    capture('error', [`${event.message} at ${event.filename}:${event.lineno}`]);
   });
 }

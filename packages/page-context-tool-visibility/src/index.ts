@@ -11,15 +11,11 @@
 
 // ─── Types ────────────────────────────────────────────────
 
-export type { PageToolSpec, PageToolEntry } from "./types";
+export type { PageToolSpec, PageToolEntry } from './types';
 
 // ─── Registry Utilities ───────────────────────────────────
 
-export {
-  flattenPageTools,
-  mergePageToolEntry,
-  normalizePageToolEntries,
-} from "./registry";
+export { flattenPageTools, mergePageToolEntry, normalizePageToolEntries } from './registry';
 
 // ─── Preference Engine ────────────────────────────────────
 
@@ -46,8 +42,8 @@ export {
   type ToolTreeResponse,
   type ToolTreeTab,
   type ToolTreeTool,
-} from "./preferences";
+} from './preferences';
 
 // ─── Filtering ────────────────────────────────────────────
 
-export { filterBuiltinTools } from "./filtering";
+export { filterBuiltinTools } from './filtering';

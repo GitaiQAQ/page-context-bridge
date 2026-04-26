@@ -3,12 +3,21 @@
  * Wires together WS connection, page context, tool execution, and extension event listeners.
  */
 
-import { connectWebSocket, forceReconnect, getWsReady, getSessionId, initDefaultWsUrl, log, queueNotification, requestBridge } from "./bg-ws-connection";
-import { createPageToolState } from "./bg-page-tools";
-import { createWsHandlers } from "./bg-ws-handlers";
-import { createRuntimeMessageHandler } from "./bg-runtime-handlers";
-import { registerLifecycleListeners } from "./bg-lifecycle";
-import { installPageContextBridgeHostInMainWorld } from "./bg-main-world-bridge-host";
+import {
+  connectWebSocket,
+  forceReconnect,
+  getWsReady,
+  getSessionId,
+  initDefaultWsUrl,
+  log,
+  queueNotification,
+  requestBridge,
+} from './bg-ws-connection';
+import { createPageToolState } from './bg-page-tools';
+import { createWsHandlers } from './bg-ws-handlers';
+import { createRuntimeMessageHandler } from './bg-runtime-handlers';
+import { registerLifecycleListeners } from './bg-lifecycle';
+import { installPageContextBridgeHostInMainWorld } from './bg-main-world-bridge-host';
 
 const inFlightToolCalls = new Map<string, string>();
 const pageToolState = createPageToolState();

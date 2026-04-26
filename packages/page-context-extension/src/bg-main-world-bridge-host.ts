@@ -8,29 +8,32 @@
 export type MainWorldBridgeHostInstaller = () => void;
 
 export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller = (): void => {
-  const HOST_KEY = "__pageContextBridgeHost__";
-  const BRIDGE_KEY = "__pageContextBridge__";
-  const TOOLS_KEY = "__pageContextTools__";
-  const HOST_READY_EVENT = "page-context-bridge-host:ready";
-  const HOST_DEFAULT_SCENE = "page-context-host-idle";
-  const HOST_ADOPTED_SOURCE_ID = "adopted-window-bridge";
-  const HOST_LEGACY_SOURCE_PREFIX = "legacy-window-bridge";
+  const HOST_KEY = '__pageContextBridgeHost__';
+  const BRIDGE_KEY = '__pageContextBridge__';
+  const TOOLS_KEY = '__pageContextTools__';
+  const HOST_READY_EVENT = 'page-context-bridge-host:ready';
+  const HOST_DEFAULT_SCENE = 'page-context-host-idle';
+  const HOST_ADOPTED_SOURCE_ID = 'adopted-window-bridge';
+  const HOST_LEGACY_SOURCE_PREFIX = 'legacy-window-bridge';
 
   const win = window as unknown as Window & Record<string, unknown>;
   const existingHost = win[HOST_KEY] as { registerSource?: unknown } | undefined;
-  if (existingHost && typeof existingHost.registerSource === "function") {
+  if (existingHost && typeof existingHost.registerSource === 'function') {
     return;
   }
 
   const state = {
-    sourcesById: new Map<string, {
-      sourceId: string;
-      bridge: any;
-      priority: number;
-      tags: string[];
-      registeredAt: string;
-      registerOrder: number;
-    }>(),
+    sourcesById: new Map<
+      string,
+      {
+        sourceId: string;
+        bridge: any;
+        priority: number;
+        tags: string[];
+        registeredAt: string;
+        registerOrder: number;
+      }
+    >(),
     registerOrderCursor: 0,
     diagnostics: [] as string[],
   };
@@ -79,15 +82,15 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
   const isBridgeLike = (candidate: any): boolean =>
     Boolean(
       candidate &&
-        typeof candidate.version === "string" &&
-        typeof candidate.listNamespaces === "function" &&
-        typeof candidate.getNamespace === "function" &&
-        typeof candidate.getScene === "function" &&
-        typeof candidate.listResources === "function" &&
-        typeof candidate.readResource === "function" &&
-        typeof candidate.listSkills === "function" &&
-        typeof candidate.getSkill === "function" &&
-        typeof candidate.getManifest === "function",
+      typeof candidate.version === 'string' &&
+      typeof candidate.listNamespaces === 'function' &&
+      typeof candidate.getNamespace === 'function' &&
+      typeof candidate.getScene === 'function' &&
+      typeof candidate.listResources === 'function' &&
+      typeof candidate.readResource === 'function' &&
+      typeof candidate.listSkills === 'function' &&
+      typeof candidate.getSkill === 'function' &&
+      typeof candidate.getManifest === 'function',
     );
 
   const bridgeSourceIdByRef = new WeakMap<object, string>();
@@ -103,11 +106,11 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       sourceId = `${HOST_LEGACY_SOURCE_PREFIX}:${legacySourceCursor}`;
       bridgeSourceIdByRef.set(bridge, sourceId);
     }
-    registerSource(sourceId, candidate, 70, ["legacy-assignment", key]);
+    registerSource(sourceId, candidate, 70, ['legacy-assignment', key]);
   };
 
   const hostBridge = {
-    version: "page-context-bridge-host/1.0.0",
+    version: 'page-context-bridge-host/1.0.0',
     listNamespaces: () => {
       const deduped = new Set<string>();
       for (const source of orderedSources()) {
@@ -131,7 +134,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       const scenes = Array.from(
         new Set(
           orderedSources()
-            .map((source) => safe(() => source.bridge.getScene(), ""))
+            .map((source) => safe(() => source.bridge.getScene(), ''))
             .filter(Boolean),
         ),
       );
@@ -141,14 +144,14 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       if (scenes.length === 1) {
         return scenes[0]!;
       }
-      return `page-context-host-mixed:${scenes.join("+")}`;
+      return `page-context-host-mixed:${scenes.join('+')}`;
     },
     listResources: () => {
       const deduped = new Map<string, unknown>();
       for (const source of orderedSources()) {
         const resources = safe(() => source.bridge.listResources(), []);
         for (const resource of resources) {
-          if (resource && typeof resource.id === "string" && !deduped.has(resource.id)) {
+          if (resource && typeof resource.id === 'string' && !deduped.has(resource.id)) {
             deduped.set(resource.id, resource);
           }
         }
@@ -162,14 +165,14 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
         if (hasResource) {
           return safe(() => source.bridge.readResource(id), {
             id,
-            mimeType: "application/json",
+            mimeType: 'application/json',
             text: JSON.stringify({ error: `Resource read failed: ${id}` }, null, 2),
           });
         }
       }
       return {
         id,
-        mimeType: "application/json",
+        mimeType: 'application/json',
         text: JSON.stringify({ error: `Unknown resource id: ${id}` }, null, 2),
       };
     },
@@ -178,7 +181,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       for (const source of orderedSources()) {
         const skills = safe(() => source.bridge.listSkills(), []);
         for (const skill of skills) {
-          if (skill && typeof skill.id === "string" && !deduped.has(skill.id)) {
+          if (skill && typeof skill.id === 'string' && !deduped.has(skill.id)) {
             deduped.set(skill.id, skill);
           }
         }
@@ -201,14 +204,18 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
         const manifest = safe(() => source.bridge.getManifest(), null as any);
         const descriptors = Array.isArray(manifest?.namespaces) ? manifest.namespaces : [];
         for (const descriptor of descriptors) {
-          if (descriptor && typeof descriptor.namespace === "string" && !namespaces.has(descriptor.namespace)) {
+          if (
+            descriptor &&
+            typeof descriptor.namespace === 'string' &&
+            !namespaces.has(descriptor.namespace)
+          ) {
             namespaces.set(descriptor.namespace, descriptor);
           }
         }
       }
       return {
-        version: "page-context-bridge-host/1.0.0",
-        app: "page-context-bridge-host",
+        version: 'page-context-bridge-host/1.0.0',
+        app: 'page-context-bridge-host',
         route: `${window.location.pathname}${window.location.search}`,
         scene: (hostBridge as any).getScene(),
         namespaces: Array.from(namespaces.values()),
@@ -222,14 +229,18 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
   const existingBridge = (win[BRIDGE_KEY] ?? win[TOOLS_KEY]) as any;
 
   if (isBridgeLike(existingBridge)) {
-    registerSource(HOST_ADOPTED_SOURCE_ID, existingBridge, 10, ["adopted"]);
+    registerSource(HOST_ADOPTED_SOURCE_ID, existingBridge, 10, ['adopted']);
   }
 
   const host = {
-    version: "page-context-bridge-host/1.0.0",
+    version: 'page-context-bridge-host/1.0.0',
     bridge: hostBridge,
-    registerSource: (input: { sourceId: string; bridge: any; priority?: number; tags?: string[] }) =>
-      registerSource(input.sourceId, input.bridge, input.priority, input.tags),
+    registerSource: (input: {
+      sourceId: string;
+      bridge: any;
+      priority?: number;
+      tags?: string[];
+    }) => registerSource(input.sourceId, input.bridge, input.priority, input.tags),
     unregisterSource: (sourceId: string) => {
       state.sourcesById.delete(String(sourceId));
     },

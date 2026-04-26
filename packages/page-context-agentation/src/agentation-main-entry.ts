@@ -13,7 +13,7 @@
 export function agentationMainEntry(): void {
   // Defer to ensure DOM body is available
   if (!document.body) {
-    document.addEventListener("DOMContentLoaded", agentationMainEntry, { once: true });
+    document.addEventListener('DOMContentLoaded', agentationMainEntry, { once: true });
     return;
   }
   agentationMainEntry();

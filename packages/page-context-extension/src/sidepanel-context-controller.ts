@@ -3,8 +3,8 @@
  * Extracts the inline Context Tab template from SidePanelApp into a pure render function.
  */
 
-import { html, type TemplateResult } from "lit";
-import { classMap } from "lit/directives/class-map.js";
+import { html, type TemplateResult } from 'lit';
+import { classMap } from 'lit/directives/class-map.js';
 
 export interface RenderContextTabInput {
   active: boolean;
@@ -50,7 +50,9 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
         <!-- Sidebar -->
         <div class="border-r border-base-300 bg-base-100 overflow-auto">
           <div class="border-b border-base-200 p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">Manifest Summary</div>
+            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">
+              Manifest Summary
+            </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="stat bg-base-200 rounded-lg p-2">
                 <div class="stat-title text-[10px]">App</div>
@@ -89,38 +91,56 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-sm">Manifest</span>
-                <span class="text-xs font-semibold ${input.manifestStatusClass}">${input.manifestStatus}</span>
+                <span class="text-xs font-semibold ${input.manifestStatusClass}"
+                  >${input.manifestStatus}</span
+                >
               </div>
-              <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${input.manifestOutput}</pre>
+              <pre
+                class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
+              >
+${input.manifestOutput}</pre
+              >
             </div>
           </div>
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-sm">Namespace / Scene Diff</span>
-                <span class="text-xs font-semibold ${input.diffStatusClass}">${input.diffStatus}</span>
+                <span class="text-xs font-semibold ${input.diffStatusClass}"
+                  >${input.diffStatus}</span
+                >
               </div>
-              <div id="contextDiffOutput" class="flex flex-col gap-2">
-                ${input.diffOutput}
-              </div>
+              <div id="contextDiffOutput" class="flex flex-col gap-2">${input.diffOutput}</div>
             </div>
           </div>
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-sm">Selected Resource</span>
-                <span class="text-xs font-semibold ${input.resourceStatusClass}">${input.resourceStatus}</span>
+                <span class="text-xs font-semibold ${input.resourceStatusClass}"
+                  >${input.resourceStatus}</span
+                >
               </div>
-              <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${input.resourceOutput}</pre>
+              <pre
+                class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
+              >
+${input.resourceOutput}</pre
+              >
             </div>
           </div>
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-sm">Selected Skill Prompt</span>
-                <span class="text-xs font-semibold ${input.skillStatusClass}">${input.skillStatus}</span>
+                <span class="text-xs font-semibold ${input.skillStatusClass}"
+                  >${input.skillStatus}</span
+                >
               </div>
-              <pre class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">${input.skillOutput}</pre>
+              <pre
+                class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
+              >
+${input.skillOutput}</pre
+              >
             </div>
           </div>
         </div>

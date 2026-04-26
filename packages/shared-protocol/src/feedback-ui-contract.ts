@@ -4,7 +4,7 @@ import type {
   FeedbackStateSnapshotResult,
   FeedbackUiAnchor,
   FeedbackUiRect,
-} from "./feedback";
+} from './feedback';
 
 export interface FeedbackUiTarget {
   elementName: string;

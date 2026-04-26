@@ -12,7 +12,7 @@
 // ─── Bridge Layer ────────────────────────────────────────────────────────
 
 // Store
-export { FeedbackStore } from "./bridge/feedback-store.js";
+export { FeedbackStore } from './bridge/feedback-store.js';
 export type {
   FeedbackStoreOptions,
   CreateFeedbackAnnotationInput,
@@ -21,7 +21,7 @@ export type {
   ResolveFeedbackAnnotationInput,
   DismissFeedbackAnnotationInput,
   UpdateFeedbackAnnotationInput,
-} from "./bridge/feedback-store.js";
+} from './bridge/feedback-store.js';
 
 // Normalizers
 export {
@@ -31,36 +31,45 @@ export {
   normalizeText,
   uniqueStrings as feedbackUniqueStrings,
   cloneValue,
-} from "./bridge/feedback-normalizers.js";
+} from './bridge/feedback-normalizers.js';
 
 // Agent Push Adapter
-export { LocalFeedbackAgentPushAdapter, createFeedbackAgentPushAdapterFromEnv, createFeedbackPushAgentStatus, createFeedbackPushAgentStatusFromEnv } from "./bridge/feedback-agent-push.js";
+export {
+  LocalFeedbackAgentPushAdapter,
+  createFeedbackAgentPushAdapterFromEnv,
+  createFeedbackPushAgentStatus,
+  createFeedbackPushAgentStatusFromEnv,
+} from './bridge/feedback-agent-push.js';
 export type {
   FeedbackAgentPushAdapter,
   FeedbackAgentPushStatusReader,
   LocalFeedbackAgentPushAdapterOptions,
-} from "./bridge/feedback-agent-push.js";
+} from './bridge/feedback-agent-push.js';
 
 // Service Interface
-export { createRegistryFeedbackService } from "./bridge/feedback-service.js";
-export type { RegistryFeedbackService, CreateRegistryFeedbackServiceInput, FeedbackLinksDerivedFromState } from "./bridge/feedback-service.js";
+export { createRegistryFeedbackService } from './bridge/feedback-service.js';
+export type {
+  RegistryFeedbackService,
+  CreateRegistryFeedbackServiceInput,
+  FeedbackLinksDerivedFromState,
+} from './bridge/feedback-service.js';
 
 // ─── Extension Layer ─────────────────────────────────────────────────────
 
 // Background Context
-export { captureActiveTabFeedbackContext } from "./extension/bg-feedback-context.js";
-export type { ActiveTabFeedbackContext } from "./extension/bg-feedback-context.js";
+export { captureActiveTabFeedbackContext } from './extension/bg-feedback-context.js';
+export type { ActiveTabFeedbackContext } from './extension/bg-feedback-context.js';
 
 // Background Adapters
 export {
   buildFeedbackAnnotationCreateParams,
   buildFeedbackAnnotationUpdateParams,
   normalizeFeedbackUiAnchor,
-} from "./extension/background-feedback-adapters.js";
+} from './extension/background-feedback-adapters.js';
 
 // UI Adapter
-export { createFeedbackUiAdapter } from "./extension/feedback-ui-adapter.js";
-export type { FeedbackUiAdapterDeps } from "./extension/feedback-ui-adapter.js";
+export { createFeedbackUiAdapter } from './extension/feedback-ui-adapter.js';
+export type { FeedbackUiAdapterDeps } from './extension/feedback-ui-adapter.js';
 
 // Sidepanel Renderer
 export {
@@ -82,22 +91,22 @@ export {
   feedbackPushAgentBadgeClass,
   feedbackPushAgentBadgeText,
   formatFeedbackTime,
-} from "./extension/sidepanel-feedback.js";
+} from './extension/sidepanel-feedback.js';
 export type {
   RenderFeedbackTabInput,
   FeedbackAnnotationActionState,
   FeedbackActionFormMode,
   FeedbackActionInputField,
   SidepanelFeedbackDraft,
-} from "./extension/sidepanel-feedback.js";
+} from './extension/sidepanel-feedback.js';
 
 // ─── Provider Layer ──────────────────────────────────────────────────────
 
 export {
   FeedbackControlBridgeProvider,
   FEEDBACK_CONTROL_TOOL_SUFFIXES,
-} from "./providers/feedback-control-provider.js";
+} from './providers/feedback-control-provider.js';
 export type {
   FeedbackControlBridgeRpc,
   FeedbackControlBridgeProviderOptions,
-} from "./providers/feedback-control-provider.js";
+} from './providers/feedback-control-provider.js';

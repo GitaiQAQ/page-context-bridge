@@ -2,10 +2,10 @@
  * Shared test utilities for the browser-debug-extension monorepo.
  * Centralizes common factories, mocks, and helpers to reduce duplication across packages.
  */
-import type { vi } from "vitest";
+import type { vi } from 'vitest';
 
 // ── Re-export vitest for convenience ──
-export { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
+export { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 
 // ── Deterministic ID / Timestamp factory ──
 
@@ -24,7 +24,7 @@ export function createDeterministicFactories(): DeterministicFactories {
       return `${prefix}-${++idCounter}`;
     },
     now(): string {
-      return `2026-01-01T00:00:${String(timeCounter++).padStart(2, "0")}.000Z`;
+      return `2026-01-01T00:00:${String(timeCounter++).padStart(2, '0')}.000Z`;
     },
     reset(): void {
       idCounter = 0;
@@ -42,18 +42,18 @@ import type {
   FeedbackCapabilityLinks,
   FeedbackContext,
   FeedbackTarget,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
 export const EXTENSION_USER_ACTOR: FeedbackActor = {
-  source: "extension",
-  id: "ext-user",
-  displayName: "Extension User",
+  source: 'extension',
+  id: 'ext-user',
+  displayName: 'Extension User',
 };
 
 export const AGENT_ACTOR: FeedbackActor = {
-  source: "agent",
-  id: "agent-1",
-  displayName: "Agent",
+  source: 'agent',
+  id: 'agent-1',
+  displayName: 'Agent',
 };
 
 export function createTestActor(overrides?: Partial<FeedbackActor>): FeedbackActor {
@@ -62,15 +62,17 @@ export function createTestActor(overrides?: Partial<FeedbackActor>): FeedbackAct
 
 export function createUiAnchor(overrides?: Partial<FeedbackUiAnchor>): FeedbackUiAnchor {
   return {
-    elementId: "test-element",
-    cssSelector: "#test-element",
-    textQuote: "Test text",
+    elementId: 'test-element',
+    cssSelector: '#test-element',
+    textQuote: 'Test text',
     rect: { x: 10, y: 20, width: 100, height: 50 },
     ...overrides,
   };
 }
 
-export function createCapabilityLinks(overrides?: Partial<FeedbackCapabilityLinks>): FeedbackCapabilityLinks {
+export function createCapabilityLinks(
+  overrides?: Partial<FeedbackCapabilityLinks>,
+): FeedbackCapabilityLinks {
   return {
     namespaceHints: [],
     relatedToolNames: [],
@@ -83,7 +85,7 @@ export function createCapabilityLinks(overrides?: Partial<FeedbackCapabilityLink
 
 export function createContext(overrides?: Partial<FeedbackContext>): FeedbackContext {
   return {
-    pageInfo: { tabId: 1, url: "https://example.com" },
+    pageInfo: { tabId: 1, url: 'https://example.com' },
     linkedCapabilities: createCapabilityLinks(),
     ...overrides,
   };
@@ -92,23 +94,25 @@ export function createContext(overrides?: Partial<FeedbackContext>): FeedbackCon
 export function createTarget(overrides?: Partial<FeedbackTarget>): FeedbackTarget {
   return {
     tabId: 1,
-    url: "https://example.com",
+    url: 'https://example.com',
     ...overrides,
   };
 }
 
 // ── Page Tool Spec factory ──
 
-import type { PageToolSpec } from "@page-context/mcp-bridge/dist/registry-types";
+import type { PageToolSpec } from '@page-context/mcp-bridge/dist/registry-types';
 
-export function createPageToolSpec(overrides?: Partial<PageToolSpec> & { _namespace?: string; _instanceId?: string }): PageToolSpec {
+export function createPageToolSpec(
+  overrides?: Partial<PageToolSpec> & { _namespace?: string; _instanceId?: string },
+): PageToolSpec {
   return {
-    name: "test.tool",
-    description: "Test tool description",
+    name: 'test.tool',
+    description: 'Test tool description',
     inputSchema: {},
     _pageTool: true,
-    _namespace: "test",
-    _instanceId: "default",
+    _namespace: 'test',
+    _instanceId: 'default',
     ...overrides,
   } as PageToolSpec;
 }
@@ -125,8 +129,8 @@ export interface TabLike {
 export function createTabInfo(overrides?: Partial<TabLike>): TabLike {
   return {
     id: 1,
-    title: "Test Tab",
-    url: "https://example.com",
+    title: 'Test Tab',
+    url: 'https://example.com',
     active: true,
     ...overrides,
   };
@@ -140,7 +144,10 @@ export interface ChromeMockListeners {
   onStartup?: { addListener: ReturnType<typeof vi.fn> };
   tabs?: {
     query: ReturnType<typeof vi.fn>;
-    onActivated: { addListener: ReturnType<typeof vi.fn>; removeListener?: ReturnType<typeof vi.fn> };
+    onActivated: {
+      addListener: ReturnType<typeof vi.fn>;
+      removeListener?: ReturnType<typeof vi.fn>;
+    };
     onUpdated: { addListener: ReturnType<typeof vi.fn>; removeListener?: ReturnType<typeof vi.fn> };
     onRemoved: { addListener: ReturnType<typeof vi.fn>; removeListener?: ReturnType<typeof vi.fn> };
   };
@@ -162,8 +169,8 @@ let savedChrome: unknown = undefined;
 export function installChromeMock(overrides?: Partial<ChromeMockListeners>): ChromeMockListeners {
   const mock: ChromeMockListeners = {
     runtime: {
-      id: "test-extension-id",
-      getManifest: () => ({ version: "0.0.0-test" }),
+      id: 'test-extension-id',
+      getManifest: () => ({ version: '0.0.0-test' }),
       sendMessage: vi.fn(),
       onMessage: { addListener: vi.fn(), removeListener: vi.fn() },
       onInstalled: { addListener: vi.fn() },
@@ -182,16 +189,20 @@ export function installChromeMock(overrides?: Partial<ChromeMockListeners>): Chr
   };
 
   savedChrome = (globalThis as Record<string, unknown>).chrome;
-  Object.defineProperty(globalThis, "chrome", { value: mock, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'chrome', { value: mock, configurable: true, writable: true });
 
   return mock;
 }
 
 export function restoreChromeGlobal(): void {
   if (savedChrome !== undefined) {
-    Object.defineProperty(globalThis, "chrome", { value: savedChrome, configurable: true, writable: true });
+    Object.defineProperty(globalThis, 'chrome', {
+      value: savedChrome,
+      configurable: true,
+      writable: true,
+    });
   } else {
-    Reflect.deleteProperty(globalThis, "chrome");
+    Reflect.deleteProperty(globalThis, 'chrome');
   }
   savedChrome = undefined;
 }

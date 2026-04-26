@@ -6,7 +6,7 @@
  * Only supplements reactPath/reactLeaf on uiAnchor.meta; any failure silently degrades.
  */
 
-import type { FeedbackUiAnchor } from "@page-context/shared-protocol";
+import type { FeedbackUiAnchor } from '@page-context/shared-protocol';
 
 interface ReactAnchorMeta {
   reactPath: string[];
@@ -42,7 +42,7 @@ export async function enrichUiAnchorReactMetaInMainWorld(
   try {
     const [injectionResult] = await chrome.scripting.executeScript({
       target: { tabId },
-      world: "MAIN",
+      world: 'MAIN',
       func: collectReactMetaInMainWorld,
       args: [
         {
@@ -78,7 +78,7 @@ export async function enrichUiAnchorReactMetaInMainWorld(
 }
 
 function toPlainRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
   return value as Record<string, unknown>;
@@ -104,7 +104,7 @@ function toReactPath(value: unknown): string[] | null {
     return null;
   }
   return value
-    .filter((item): item is string => typeof item === "string")
+    .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 12)
@@ -112,7 +112,7 @@ function toReactPath(value: unknown): string[] | null {
 }
 
 function toReactLeaf(value: unknown): string | null {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return null;
   }
   const normalized = value.trim();
@@ -126,12 +126,17 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
     return?: ReactFiberNode | null;
   };
 
-  const REACT_FIBER_KEY_PREFIXES = ["__reactFiber$", "__reactInternalInstance$", "__reactContainer$"] as const;
+  const REACT_FIBER_KEY_PREFIXES = [
+    '__reactFiber$',
+    '__reactInternalInstance$',
+    '__reactContainer$',
+  ] as const;
   const REACT_DOM_WALK_MAX_DEPTH = 12;
   const REACT_FIBER_MAX_DEPTH = 30;
   const REACT_PATH_MAX_COMPONENTS = 8;
 
-  const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+  const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value);
 
   const getParentElement = (element: Element): Element | null => {
     if (element.parentElement) return element.parentElement;
@@ -141,7 +146,7 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
   };
 
   const resolveTargetElement = (): Element | null => {
-    const selector = typeof input.cssSelector === "string" ? input.cssSelector.trim() : "";
+    const selector = typeof input.cssSelector === 'string' ? input.cssSelector.trim() : '';
     if (selector) {
       try {
         const bySelector = document.querySelector(selector);
@@ -153,7 +158,12 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
 
     const rect = input.rect;
     if (!rect) return null;
-    if (!isFiniteNumber(rect.x) || !isFiniteNumber(rect.y) || !isFiniteNumber(rect.width) || !isFiniteNumber(rect.height)) {
+    if (
+      !isFiniteNumber(rect.x) ||
+      !isFiniteNumber(rect.y) ||
+      !isFiniteNumber(rect.width) ||
+      !isFiniteNumber(rect.height)
+    ) {
       return null;
     }
     const centerX = rect.x + rect.width / 2;
@@ -168,10 +178,12 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
     } catch {
       return null;
     }
-    const fiberKey = keys.find((key) => REACT_FIBER_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)));
+    const fiberKey = keys.find((key) =>
+      REACT_FIBER_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)),
+    );
     if (!fiberKey) return null;
     const fiber = (element as unknown as Record<string, unknown>)[fiberKey];
-    if (!fiber || typeof fiber !== "object") return null;
+    if (!fiber || typeof fiber !== 'object') return null;
     return fiber as ReactFiberNode;
   };
 
@@ -188,7 +200,7 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
   };
 
   const normalizeName = (value: unknown): string | null => {
-    if (typeof value !== "string") return null;
+    if (typeof value !== 'string') return null;
     const normalized = value.trim();
     return normalized || null;
   };
@@ -201,11 +213,11 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
 
   const readComponentNameFromType = (type: unknown, depth: number): string | null => {
     if (!type || depth > 3) return null;
-    if (typeof type === "function") {
+    if (typeof type === 'function') {
       const fn = type as Function & { displayName?: string };
       return normalizeName(fn.displayName ?? fn.name);
     }
-    if (typeof type !== "object") return null;
+    if (typeof type !== 'object') return null;
     const record = type as Record<string, unknown>;
     const displayName = normalizeName(record.displayName);
     if (displayName) return displayName;
@@ -218,7 +230,7 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
     const nameFromLazyResult = readComponentNameFromType(record._result, depth + 1);
     if (nameFromLazyResult) return nameFromLazyResult;
     const contextRecord = record._context;
-    if (contextRecord && typeof contextRecord === "object") {
+    if (contextRecord && typeof contextRecord === 'object') {
       const contextName = normalizeName((contextRecord as Record<string, unknown>).displayName);
       if (contextName) return `${contextName}.Provider`;
     }
@@ -226,8 +238,10 @@ function collectReactMetaInMainWorld(input: ReactMetaQueryInput): ReactAnchorMet
   };
 
   const getComponentNameFromFiber = (fiber: ReactFiberNode): string | null => {
-    if (typeof fiber.type === "string") return null;
-    return readComponentNameFromType(fiber.elementType, 0) ?? readComponentNameFromType(fiber.type, 0);
+    if (typeof fiber.type === 'string') return null;
+    return (
+      readComponentNameFromType(fiber.elementType, 0) ?? readComponentNameFromType(fiber.type, 0)
+    );
   };
 
   const targetElement = resolveTargetElement();

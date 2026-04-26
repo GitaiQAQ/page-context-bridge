@@ -14,11 +14,11 @@ import type {
   FeedbackStateSnapshotParams,
   FeedbackStateSnapshotResult,
   PageContextManifest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import { FeedbackStore } from "./feedback-store.js";
-import type { FeedbackAgentPushAdapter } from "./feedback-agent-push.js";
-import { createFeedbackActor, isFeedbackAgentPushStatusReader, log } from "./registry-utils.js";
+import { FeedbackStore } from './feedback-store.js';
+import type { FeedbackAgentPushAdapter } from './feedback-agent-push.js';
+import { createFeedbackActor, isFeedbackAgentPushStatusReader, log } from './registry-utils.js';
 
 export interface FeedbackLinksDerivedFromState {
   links: FeedbackCapabilityLinks;
@@ -34,7 +34,9 @@ export interface RegistryFeedbackService {
   replyFeedbackAnnotation(params: FeedbackAnnotationReplyParams): FeedbackAnnotation;
   resolveFeedbackAnnotation(params: FeedbackAnnotationResolveParams): FeedbackAnnotation;
   dismissFeedbackAnnotation(params: FeedbackAnnotationDismissParams): FeedbackAnnotation;
-  getFeedbackSession(sessionId: string): { session: FeedbackSession; annotations: FeedbackAnnotation[] } | null;
+  getFeedbackSession(
+    sessionId: string,
+  ): { session: FeedbackSession; annotations: FeedbackAnnotation[] } | null;
   listFeedbackSessions(tabId?: number): FeedbackSession[];
   listFeedbackAnnotations(input: { tabId?: number; sessionId?: string }): FeedbackAnnotation[];
   getFeedbackAnnotation(annotationId: string): FeedbackAnnotation | null;
@@ -48,7 +50,9 @@ export interface CreateRegistryFeedbackServiceInput {
   logger?: (...args: unknown[]) => void;
 }
 
-export function createRegistryFeedbackService(input: CreateRegistryFeedbackServiceInput): RegistryFeedbackService {
+export function createRegistryFeedbackService(
+  input: CreateRegistryFeedbackServiceInput,
+): RegistryFeedbackService {
   const {
     tenantId,
     feedbackAgentPushAdapter,
@@ -71,7 +75,9 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
     };
   }
 
-  function getFeedbackSnapshot(params: FeedbackStateSnapshotParams = {}): FeedbackStateSnapshotResult {
+  function getFeedbackSnapshot(
+    params: FeedbackStateSnapshotParams = {},
+  ): FeedbackStateSnapshotResult {
     const snapshot = feedbackStore.readSnapshot(params);
     return {
       ...snapshot,
@@ -86,7 +92,13 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
   function createFeedbackAnnotation(params: FeedbackAnnotationCreateParams): FeedbackAnnotation {
     const derived = deriveFeedbackLinks(params.tabId);
     const created = feedbackStore.createAnnotation({
-      actor: params.actor ?? createFeedbackActor({ source: "extension", id: "extension.user", displayName: "Extension User" }),
+      actor:
+        params.actor ??
+        createFeedbackActor({
+          source: 'extension',
+          id: 'extension.user',
+          displayName: 'Extension User',
+        }),
       body: params.body,
       priority: params.priority,
       tabId: params.tabId,
@@ -114,7 +126,9 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
     try {
       feedbackAgentPushAdapter?.pushNewAnnotation(created);
     } catch (error) {
-      logger(`[feedback-agent-push] unexpected trigger error: ${error instanceof Error ? error.message : String(error)}`);
+      logger(
+        `[feedback-agent-push] unexpected trigger error: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     return created;
   }
@@ -124,21 +138,31 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
       annotationId: params.annotationId,
       body: params.body,
       priority: params.priority,
-      actor: params.actor ?? createFeedbackActor({ source: "extension", id: "extension.user", displayName: "Extension User" }),
+      actor:
+        params.actor ??
+        createFeedbackActor({
+          source: 'extension',
+          id: 'extension.user',
+          displayName: 'Extension User',
+        }),
     });
   }
 
   function claimFeedbackAnnotation(params: FeedbackAnnotationClaimParams): FeedbackAnnotation {
     return feedbackStore.claimAnnotation({
       annotationId: params.annotationId,
-      actor: params.actor ?? createFeedbackActor({ source: "agent", id: "mcp.agent", displayName: "MCP Agent" }),
+      actor:
+        params.actor ??
+        createFeedbackActor({ source: 'agent', id: 'mcp.agent', displayName: 'MCP Agent' }),
     });
   }
 
   function replyFeedbackAnnotation(params: FeedbackAnnotationReplyParams): FeedbackAnnotation {
     return feedbackStore.replyAnnotation({
       annotationId: params.annotationId,
-      actor: params.actor ?? createFeedbackActor({ source: "agent", id: "mcp.agent", displayName: "MCP Agent" }),
+      actor:
+        params.actor ??
+        createFeedbackActor({ source: 'agent', id: 'mcp.agent', displayName: 'MCP Agent' }),
       body: params.body,
       kind: params.kind,
     });
@@ -147,7 +171,9 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
   function resolveFeedbackAnnotation(params: FeedbackAnnotationResolveParams): FeedbackAnnotation {
     return feedbackStore.resolveAnnotation({
       annotationId: params.annotationId,
-      actor: params.actor ?? createFeedbackActor({ source: "agent", id: "mcp.agent", displayName: "MCP Agent" }),
+      actor:
+        params.actor ??
+        createFeedbackActor({ source: 'agent', id: 'mcp.agent', displayName: 'MCP Agent' }),
       resolution: params.resolution,
     });
   }
@@ -155,12 +181,16 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
   function dismissFeedbackAnnotation(params: FeedbackAnnotationDismissParams): FeedbackAnnotation {
     return feedbackStore.dismissAnnotation({
       annotationId: params.annotationId,
-      actor: params.actor ?? createFeedbackActor({ source: "agent", id: "mcp.agent", displayName: "MCP Agent" }),
+      actor:
+        params.actor ??
+        createFeedbackActor({ source: 'agent', id: 'mcp.agent', displayName: 'MCP Agent' }),
       dismissReason: params.dismissReason,
     });
   }
 
-  function getFeedbackSession(sessionId: string): { session: FeedbackSession; annotations: FeedbackAnnotation[] } | null {
+  function getFeedbackSession(
+    sessionId: string,
+  ): { session: FeedbackSession; annotations: FeedbackAnnotation[] } | null {
     const session = feedbackStore.getSession(sessionId);
     if (!session) {
       return null;
@@ -175,7 +205,10 @@ export function createRegistryFeedbackService(input: CreateRegistryFeedbackServi
     return feedbackStore.listSessions(tabId);
   }
 
-  function listFeedbackAnnotations(inputValue: { tabId?: number; sessionId?: string }): FeedbackAnnotation[] {
+  function listFeedbackAnnotations(inputValue: {
+    tabId?: number;
+    sessionId?: string;
+  }): FeedbackAnnotation[] {
     if (inputValue.sessionId) {
       return feedbackStore.listAnnotationsBySession(inputValue.sessionId);
     }

@@ -3,38 +3,21 @@
   "name": "Page Context Bridge",
   "version": "0.0.1",
   "description": "Expose page-context tools to MCP clients via page-context semantics.",
-  "permissions": [
-    "scripting",
-    "tabs",
-    "activeTab",
-    "debugger",
-    "storage",
-    "sidePanel"
-  ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "permissions": ["scripting", "tabs", "activeTab", "debugger", "storage", "sidePanel"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "src/content-script-main.ts"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["src/content-script-main.ts"],
       "run_at": "document_start"
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "src/content-script.ts"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["src/content-script.ts"],
       "run_at": "document_idle"
     }
   ],

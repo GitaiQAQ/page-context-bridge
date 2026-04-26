@@ -5,25 +5,25 @@ import type {
   ContextSkillDescriptor,
   ContextSkillPrompt,
   PageContextManifest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
 import type {
   PageContextBridgeHost,
   PageContextBridgeHostSource,
   PageContextBridgeLike,
   PageToolNamespace,
-} from "./types";
-import { safeRoute, toJsonResource } from "./utils";
+} from './types';
+import { safeRoute, toJsonResource } from './utils';
 
-const HOST_KEY = "__pageContextBridgeHost__";
-const HOST_VERSION = "page-context-bridge-host/1.0.0";
-const HOST_BRIDGE_MARKER = "__pageContextBridgeHostBridge__";
+const HOST_KEY = '__pageContextBridgeHost__';
+const HOST_VERSION = 'page-context-bridge-host/1.0.0';
+const HOST_BRIDGE_MARKER = '__pageContextBridgeHostBridge__';
 // The host will adopt existing bridges before taking over window to avoid losing capabilities due to unstable loading order.
-const HOST_ADOPTED_SOURCE_ID = "adopted-window-bridge";
-const HOST_LEGACY_SOURCE_PREFIX = "legacy-window-bridge";
-const HOST_DEFAULT_SCENE = "page-context-host-idle";
+const HOST_ADOPTED_SOURCE_ID = 'adopted-window-bridge';
+const HOST_LEGACY_SOURCE_PREFIX = 'legacy-window-bridge';
+const HOST_DEFAULT_SCENE = 'page-context-host-idle';
 
-export const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = "page-context-bridge-host:ready";
+export const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = 'page-context-bridge-host:ready';
 
 interface HostState {
   sourcesById: Map<string, SourceEntry>;
@@ -48,7 +48,10 @@ interface PageContextBridgeHostWindow extends Window {
   __pageContextTools__?: PageContextBridgeLike;
 }
 
-export function getOrCreatePageContextBridgeHost(win: Window, doc: Document): PageContextBridgeHost {
+export function getOrCreatePageContextBridgeHost(
+  win: Window,
+  doc: Document,
+): PageContextBridgeHost {
   const hostWindow = win as PageContextBridgeHostWindow;
   const existing = hostWindow[HOST_KEY];
   if (isPageContextBridgeHost(existing)) {
@@ -66,7 +69,8 @@ export function getOrCreatePageContextBridgeHost(win: Window, doc: Document): Pa
   const host: PageContextBridgeHost = {
     version: HOST_VERSION,
     bridge,
-    registerSource: (input) => registerSource(state, input.sourceId, input.bridge, input.priority, input.tags),
+    registerSource: (input) =>
+      registerSource(state, input.sourceId, input.bridge, input.priority, input.tags),
     unregisterSource: (sourceId) => {
       state.sourcesById.delete(sourceId);
     },
@@ -94,7 +98,11 @@ function createHostBridge(win: Window, _doc: Document, state: HostState): PageCo
     getSkill: (id, input) => getSkillFromSources(state, id, input ?? {}),
     getManifest: () => buildHostManifest(win, state),
   };
-  Object.defineProperty(bridge, HOST_BRIDGE_MARKER, { value: true, enumerable: false, configurable: false });
+  Object.defineProperty(bridge, HOST_BRIDGE_MARKER, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+  });
   return bridge;
 }
 
@@ -142,26 +150,30 @@ function adoptExistingPageBridge(state: HostState, win: PageContextBridgeHostWin
     return;
   }
 
-  registerSource(state, HOST_ADOPTED_SOURCE_ID, existingBridge, 10, ["adopted"]);
-  state.diagnostics.push("Adopted existing page bridge before host attachment.");
+  registerSource(state, HOST_ADOPTED_SOURCE_ID, existingBridge, 10, ['adopted']);
+  state.diagnostics.push('Adopted existing page bridge before host attachment.');
 }
 
-function attachHostBridge(win: PageContextBridgeHostWindow, bridge: PageContextBridgeLike, state: HostState): void {
+function attachHostBridge(
+  win: PageContextBridgeHostWindow,
+  bridge: PageContextBridgeLike,
+  state: HostState,
+): void {
   // Maintain merge semantics via getter/setter: legacy plugins writing directly to window.__pageContextBridge__ will also be adopted as a source by the host.
-  Object.defineProperty(win, "__pageContextBridge__", {
+  Object.defineProperty(win, '__pageContextBridge__', {
     configurable: true,
     enumerable: false,
     get: () => bridge,
     set: (value: unknown) => {
-      adoptLegacyAssignedBridge(state, value, "__pageContextBridge__");
+      adoptLegacyAssignedBridge(state, value, '__pageContextBridge__');
     },
   });
-  Object.defineProperty(win, "__pageContextTools__", {
+  Object.defineProperty(win, '__pageContextTools__', {
     configurable: true,
     enumerable: false,
     get: () => bridge,
     set: (value: unknown) => {
-      adoptLegacyAssignedBridge(state, value, "__pageContextTools__");
+      adoptLegacyAssignedBridge(state, value, '__pageContextTools__');
     },
   });
 }
@@ -177,7 +189,7 @@ function adoptLegacyAssignedBridge(state: HostState, candidate: unknown, key: st
     sourceId = `${HOST_LEGACY_SOURCE_PREFIX}:${state.legacySourceCursor}`;
     state.bridgeSourceIdByRef.set(bridge, sourceId);
   }
-  registerSource(state, sourceId, candidate, 70, ["legacy-assignment", key]);
+  registerSource(state, sourceId, candidate, 70, ['legacy-assignment', key]);
 }
 
 function dispatchHostReadyEvent(win: Window, host: PageContextBridgeHost): void {
@@ -224,7 +236,10 @@ function listNamespacesFromSources(state: HostState): string[] {
   return [...deduped];
 }
 
-function getNamespaceFromSources(state: HostState, namespace: string): PageToolNamespace | undefined {
+function getNamespaceFromSources(
+  state: HostState,
+  namespace: string,
+): PageToolNamespace | undefined {
   for (const source of getOrderedSources(state)) {
     const namespaceObject = safeGetNamespace(source.bridge, namespace);
     if (namespaceObject) {
@@ -235,14 +250,18 @@ function getNamespaceFromSources(state: HostState, namespace: string): PageToolN
 }
 
 function getSceneFromSources(state: HostState): string {
-  const scenes = uniqueStrings(getOrderedSources(state).map((source) => safeGetScene(source.bridge)).filter(Boolean));
+  const scenes = uniqueStrings(
+    getOrderedSources(state)
+      .map((source) => safeGetScene(source.bridge))
+      .filter(Boolean),
+  );
   if (scenes.length === 0) {
     return HOST_DEFAULT_SCENE;
   }
   if (scenes.length === 1) {
     return scenes[0]!;
   }
-  return `page-context-host-mixed:${scenes.join("+")}`;
+  return `page-context-host-mixed:${scenes.join('+')}`;
 }
 
 function listResourcesFromSources(state: HostState): ContextResourceDescriptor[] {
@@ -305,7 +324,7 @@ function buildHostManifest(win: Window, state: HostState): PageContextManifest {
 
   return {
     version: HOST_VERSION,
-    app: "page-context-bridge-host",
+    app: 'page-context-bridge-host',
     route: safeRoute(win),
     scene: getSceneFromSources(state),
     namespaces: [...namespaces.values()],
@@ -323,7 +342,10 @@ function safeListNamespaces(bridge: PageContextBridgeLike): string[] {
   }
 }
 
-function safeGetNamespace(bridge: PageContextBridgeLike, namespace: string): PageToolNamespace | undefined {
+function safeGetNamespace(
+  bridge: PageContextBridgeLike,
+  namespace: string,
+): PageToolNamespace | undefined {
   try {
     return bridge.getNamespace(namespace);
   } catch {
@@ -335,7 +357,7 @@ function safeGetScene(bridge: PageContextBridgeLike): string {
   try {
     return bridge.getScene();
   } catch {
-    return "";
+    return '';
   }
 }
 
@@ -381,8 +403,8 @@ function safeGetManifest(bridge: PageContextBridgeLike): PageContextManifest {
   } catch {
     return {
       version: bridge.version,
-      app: "unknown",
-      route: "/",
+      app: 'unknown',
+      route: '/',
       scene: HOST_DEFAULT_SCENE,
       namespaces: [],
       resources: [],
@@ -409,22 +431,22 @@ function isHostBridge(value: unknown): boolean {
 
 function isPageContextBridgeHost(value: unknown): value is PageContextBridgeHost {
   const record = value as Partial<PageContextBridgeHost> | undefined;
-  return Boolean(record && typeof record.registerSource === "function");
+  return Boolean(record && typeof record.registerSource === 'function');
 }
 
 function isPageContextBridgeLike(value: unknown): value is PageContextBridgeLike {
   const record = value as Partial<PageContextBridgeLike> | undefined;
   return Boolean(
     record &&
-      typeof record.version === "string" &&
-      typeof record.listNamespaces === "function" &&
-      typeof record.getNamespace === "function" &&
-      typeof record.getScene === "function" &&
-      typeof record.listResources === "function" &&
-      typeof record.readResource === "function" &&
-      typeof record.listSkills === "function" &&
-      typeof record.getSkill === "function" &&
-      typeof record.getManifest === "function",
+    typeof record.version === 'string' &&
+    typeof record.listNamespaces === 'function' &&
+    typeof record.getNamespace === 'function' &&
+    typeof record.getScene === 'function' &&
+    typeof record.listResources === 'function' &&
+    typeof record.readResource === 'function' &&
+    typeof record.listSkills === 'function' &&
+    typeof record.getSkill === 'function' &&
+    typeof record.getManifest === 'function',
   );
 }
 

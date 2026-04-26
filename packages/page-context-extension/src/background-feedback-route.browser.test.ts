@@ -1,30 +1,34 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BRIDGE_METHODS, createRequest } from "@page-context/shared-protocol";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BRIDGE_METHODS, createRequest } from '@page-context/shared-protocol';
 
 const requestBridgeMock = vi.fn();
 const captureActiveTabFeedbackContextMock = vi.fn();
 const enrichUiAnchorReactMetaInMainWorldMock = vi.fn();
 
 let runtimeMessageListener:
-  | ((message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void) => boolean)
+  | ((
+      message: unknown,
+      sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: unknown) => void,
+    ) => boolean)
   | null = null;
 
-vi.mock("./bg-ws-connection", () => ({
+vi.mock('./bg-ws-connection', () => ({
   connectWebSocket: vi.fn(async () => undefined),
   forceReconnect: vi.fn(async () => undefined),
   getWsReady: vi.fn(() => false),
-  getSessionId: vi.fn(() => "session-test"),
+  getSessionId: vi.fn(() => 'session-test'),
   initDefaultWsUrl: vi.fn(async () => undefined),
   log: vi.fn(),
   queueNotification: vi.fn(),
   requestBridge: requestBridgeMock,
 }));
 
-vi.mock("./bg-feedback-context", () => ({
+vi.mock('./bg-feedback-context', () => ({
   captureActiveTabFeedbackContext: captureActiveTabFeedbackContextMock,
 }));
 
-vi.mock("@page-context/agentation", () => ({
+vi.mock('@page-context/agentation', () => ({
   enrichUiAnchorReactMetaInMainWorld: enrichUiAnchorReactMetaInMainWorldMock,
   ensureAgentationMainOnSenderTab: vi.fn(async () => ({ ok: true })),
   ensureAgentationMainOnTab: vi.fn(async () => ({ ok: true })),
@@ -33,37 +37,49 @@ vi.mock("@page-context/agentation", () => ({
   getMainWorldInjectionTarget: vi.fn((params: unknown) => params),
 }));
 
-vi.mock("./bg-page-context", () => ({
+vi.mock('./bg-page-context', () => ({
   discoverPageToolsInTab: vi.fn(async () => []),
   getRawPageContextManifest: vi.fn(async () => null),
   getPageContextSkill: vi.fn(async () => null),
-  readPageContextResource: vi.fn(async () => ({ id: "r", mimeType: "application/json", text: "{}" })),
+  readPageContextResource: vi.fn(async () => ({
+    id: 'r',
+    mimeType: 'application/json',
+    text: '{}',
+  })),
   sleep: vi.fn(async () => undefined),
 }));
 
-vi.mock("./bg-tool-executor", () => ({
-  executeToolCall: vi.fn(async () => ({ ok: true })),
-  getBuiltinToolDefinitions: vi.fn(() => []),
-}), { virtual: true });
+vi.mock(
+  './bg-tool-executor',
+  () => ({
+    executeToolCall: vi.fn(async () => ({ ok: true })),
+    getBuiltinToolDefinitions: vi.fn(() => []),
+  }),
+  { virtual: true },
+);
 
-vi.mock("@page-context/tool-executor", () => ({
-  executeToolCall: vi.fn(async () => ({ ok: true })),
-  getBuiltinToolDefinitions: vi.fn(() => []),
-  getExtensionToolProviders: vi.fn(() => []),
-  getServiceWorkerContext: vi.fn(() => ({})),
-}), { virtual: true });
+vi.mock(
+  '@page-context/tool-executor',
+  () => ({
+    executeToolCall: vi.fn(async () => ({ ok: true })),
+    getBuiltinToolDefinitions: vi.fn(() => []),
+    getExtensionToolProviders: vi.fn(() => []),
+    getServiceWorkerContext: vi.fn(() => ({})),
+  }),
+  { virtual: true },
+);
 
-vi.mock("./context-manifest-filter-debug", () => ({
+vi.mock('./context-manifest-filter-debug', () => ({
   buildContextManifestFilterDebug: vi.fn(() => ({ filtered: true })),
 }));
 
-vi.mock("./page-tool-registry", () => ({
+vi.mock('./page-tool-registry', () => ({
   flattenPageTools: vi.fn((entries?: unknown[]) => entries ?? []),
   mergePageToolEntry: vi.fn((entries: unknown[]) => entries),
   normalizePageToolEntries: vi.fn((entries: unknown[]) => entries ?? []),
 }));
 
-vi.mock("./page-tool-visibility", () => ({
+vi.mock('./page-tool-visibility', () => ({
   buildToolTree: vi.fn(async () => ({ tabs: [] })),
   getEnabledBuiltinTools: vi.fn((tools: unknown[]) => tools),
   getEnabledToolsForTab: vi.fn((entries?: unknown[]) => entries ?? []),
@@ -71,7 +87,7 @@ vi.mock("./page-tool-visibility", () => ({
   setScopeEnabled: vi.fn((current: Record<string, unknown>) => current),
 }));
 
-describe("background feedback runtime route", () => {
+describe('background feedback runtime route', () => {
   const originalChrome = globalThis.chrome;
 
   beforeEach(() => {
@@ -81,22 +97,26 @@ describe("background feedback runtime route", () => {
     installChromeMock();
 
     // Avoid background top-level persistent interval affecting test lifecycle.
-    vi.spyOn(globalThis, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof setInterval>);
+    vi.spyOn(globalThis, 'setInterval').mockReturnValue(
+      1 as unknown as ReturnType<typeof setInterval>,
+    );
 
     captureActiveTabFeedbackContextMock.mockResolvedValue({
       tabId: 12,
-      url: "https://sender.example/path",
-      title: "sender-tab",
-      selectedText: "from context selection",
+      url: 'https://sender.example/path',
+      title: 'sender-tab',
+      selectedText: 'from context selection',
     });
-    enrichUiAnchorReactMetaInMainWorldMock.mockImplementation(async (_tabId: number, anchor: Record<string, unknown>) => ({
-      ...anchor,
-      cssSelector: " .cta-enriched ",
-      meta: {
-        from: "react-meta",
-      },
-    }));
-    requestBridgeMock.mockResolvedValue({ annotation: { id: "anno-1" } });
+    enrichUiAnchorReactMetaInMainWorldMock.mockImplementation(
+      async (_tabId: number, anchor: Record<string, unknown>) => ({
+        ...anchor,
+        cssSelector: ' .cta-enriched ',
+        meta: {
+          from: 'react-meta',
+        },
+      }),
+    );
+    requestBridgeMock.mockResolvedValue({ annotation: { id: 'anno-1' } });
   });
 
   afterEach(() => {
@@ -104,7 +124,7 @@ describe("background feedback runtime route", () => {
     restoreChromeGlobal(originalChrome);
   });
 
-  it("maps extension create request to bridge create call with sender tab context", async () => {
+  it('maps extension create request to bridge create call with sender tab context', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
 
@@ -112,15 +132,15 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
         {
-          body: "  Need to fix button click state  ",
-          priority: "high",
-          selectedText: "  User selection  ",
+          body: '  Need to fix button click state  ',
+          priority: 'high',
+          selectedText: '  User selection  ',
           uiAnchor: {
-            cssSelector: " .cta ",
+            cssSelector: ' .cta ',
             meta: {},
           },
         },
-        "req-feedback-1",
+        'req-feedback-1',
       ),
       {
         tab: {
@@ -135,22 +155,22 @@ describe("background feedback runtime route", () => {
 
     expect(captureActiveTabFeedbackContextMock).toHaveBeenCalledTimes(1);
     expect(enrichUiAnchorReactMetaInMainWorldMock).toHaveBeenCalledWith(12, {
-      cssSelector: " .cta ",
+      cssSelector: ' .cta ',
       meta: {},
     });
     expect(requestBridgeMock).toHaveBeenCalledWith(
       BRIDGE_METHODS.feedbackAnnotationCreate,
       expect.objectContaining({
-        body: "Need to fix button click state",
-        priority: "high",
+        body: 'Need to fix button click state',
+        priority: 'high',
         tabId: 12,
-        url: "https://sender.example/path",
-        title: "sender-tab",
-        selectedText: "User selection",
+        url: 'https://sender.example/path',
+        title: 'sender-tab',
+        selectedText: 'User selection',
         uiAnchor: expect.objectContaining({
-          cssSelector: ".cta-enriched",
+          cssSelector: '.cta-enriched',
           meta: {
-            from: "react-meta",
+            from: 'react-meta',
           },
         }),
       }),
@@ -160,12 +180,14 @@ describe("background feedback runtime route", () => {
     await vi.waitFor(() => {
       expect(sendResponse).toHaveBeenCalledTimes(1);
     });
-    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: unknown } | undefined;
-    expect(response?.id).toBe("req-feedback-1");
-    expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
+    const response = sendResponse.mock.calls[0]?.[0] as
+      | { id?: string; result?: unknown }
+      | undefined;
+    expect(response?.id).toBe('req-feedback-1');
+    expect(response?.result).toEqual({ annotation: { id: 'anno-1' } });
   });
 
-  it("passes snapshot push-agent observability fields through to sidepanel callers", async () => {
+  it('passes snapshot push-agent observability fields through to sidepanel callers', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
     requestBridgeMock.mockResolvedValueOnce({
@@ -175,24 +197,20 @@ describe("background feedback runtime route", () => {
       lastSeq: 19,
       pushAgent: {
         enabled: true,
-        readiness: "ready",
-        mode: "local-opencode",
+        readiness: 'ready',
+        mode: 'local-opencode',
         lastLaunch: {
-          annotationId: "annotation_77",
-          sessionId: "session_9",
-          attemptedAt: "2026-04-23T01:23:45.000Z",
-          result: "failed",
-          failureReason: "ENOENT: opencode not found",
+          annotationId: 'annotation_77',
+          sessionId: 'session_9',
+          attemptedAt: '2026-04-23T01:23:45.000Z',
+          result: 'failed',
+          failureReason: 'ENOENT: opencode not found',
         },
       },
     });
 
     listener(
-      createRequest(
-        BRIDGE_METHODS.extensionFeedbackStateSnapshot,
-        {},
-        "req-feedback-snapshot-1",
-      ),
+      createRequest(BRIDGE_METHODS.extensionFeedbackStateSnapshot, {}, 'req-feedback-snapshot-1'),
       {
         tab: {
           id: 12,
@@ -210,12 +228,14 @@ describe("background feedback runtime route", () => {
     await vi.waitFor(() => {
       expect(sendResponse).toHaveBeenCalledTimes(1);
     });
-    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: { pushAgent?: { lastLaunch?: { failureReason?: string } } } } | undefined;
-    expect(response?.id).toBe("req-feedback-snapshot-1");
-    expect(response?.result?.pushAgent?.lastLaunch?.failureReason).toContain("ENOENT");
+    const response = sendResponse.mock.calls[0]?.[0] as
+      | { id?: string; result?: { pushAgent?: { lastLaunch?: { failureReason?: string } } } }
+      | undefined;
+    expect(response?.id).toBe('req-feedback-snapshot-1');
+    expect(response?.result?.pushAgent?.lastLaunch?.failureReason).toContain('ENOENT');
   });
 
-  it("uses context selectedText and alias anchor when UI selectedText is empty", async () => {
+  it('uses context selectedText and alias anchor when UI selectedText is empty', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
 
@@ -223,16 +243,16 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
         {
-          body: "Add fallback selection",
-          priority: "normal",
-          selectedText: "   ",
+          body: 'Add fallback selection',
+          priority: 'normal',
+          selectedText: '   ',
           anchor: {
-            xpath: " //button[1] ",
+            xpath: ' //button[1] ',
             framePath: [0, -1, 2.5, 1],
             meta: {},
           },
         },
-        "req-feedback-2",
+        'req-feedback-2',
       ),
       {
         tab: {
@@ -248,10 +268,10 @@ describe("background feedback runtime route", () => {
     expect(requestBridgeMock).toHaveBeenCalledWith(
       BRIDGE_METHODS.feedbackAnnotationCreate,
       expect.objectContaining({
-        body: "Add fallback selection",
-        selectedText: "from context selection",
+        body: 'Add fallback selection',
+        selectedText: 'from context selection',
         uiAnchor: expect.objectContaining({
-          xpath: "//button[1]",
+          xpath: '//button[1]',
           framePath: [0, 1],
         }),
       }),
@@ -259,7 +279,7 @@ describe("background feedback runtime route", () => {
     );
   });
 
-  it("returns rpc error response when body is empty", async () => {
+  it('returns rpc error response when body is empty', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
 
@@ -267,10 +287,10 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
         {
-          body: "   ",
-          priority: "normal",
+          body: '   ',
+          priority: 'normal',
         },
-        "req-feedback-3",
+        'req-feedback-3',
       ),
       {} as chrome.runtime.MessageSender,
       sendResponse,
@@ -280,12 +300,14 @@ describe("background feedback runtime route", () => {
     expect(captureActiveTabFeedbackContextMock).not.toHaveBeenCalled();
     expect(requestBridgeMock).not.toHaveBeenCalled();
 
-    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; error?: { message?: string } } | undefined;
-    expect(response?.id).toBe("req-feedback-3");
-    expect(response?.error?.message).toContain("Feedback body is required");
+    const response = sendResponse.mock.calls[0]?.[0] as
+      | { id?: string; error?: { message?: string } }
+      | undefined;
+    expect(response?.id).toBe('req-feedback-3');
+    expect(response?.error?.message).toContain('Feedback body is required');
   });
 
-  it("maps extension update request to bridge update call with normalized payload", async () => {
+  it('maps extension update request to bridge update call with normalized payload', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
 
@@ -293,11 +315,11 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationUpdate,
         {
-          annotationId: "  anno-2  ",
-          body: "  update body  ",
-          priority: "critical",
+          annotationId: '  anno-2  ',
+          body: '  update body  ',
+          priority: 'critical',
         },
-        "req-feedback-4",
+        'req-feedback-4',
       ),
       {} as chrome.runtime.MessageSender,
       sendResponse,
@@ -307,21 +329,23 @@ describe("background feedback runtime route", () => {
     expect(requestBridgeMock).toHaveBeenCalledWith(
       BRIDGE_METHODS.feedbackAnnotationUpdate,
       {
-        annotationId: "anno-2",
-        body: "update body",
-        priority: "critical",
+        annotationId: 'anno-2',
+        body: 'update body',
+        priority: 'critical',
       },
       { timeoutMs: 20_000 },
     );
     await vi.waitFor(() => {
       expect(sendResponse).toHaveBeenCalledTimes(1);
     });
-    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: unknown } | undefined;
-    expect(response?.id).toBe("req-feedback-4");
-    expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
+    const response = sendResponse.mock.calls[0]?.[0] as
+      | { id?: string; result?: unknown }
+      | undefined;
+    expect(response?.id).toBe('req-feedback-4');
+    expect(response?.result).toEqual({ annotation: { id: 'anno-1' } });
   });
 
-  it("maps extension dismiss request to bridge dismiss call with normalized payload", async () => {
+  it('maps extension dismiss request to bridge dismiss call with normalized payload', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
 
@@ -329,10 +353,10 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationDismiss,
         {
-          annotationId: "  anno-3  ",
-          dismissReason: "  duplicated  ",
+          annotationId: '  anno-3  ',
+          dismissReason: '  duplicated  ',
         },
-        "req-feedback-5",
+        'req-feedback-5',
       ),
       {} as chrome.runtime.MessageSender,
       sendResponse,
@@ -342,20 +366,22 @@ describe("background feedback runtime route", () => {
     expect(requestBridgeMock).toHaveBeenCalledWith(
       BRIDGE_METHODS.feedbackAnnotationDismiss,
       {
-        annotationId: "anno-3",
-        dismissReason: "duplicated",
+        annotationId: 'anno-3',
+        dismissReason: 'duplicated',
       },
       { timeoutMs: 20_000 },
     );
     await vi.waitFor(() => {
       expect(sendResponse).toHaveBeenCalledTimes(1);
     });
-    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; result?: unknown } | undefined;
-    expect(response?.id).toBe("req-feedback-5");
-    expect(response?.result).toEqual({ annotation: { id: "anno-1" } });
+    const response = sendResponse.mock.calls[0]?.[0] as
+      | { id?: string; result?: unknown }
+      | undefined;
+    expect(response?.id).toBe('req-feedback-5');
+    expect(response?.result).toEqual({ annotation: { id: 'anno-1' } });
   });
 
-  it("returns rpc error response when dismiss annotationId is empty", async () => {
+  it('returns rpc error response when dismiss annotationId is empty', async () => {
     const listener = await importBackgroundAndGetRuntimeMessageListener();
     const sendResponse = vi.fn();
 
@@ -363,10 +389,10 @@ describe("background feedback runtime route", () => {
       createRequest(
         BRIDGE_METHODS.extensionFeedbackAnnotationDismiss,
         {
-          annotationId: "   ",
-          dismissReason: "invalid",
+          annotationId: '   ',
+          dismissReason: 'invalid',
         },
-        "req-feedback-6",
+        'req-feedback-6',
       ),
       {} as chrome.runtime.MessageSender,
       sendResponse,
@@ -375,16 +401,18 @@ describe("background feedback runtime route", () => {
 
     // When input validation fails, it should not enter bridge request.
     expect(requestBridgeMock).not.toHaveBeenCalled();
-    const response = sendResponse.mock.calls[0]?.[0] as { id?: string; error?: { message?: string } } | undefined;
-    expect(response?.id).toBe("req-feedback-6");
-    expect(response?.error?.message).toContain("Feedback annotationId is required");
+    const response = sendResponse.mock.calls[0]?.[0] as
+      | { id?: string; error?: { message?: string } }
+      | undefined;
+    expect(response?.id).toBe('req-feedback-6');
+    expect(response?.error?.message).toContain('Feedback annotationId is required');
   });
 });
 
 async function importBackgroundAndGetRuntimeMessageListener() {
-  await import("./background");
+  await import('./background');
   if (!runtimeMessageListener) {
-    throw new Error("Missing background runtime listener");
+    throw new Error('Missing background runtime listener');
   }
   return runtimeMessageListener;
 }
@@ -407,7 +435,7 @@ function installChromeMock(): void {
     },
     tabs: {
       query: vi.fn(async () => []),
-      get: vi.fn(async () => ({ id: 12, url: "https://sender.example/path", title: "sender-tab" })),
+      get: vi.fn(async () => ({ id: 12, url: 'https://sender.example/path', title: 'sender-tab' })),
       sendMessage: vi.fn(async () => ({})),
       onActivated: {
         addListener: vi.fn(),
@@ -430,7 +458,7 @@ function installChromeMock(): void {
     },
   } as unknown as typeof chrome;
 
-  Object.defineProperty(globalThis, "chrome", {
+  Object.defineProperty(globalThis, 'chrome', {
     value: chromeMock,
     configurable: true,
     writable: true,
@@ -439,14 +467,14 @@ function installChromeMock(): void {
 
 function restoreChromeGlobal(originalChrome: typeof chrome | undefined): void {
   if (originalChrome) {
-    Object.defineProperty(globalThis, "chrome", {
+    Object.defineProperty(globalThis, 'chrome', {
       value: originalChrome,
       configurable: true,
       writable: true,
     });
     return;
   }
-  Reflect.deleteProperty(globalThis, "chrome");
+  Reflect.deleteProperty(globalThis, 'chrome');
 }
 
 async function flushMicrotasks(): Promise<void> {

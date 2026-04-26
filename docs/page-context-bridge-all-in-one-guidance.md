@@ -41,39 +41,39 @@ These rules are mandatory.
 
 ```ts
 interface PageToolInstance {
-  instanceId: string
-  listTools(): ToolSpec[]
-  callTool(name: string, input?: Record<string, unknown>): unknown
+  instanceId: string;
+  listTools(): ToolSpec[];
+  callTool(name: string, input?: Record<string, unknown>): unknown;
 }
 
 interface PageToolNamespace {
-  namespace: string
-  listInstances(): string[]
-  getInstance(instanceId: string): PageToolInstance | undefined
+  namespace: string;
+  listInstances(): string[];
+  getInstance(instanceId: string): PageToolInstance | undefined;
 }
 
 interface PageContextBridgeLike {
-  version: string
-  listNamespaces(): string[]
-  getNamespace(namespace: string): PageToolNamespace | undefined
+  version: string;
+  listNamespaces(): string[];
+  getNamespace(namespace: string): PageToolNamespace | undefined;
 
-  getScene(): string
-  listResources(): ContextResourceDescriptor[]
-  readResource(id: string): ContextResourcePayload
+  getScene(): string;
+  listResources(): ContextResourceDescriptor[];
+  readResource(id: string): ContextResourcePayload;
 
-  listSkills(): ContextSkillDescriptor[]
-  getSkill(id: string, input?: Record<string, unknown>): ContextSkillPrompt | undefined
+  listSkills(): ContextSkillDescriptor[];
+  getSkill(id: string, input?: Record<string, unknown>): ContextSkillPrompt | undefined;
 
-  getManifest(): PageContextManifest
+  getManifest(): PageContextManifest;
 }
 
 interface PageContextBridgeHost {
   registerSource(input: {
-    sourceId: string
-    bridge: PageContextBridgeLike
-    priority?: number
-    tags?: string[]
-  }): () => void
+    sourceId: string;
+    bridge: PageContextBridgeLike;
+    priority?: number;
+    tags?: string[];
+  }): () => void;
 }
 ```
 
@@ -98,11 +98,13 @@ A correct business integration delivers all of the following:
 Definition of done:
 
 1. The integrated page can answer at least these business questions:
+
 - Why did this page enter the current scene?
 - Why is this option hidden/disabled/forbidden/absent?
 - Why did this default selection win?
 - Why does rendered UI not match runtime state?
 - What changed between two runtime snapshots?
+
 2. Answers must be reproducible from resources/tool outputs, not guesswork.
 
 ## 5. Proven Blueprint From A Complex Business Page
@@ -149,14 +151,17 @@ Why this layout works:
 Use three layers.
 
 1. `hub.ts`
+
 - Builds the project-specific runtime API from local internals.
 - Keeps business data collection separate from bridge protocol code.
 
 2. `page-context-capabilities-*.ts`
+
 - One file per namespace.
 - Each file defines `listTools()` and `callTool()` for that namespace.
 
 3. `page-context-bridge.ts`
+
 - Owns the source bridge object.
 - Owns the mounted instance registry.
 - Builds resources, skills, and manifest.
@@ -167,45 +172,52 @@ Use three layers.
 Use a private project-scoped registry key. Do not use `window.__pageContextBridge__` as your business-owned storage.
 
 ```ts
-const PAGE_CONTEXT_BRIDGE_VERSION = "2.0.0"
-const PAGE_CONTEXT_SOURCE_ID = "example-page-runtime"
-const PAGE_CONTEXT_BRIDGE_REGISTRY_KEY = "__examplePageContextBridgeRegistry__"
+const PAGE_CONTEXT_BRIDGE_VERSION = '2.0.0';
+const PAGE_CONTEXT_SOURCE_ID = 'example-page-runtime';
+const PAGE_CONTEXT_BRIDGE_REGISTRY_KEY = '__examplePageContextBridgeRegistry__';
 
 type MountedInstance = {
-  instanceId: string
-  model: BusinessPageModelModule
-  api: PageContextInstanceApi
-}
+  instanceId: string;
+  model: BusinessPageModelModule;
+  api: PageContextInstanceApi;
+};
 
 interface MutablePageContextBridge extends PageContextBridgeLike {
-  internalInstances: Record<string, MountedInstance>
-  unbindFromHost?: () => void
+  internalInstances: Record<string, MountedInstance>;
+  unbindFromHost?: () => void;
 }
 
 declare global {
   interface Window {
-    __pageContextBridgeHost__?: PageContextBridgeHost
-    __pageContextBridge__?: PageContextBridgeLike
-    __examplePageContextBridgeRegistry__?: MutablePageContextBridge
+    __pageContextBridgeHost__?: PageContextBridgeHost;
+    __pageContextBridge__?: PageContextBridgeLike;
+    __examplePageContextBridgeRegistry__?: MutablePageContextBridge;
   }
 }
 
 export function ensurePageContextBridge(): MutablePageContextBridge {
-  if (typeof window === "undefined") {
-    return createEmptyBridge()
+  if (typeof window === 'undefined') {
+    return createEmptyBridge();
   }
 
-  const existingRegistry = window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY]
+  const existingRegistry = window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY];
   if (existingRegistry) {
-    syncNamespaces(existingRegistry)
-    return existingRegistry
+    syncNamespaces(existingRegistry);
+    return existingRegistry;
   }
 
   const bridge: MutablePageContextBridge = {
     version: PAGE_CONTEXT_BRIDGE_VERSION,
     internalInstances: {},
     unbindFromHost: undefined,
-    listNamespaces: () => ["workspace", "entry", "availability", "selection", "structure", "runtime"],
+    listNamespaces: () => [
+      'workspace',
+      'entry',
+      'availability',
+      'selection',
+      'structure',
+      'runtime',
+    ],
     getNamespace: (namespace) => buildNamespace(namespace, bridge),
     getScene: () => detectScene(bridge),
     listResources: () => listResources(bridge),
@@ -213,12 +225,12 @@ export function ensurePageContextBridge(): MutablePageContextBridge {
     listSkills: () => listSkills(bridge),
     getSkill: (id, input) => getSkill(bridge, id, input),
     getManifest: () => buildManifest(bridge),
-  }
+  };
 
-  bridge.unbindFromHost = bindBridgeToPageContextHost(bridge)
-  syncNamespaces(bridge)
-  window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY] = bridge
-  return bridge
+  bridge.unbindFromHost = bindBridgeToPageContextHost(bridge);
+  syncNamespaces(bridge);
+  window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY] = bridge;
+  return bridge;
 }
 ```
 
@@ -233,71 +245,71 @@ Implementation rule:
 This pattern is required because host may appear before or after the business script.
 
 ```ts
-const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = "page-context-bridge-host:ready"
+const PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT = 'page-context-bridge-host:ready';
 
 function isPageContextBridgeHost(value: unknown): value is PageContextBridgeHost {
-  const candidate = value as Partial<PageContextBridgeHost> | undefined
-  return Boolean(candidate && typeof candidate.registerSource === "function")
+  const candidate = value as Partial<PageContextBridgeHost> | undefined;
+  return Boolean(candidate && typeof candidate.registerSource === 'function');
 }
 
 function bindBridgeToPageContextHost(bridge: PageContextBridgeLike): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined
+  if (typeof window === 'undefined') {
+    return () => undefined;
   }
 
-  let unregisterFromHost: (() => void) | undefined
-  let listeningHostReadyEvent = false
+  let unregisterFromHost: (() => void) | undefined;
+  let listeningHostReadyEvent = false;
 
   const stopListeningHostReadyEvent = () => {
     if (!listeningHostReadyEvent) {
-      return
+      return;
     }
-    window.removeEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, onHostReady as EventListener)
-    listeningHostReadyEvent = false
-  }
+    window.removeEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, onHostReady as EventListener);
+    listeningHostReadyEvent = false;
+  };
 
   const tryRegisterOnHost = (candidateHost?: unknown) => {
     if (unregisterFromHost) {
-      return
+      return;
     }
 
     const host = isPageContextBridgeHost(candidateHost)
       ? candidateHost
-      : window.__pageContextBridgeHost__
+      : window.__pageContextBridgeHost__;
 
     if (!host) {
-      return
+      return;
     }
 
     unregisterFromHost = host.registerSource({
       sourceId: PAGE_CONTEXT_SOURCE_ID,
       bridge,
       priority: 120,
-      tags: ["page", "example-app"],
-    })
+      tags: ['page', 'example-app'],
+    });
 
-    stopListeningHostReadyEvent()
-  }
+    stopListeningHostReadyEvent();
+  };
 
   const onHostReady = (event: Event) => {
-    tryRegisterOnHost((event as CustomEvent<unknown>).detail)
-  }
+    tryRegisterOnHost((event as CustomEvent<unknown>).detail);
+  };
 
-  tryRegisterOnHost()
+  tryRegisterOnHost();
 
   if (!unregisterFromHost) {
-    window.addEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, onHostReady as EventListener)
-    listeningHostReadyEvent = true
+    window.addEventListener(PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT, onHostReady as EventListener);
+    listeningHostReadyEvent = true;
 
     // Check again after listening to avoid host initialization happening between these two steps.
-    tryRegisterOnHost()
+    tryRegisterOnHost();
   }
 
   return () => {
-    stopListeningHostReadyEvent()
-    unregisterFromHost?.()
-    unregisterFromHost = undefined
-  }
+    stopListeningHostReadyEvent();
+    unregisterFromHost?.();
+    unregisterFromHost = undefined;
+  };
 }
 ```
 
@@ -314,37 +326,37 @@ Use one source bridge and many mounted instances.
 
 ```ts
 export function mountPageContextInstance(input: {
-  instanceId: string
-  model: BusinessPageModelModule
-  api: PageContextInstanceApi
+  instanceId: string;
+  model: BusinessPageModelModule;
+  api: PageContextInstanceApi;
 }): () => void {
-  if (typeof window === "undefined") {
-    return () => undefined
+  if (typeof window === 'undefined') {
+    return () => undefined;
   }
 
-  const bridge = ensurePageContextBridge()
+  const bridge = ensurePageContextBridge();
 
   bridge.internalInstances[input.instanceId] = {
     instanceId: input.instanceId,
     model: input.model,
     api: input.api,
-  }
+  };
 
-  syncNamespaces(bridge)
+  syncNamespaces(bridge);
 
   return () => {
-    delete bridge.internalInstances[input.instanceId]
-    syncNamespaces(bridge)
+    delete bridge.internalInstances[input.instanceId];
+    syncNamespaces(bridge);
 
     if (Object.keys(bridge.internalInstances).length === 0) {
-      bridge.unbindFromHost?.()
-      bridge.unbindFromHost = undefined
+      bridge.unbindFromHost?.();
+      bridge.unbindFromHost = undefined;
 
       if (window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY] === bridge) {
-        delete window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY]
+        delete window[PAGE_CONTEXT_BRIDGE_REGISTRY_KEY];
       }
     }
-  }
+  };
 }
 ```
 
@@ -432,6 +444,7 @@ Output contract for every runbook:
 ### 11.1 Option Is Missing, Hidden, Disabled, or Forbidden
 
 Question:
+
 - Why is option `X` not available?
 
 Call order:
@@ -452,6 +465,7 @@ Expected outcome:
 ### 11.2 Wrong Default Selection
 
 Question:
+
 - Why did selector choose branch `A` instead of expected `B`?
 
 Call order:
@@ -471,6 +485,7 @@ Expected outcome:
 ### 11.3 Wrong Scene or Deeplink Routing
 
 Question:
+
 - Why did runtime enter the wrong page scene?
 
 Call order:
@@ -488,6 +503,7 @@ Expected outcome:
 ### 11.4 Rendered UI Does Not Match Runtime
 
 Question:
+
 - Why does UI surface differ from expected runtime state?
 
 Call order:
@@ -506,6 +522,7 @@ Expected outcome:
 ### 11.5 Refactor Regression or Snapshot Drift
 
 Question:
+
 - Did recent code changes alter runtime graph semantics?
 
 Call order:
@@ -525,13 +542,13 @@ Expected outcome:
 Run these checks in the page console after integration:
 
 ```ts
-window.__pageContextBridgeHost__?.listSources?.()
-window.__pageContextBridge__?.listNamespaces()
-window.__pageContextBridge__?.getScene()
-window.__pageContextBridge__?.listResources()
-window.__pageContextBridge__?.readResource("workspace.page-summary")
-window.__pageContextBridge__?.listSkills()
-window.__pageContextBridge__?.getManifest()
+window.__pageContextBridgeHost__?.listSources?.();
+window.__pageContextBridge__?.listNamespaces();
+window.__pageContextBridge__?.getScene();
+window.__pageContextBridge__?.listResources();
+window.__pageContextBridge__?.readResource('workspace.page-summary');
+window.__pageContextBridge__?.listSkills();
+window.__pageContextBridge__?.getManifest();
 ```
 
 What must be true:

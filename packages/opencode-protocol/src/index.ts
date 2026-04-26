@@ -52,8 +52,7 @@ function loadConfig(): Config {
     const key = trimmed.slice(0, eqIdx).trim();
     let val = trimmed.slice(eqIdx + 1).trim();
 
-    if ((val.startsWith('"') && val.endsWith('"')) ||
-        (val.startsWith("'") && val.endsWith("'"))) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
 
@@ -72,8 +71,10 @@ function loadConfig(): Config {
 
   if (process.env.OPENCODE_BIN) configRaw.OPENCODE_BIN = process.env.OPENCODE_BIN;
   if (process.env.OPENCODE_TERMINAL) configRaw.OPENCODE_TERMINAL = process.env.OPENCODE_TERMINAL;
-  if (process.env.LOG_LEVEL) configRaw.LOG_LEVEL = process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error';
-  if (process.env.DEBUG) configRaw.DEBUG = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+  if (process.env.LOG_LEVEL)
+    configRaw.LOG_LEVEL = process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error';
+  if (process.env.DEBUG)
+    configRaw.DEBUG = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
 
   return configRaw;
 }
@@ -168,20 +169,20 @@ function executeInTerminal(cmd: string, cwd: string, terminal: TerminalType): vo
   switch (terminal) {
     case 'Terminal':
       runOsascript(
-        `tell application "Terminal"\nactivate\ndo script ${asString(fullCmd)}\nend tell`
+        `tell application "Terminal"\nactivate\ndo script ${asString(fullCmd)}\nend tell`,
       );
       break;
 
     case 'iTerm':
     case 'iTerm2':
       runOsascript(
-        `tell application "iTerm"\nactivate\nset newWindow to (create window with default profile)\ntell current session of newWindow\nwrite text ${asString(fullCmd)}\nend tell\nend tell`
+        `tell application "iTerm"\nactivate\nset newWindow to (create window with default profile)\ntell current session of newWindow\nwrite text ${asString(fullCmd)}\nend tell\nend tell`,
       );
       break;
 
     case 'Warp':
       runOsascript(
-        `tell application "Warp"\nactivate\nend tell\ndelay 0.8\ntell application "System Events"\ntell process "Warp"\nkeystroke "t" using command down\ndelay 0.5\nkeystroke ${asString(fullCmd)}\nkey code 36\nend tell\nend tell`
+        `tell application "Warp"\nactivate\nend tell\ndelay 0.8\ntell application "System Events"\ntell process "Warp"\nkeystroke "t" using command down\ndelay 0.5\nkeystroke ${asString(fullCmd)}\nkey code 36\nend tell\nend tell`,
       );
       break;
 
@@ -206,12 +207,15 @@ function executeInTerminal(cmd: string, cwd: string, terminal: TerminalType): vo
       } catch {
         // Ignore
       }
-      showNotification('OpenCode', 'Command copied to clipboard. Press Cmd+V in Ghostty to execute.');
+      showNotification(
+        'OpenCode',
+        'Command copied to clipboard. Press Cmd+V in Ghostty to execute.',
+      );
       break;
 
     default:
       runOsascript(
-        `tell application "Terminal"\nactivate\ndo script ${asString(fullCmd)}\nend tell`
+        `tell application "Terminal"\nactivate\ndo script ${asString(fullCmd)}\nend tell`,
       );
   }
 }
@@ -281,7 +285,7 @@ function checkFirstRunConsent(): boolean {
   try {
     const result = execSync(
       `osascript -e 'display dialog "Allow opencode:// protocol to execute OpenCode commands on this machine?" & return & return & "This will allow browsers to launch the local OpenCode CLI via opencode:// links." with title "OpenCode Protocol Authorization" buttons {"Deny", "Allow"} default button "Allow" with icon caution'`,
-      { encoding: 'utf-8' }
+      { encoding: 'utf-8' },
     );
     if (result.includes('Allow')) {
       writeFileSync(TRUST_FILE, new Date().toISOString());

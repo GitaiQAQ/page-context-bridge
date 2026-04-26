@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType } from 'react';
 
 export interface Annotation {
   id: string;
@@ -15,7 +15,7 @@ export interface Annotation {
   sourceFile?: string;
   isMultiSelect?: boolean;
   isFixed?: boolean;
-  severity?: "blocking" | "important" | "suggestion";
+  severity?: 'blocking' | 'important' | 'suggestion';
 }
 
 export interface AgentationProps {

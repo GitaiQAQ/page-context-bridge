@@ -28,7 +28,7 @@ export {
   type RpcMessage,
   type RpcHandler,
   type RpcPeerOptions,
-} from "./rpc";
+} from './rpc';
 
 export {
   BRIDGE_METHODS,
@@ -38,7 +38,7 @@ export {
   type ContextSkillDescriptor,
   type ContextSkillPrompt,
   type PageContextManifest,
-} from "./context-manifest";
+} from './context-manifest';
 
 export {
   FEEDBACK_METHODS,
@@ -69,7 +69,7 @@ export {
   type FeedbackAnnotationReplyParams,
   type FeedbackAnnotationResolveParams,
   type FeedbackAnnotationDismissParams,
-} from "./feedback";
+} from './feedback';
 
 export {
   type FeedbackUiTarget,
@@ -81,7 +81,7 @@ export {
   type FeedbackRuntimeCreatePayload,
   type FeedbackRuntimeUpdatePayload,
   type FeedbackRuntimeDismissPayload,
-} from "./feedback-ui-contract";
+} from './feedback-ui-contract';
 
 export {
   type ToolSpec,
@@ -92,4 +92,4 @@ export {
   type ExtensionToolProvider,
   type ContentScriptToolEnv,
   type ServiceWorkerToolContext,
-} from "./tool-provider";
+} from './tool-provider';

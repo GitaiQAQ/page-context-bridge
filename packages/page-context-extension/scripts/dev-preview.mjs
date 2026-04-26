@@ -46,12 +46,15 @@ console.log('Launching browser with extension...\n');
 const launchOptions = buildBrowserLaunchOptions(extensionPath);
 console.log(`Browser target: ${launchOptions.browserLabel}\n`);
 
-const context = await chromium.launchPersistentContext(devProfileDir, launchOptions.playwrightOptions);
+const context = await chromium.launchPersistentContext(
+  devProfileDir,
+  launchOptions.playwrightOptions,
+);
 
-await new Promise(resolve => setTimeout(resolve, 2000));
+await new Promise((resolve) => setTimeout(resolve, 2000));
 
 const workers = context.serviceWorkers();
-const serviceWorker = workers.find(w => w.url().includes('background'));
+const serviceWorker = workers.find((w) => w.url().includes('background'));
 let extensionId = null;
 
 if (serviceWorker) {
@@ -86,7 +89,7 @@ function buildBrowserLaunchOptions(extensionPath) {
   const baseArgs = [
     `--disable-extensions-except=${extensionPath}`,
     `--load-extension=${extensionPath}`,
-    '--window-size=1400,900'
+    '--window-size=1400,900',
   ];
 
   return {
@@ -94,8 +97,8 @@ function buildBrowserLaunchOptions(extensionPath) {
     playwrightOptions: {
       headless: false,
       channel: 'chromium',
-      args: baseArgs
-    }
+      args: baseArgs,
+    },
   };
 }
 

@@ -5,7 +5,7 @@ import type {
   ContextSkillDescriptor,
   ContextSkillPrompt,
   PageContextManifest,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
 import type {
   PageContextBridgeLike,
@@ -15,14 +15,14 @@ import type {
   ToolInput,
   UserscriptBridgeAdapter,
   UserscriptBridgeAdapterFactory,
-} from "./types";
-import { PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT } from "./bridge-host";
-import { safeRoute, toJsonResource } from "./utils";
+} from './types';
+import { PAGE_CONTEXT_BRIDGE_HOST_READY_EVENT } from './bridge-host';
+import { safeRoute, toJsonResource } from './utils';
 
-const HUB_VERSION = "userscript-hub/1.0.0";
-const HUB_SCENE = "userscript-adapter-hub";
-const HUB_KEY = "__pageContextUserscriptHub__";
-const HUB_SOURCE_ID = "userscript-adapter-hub";
+const HUB_VERSION = 'userscript-hub/1.0.0';
+const HUB_SCENE = 'userscript-adapter-hub';
+const HUB_KEY = '__pageContextUserscriptHub__';
+const HUB_SOURCE_ID = 'userscript-adapter-hub';
 
 export interface BrowserHost {
   window: Window;
@@ -121,7 +121,9 @@ function registerAdapterOnHub(
   const namespace = adapter.namespace.namespace;
   const existing = state.adaptersByNamespace.get(namespace);
   if (existing && existing.adapterId !== adapter.adapterId) {
-    state.diagnostics.push(`Namespace "${namespace}" already registered by "${existing.adapterId}", replaced by "${adapter.adapterId}".`);
+    state.diagnostics.push(
+      `Namespace "${namespace}" already registered by "${existing.adapterId}", replaced by "${adapter.adapterId}".`,
+    );
   }
 
   state.adaptersByNamespace.set(namespace, adapter);
@@ -142,7 +144,7 @@ function registerHubSourceOnHost(state: HubState, bridge: PageContextBridgeLike)
     sourceId: HUB_SOURCE_ID,
     bridge,
     priority: 80,
-    tags: ["userscript", "hub"],
+    tags: ['userscript', 'hub'],
   });
 }
 
@@ -169,18 +171,19 @@ function getNamespaceProxy(state: HubState, namespace: string): PageToolNamespac
   return {
     namespace,
     listInstances: () => adapter.listInstances().map((instance) => instance.instanceId),
-    getInstance: (instanceId) => adapter.listInstances().find((instance) => instance.instanceId === instanceId),
+    getInstance: (instanceId) =>
+      adapter.listInstances().find((instance) => instance.instanceId === instanceId),
   };
 }
 
 function getSceneFromAdapters(state: HubState): string {
   const hints = Array.from(state.adaptersByNamespace.values())
     .map((adapter) => adapter.getSceneHint?.())
-    .filter((item): item is string => typeof item === "string" && item.length > 0);
+    .filter((item): item is string => typeof item === 'string' && item.length > 0);
   if (hints.length === 0) {
     return HUB_SCENE;
   }
-  return `${HUB_SCENE}:${hints.join("+")}`;
+  return `${HUB_SCENE}:${hints.join('+')}`;
 }
 
 function collectNamespaceDescriptors(state: HubState): ContextNamespaceDescriptor[] {
@@ -188,7 +191,9 @@ function collectNamespaceDescriptors(state: HubState): ContextNamespaceDescripto
 }
 
 function collectResourceDescriptors(state: HubState): ContextResourceDescriptor[] {
-  return Array.from(state.adaptersByNamespace.values()).flatMap((adapter) => adapter.listResources());
+  return Array.from(state.adaptersByNamespace.values()).flatMap((adapter) =>
+    adapter.listResources(),
+  );
 }
 
 function readResourceById(state: HubState, id: string): ContextResourcePayload {
@@ -204,7 +209,11 @@ function collectSkillDescriptors(state: HubState): ContextSkillDescriptor[] {
   return Array.from(state.adaptersByNamespace.values()).flatMap((adapter) => adapter.listSkills());
 }
 
-function getSkillById(state: HubState, id: string, input: ToolInput): ContextSkillPrompt | undefined {
+function getSkillById(
+  state: HubState,
+  id: string,
+  input: ToolInput,
+): ContextSkillPrompt | undefined {
   const namespace = extractNamespaceFromId(id);
   const adapter = namespace ? state.adaptersByNamespace.get(namespace) : undefined;
   if (!adapter) {
@@ -216,7 +225,7 @@ function getSkillById(state: HubState, id: string, input: ToolInput): ContextSki
 function buildManifest(win: Window, _doc: Document, state: HubState): PageContextManifest {
   return {
     version: HUB_VERSION,
-    app: "userscript-adapter-hub",
+    app: 'userscript-adapter-hub',
     route: safeRoute(win),
     scene: getSceneFromAdapters(state),
     namespaces: collectNamespaceDescriptors(state),
@@ -227,7 +236,7 @@ function buildManifest(win: Window, _doc: Document, state: HubState): PageContex
 }
 
 function extractNamespaceFromId(id: string): string | undefined {
-  const dotIndex = id.indexOf(".");
+  const dotIndex = id.indexOf('.');
   if (dotIndex < 0) {
     return undefined;
   }
@@ -235,11 +244,11 @@ function extractNamespaceFromId(id: string): string | undefined {
 }
 
 function isBrowserHost(value: unknown): value is BrowserHost {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const host = value as Partial<BrowserHost>;
-  return typeof host.window !== "undefined" && typeof host.document !== "undefined";
+  return typeof host.window !== 'undefined' && typeof host.document !== 'undefined';
 }
 
 function resolveBrowserHost(host: unknown): BrowserHost | undefined {
@@ -249,10 +258,10 @@ function resolveBrowserHost(host: unknown): BrowserHost | undefined {
 
   // Userscript managers (Tampermonkey/Violentmonkey) may expose the real page window via unsafeWindow.
   const unsafeWindowCandidate = (globalThis as unknown as Record<string, unknown>).unsafeWindow;
-  if (unsafeWindowCandidate && typeof unsafeWindowCandidate === "object") {
+  if (unsafeWindowCandidate && typeof unsafeWindowCandidate === 'object') {
     const win = unsafeWindowCandidate as Window;
     const doc = (win as unknown as { document?: unknown }).document;
-    if (doc && typeof doc === "object") {
+    if (doc && typeof doc === 'object') {
       return { window: win, document: doc as Document };
     }
   }
@@ -278,5 +287,5 @@ function getPageContextBridgeHost(win: Window): PageContextBridgeHost | undefine
 
 function isPageContextBridgeHost(value: unknown): value is PageContextBridgeHost {
   const record = value as Partial<PageContextBridgeHost> | undefined;
-  return Boolean(record && typeof record.registerSource === "function");
+  return Boolean(record && typeof record.registerSource === 'function');
 }

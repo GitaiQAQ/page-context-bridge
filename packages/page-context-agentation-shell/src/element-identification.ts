@@ -37,17 +37,19 @@ export function getElementPath(target: HTMLElement, maxDepth = 4): string {
 
   while (current && depth < maxDepth) {
     const tag = current.tagName.toLowerCase();
-    if (tag === "html" || tag === "body") {
+    if (tag === 'html' || tag === 'body') {
       break;
     }
 
     let identifier = tag;
     if (current.id) {
       identifier = `#${current.id}`;
-    } else if (typeof current.className === "string" && current.className.trim()) {
-      const meaningfulClass = current.className.split(/\s+/).find((token) => isMeaningfulClassToken(token));
+    } else if (typeof current.className === 'string' && current.className.trim()) {
+      const meaningfulClass = current.className
+        .split(/\s+/)
+        .find((token) => isMeaningfulClassToken(token));
       if (meaningfulClass) {
-        identifier = `.${meaningfulClass.split("_")[0]}`;
+        identifier = `.${meaningfulClass.split('_')[0]}`;
       }
     }
 
@@ -61,7 +63,7 @@ export function getElementPath(target: HTMLElement, maxDepth = 4): string {
     depth += 1;
   }
 
-  return parts.join(" > ");
+  return parts.join(' > ');
 }
 
 /**
@@ -76,67 +78,67 @@ export function identifyElement(target: HTMLElement): { name: string; path: stri
 
   const tag = target.tagName.toLowerCase();
 
-  if (["path", "circle", "rect", "line", "g"].includes(tag)) {
-    const svg = closestCrossingShadow(target, "svg");
+  if (['path', 'circle', 'rect', 'line', 'g'].includes(tag)) {
+    const svg = closestCrossingShadow(target, 'svg');
     if (svg) {
-      return { name: "graphic element", path };
+      return { name: 'graphic element', path };
     }
   }
-  if (tag === "svg") {
+  if (tag === 'svg') {
     const parent = getParentElement(target);
-    if (parent?.tagName.toLowerCase() === "button") {
+    if (parent?.tagName.toLowerCase() === 'button') {
       const btnText = parent.textContent?.trim();
-      return { name: btnText ? `icon in "${btnText}" button` : "button icon", path };
+      return { name: btnText ? `icon in "${btnText}" button` : 'button icon', path };
     }
-    return { name: "icon", path };
+    return { name: 'icon', path };
   }
 
-  if (tag === "button") {
+  if (tag === 'button') {
     const text = target.textContent?.trim();
-    const ariaLabel = target.getAttribute("aria-label");
+    const ariaLabel = target.getAttribute('aria-label');
     if (ariaLabel) {
       return { name: `button [${ariaLabel}]`, path };
     }
-    return { name: text ? `button "${text.slice(0, 24)}"` : "button", path };
+    return { name: text ? `button "${text.slice(0, 24)}"` : 'button', path };
   }
-  if (tag === "a") {
+  if (tag === 'a') {
     const text = target.textContent?.trim();
-    const href = target.getAttribute("href");
+    const href = target.getAttribute('href');
     if (text) {
       return { name: `link "${text.slice(0, 24)}"`, path };
     }
     if (href) {
       return { name: `link to ${href.slice(0, 30)}`, path };
     }
-    return { name: "link", path };
+    return { name: 'link', path };
   }
-  if (tag === "input") {
-    const type = target.getAttribute("type") || "text";
-    const placeholder = target.getAttribute("placeholder");
+  if (tag === 'input') {
+    const type = target.getAttribute('type') || 'text';
+    const placeholder = target.getAttribute('placeholder');
     if (placeholder) {
       return { name: `input "${placeholder}"`, path };
     }
     return { name: `${type} input`, path };
   }
-  if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
+  if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
     const text = target.textContent?.trim();
     return { name: text ? `${tag} "${text.slice(0, 35)}"` : tag, path };
   }
-  if (tag === "img") {
-    const alt = target.getAttribute("alt");
-    return { name: alt ? `image "${alt.slice(0, 24)}"` : "image", path };
+  if (tag === 'img') {
+    const alt = target.getAttribute('alt');
+    return { name: alt ? `image "${alt.slice(0, 24)}"` : 'image', path };
   }
 
-  if (["div", "section", "article", "nav", "header", "footer", "aside", "main"].includes(tag)) {
-    const ariaLabel = target.getAttribute("aria-label");
-    const role = target.getAttribute("role");
+  if (['div', 'section', 'article', 'nav', 'header', 'footer', 'aside', 'main'].includes(tag)) {
+    const ariaLabel = target.getAttribute('aria-label');
+    const role = target.getAttribute('role');
     if (ariaLabel) {
       return { name: `${tag} [${ariaLabel}]`, path };
     }
     if (role) {
       return { name: role, path };
     }
-    return { name: tag === "div" ? "container" : tag, path };
+    return { name: tag === 'div' ? 'container' : tag, path };
   }
 
   return { name: tag, path };
@@ -217,7 +219,10 @@ function getContextClasses(target: HTMLElement): string[] | undefined {
 
   // First use "readable class names" for noise reduction; if all are filtered, fall back to original class names to avoid information loss.
   const meaningful = classTokens.filter((token) => isMeaningfulClassToken(token));
-  const candidates = (meaningful.length > 0 ? meaningful : classTokens).slice(0, ELEMENT_CONTEXT_MAX_CLASS_COUNT);
+  const candidates = (meaningful.length > 0 ? meaningful : classTokens).slice(
+    0,
+    ELEMENT_CONTEXT_MAX_CLASS_COUNT,
+  );
   if (candidates.length === 0) {
     return undefined;
   }
@@ -225,10 +230,10 @@ function getContextClasses(target: HTMLElement): string[] | undefined {
 }
 
 function getAccessibilityMeta(target: HTMLElement): ElementAccessibilityMeta | undefined {
-  const role = normalizeToken(target.getAttribute("role"));
-  const ariaLabel = normalizeTextSnippet(target.getAttribute("aria-label"));
-  const labelledByText = readAriaReferenceText(target, "aria-labelledby");
-  const describedByText = readAriaReferenceText(target, "aria-describedby");
+  const role = normalizeToken(target.getAttribute('role'));
+  const ariaLabel = normalizeTextSnippet(target.getAttribute('aria-label'));
+  const labelledByText = readAriaReferenceText(target, 'aria-labelledby');
+  const describedByText = readAriaReferenceText(target, 'aria-describedby');
   const labelText = readFormLabelText(target);
 
   if (!role && !ariaLabel && !labelledByText && !describedByText && !labelText) {
@@ -244,7 +249,10 @@ function getAccessibilityMeta(target: HTMLElement): ElementAccessibilityMeta | u
   };
 }
 
-function readAriaReferenceText(target: HTMLElement, attributeName: "aria-labelledby" | "aria-describedby"): string | undefined {
+function readAriaReferenceText(
+  target: HTMLElement,
+  attributeName: 'aria-labelledby' | 'aria-describedby',
+): string | undefined {
   const refValue = target.getAttribute(attributeName);
   if (!refValue) {
     return undefined;
@@ -264,7 +272,7 @@ function readAriaReferenceText(target: HTMLElement, attributeName: "aria-labelle
   if (texts.length === 0) {
     return undefined;
   }
-  return normalizeTextSnippet(texts.join(" | "));
+  return normalizeTextSnippet(texts.join(' | '));
 }
 
 function readFormLabelText(target: HTMLElement): string | undefined {
@@ -285,7 +293,7 @@ function readFormLabelText(target: HTMLElement): string | undefined {
   if (labels.length === 0) {
     return undefined;
   }
-  return normalizeTextSnippet(labels.join(" | "));
+  return normalizeTextSnippet(labels.join(' | '));
 }
 
 function getNearbyTextMeta(target: HTMLElement): ElementNearbyTextMeta | undefined {
@@ -313,7 +321,7 @@ function readElementSelfText(target: HTMLElement): string | undefined {
     return fromTextContent;
   }
 
-  const fallbackAttributeNames = ["aria-label", "placeholder", "title", "alt"] as const;
+  const fallbackAttributeNames = ['aria-label', 'placeholder', 'title', 'alt'] as const;
   for (const attributeName of fallbackAttributeNames) {
     const snippet = normalizeTextSnippet(target.getAttribute(attributeName));
     if (snippet) {
@@ -328,18 +336,21 @@ function isMeaningfulClassToken(token: string): boolean {
 }
 
 function normalizeToken(value: string | null | undefined): string | undefined {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return undefined;
   }
   const normalized = value.trim();
   return normalized || undefined;
 }
 
-function normalizeTextSnippet(value: string | null | undefined, maxLength = ELEMENT_CONTEXT_MAX_TEXT_LENGTH): string | undefined {
-  if (typeof value !== "string") {
+function normalizeTextSnippet(
+  value: string | null | undefined,
+  maxLength = ELEMENT_CONTEXT_MAX_TEXT_LENGTH,
+): string | undefined {
+  if (typeof value !== 'string') {
     return undefined;
   }
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = value.replace(/\s+/g, ' ').trim();
   if (!normalized) {
     return undefined;
   }
@@ -361,7 +372,7 @@ interface ReactAnchorMeta {
 const REACT_FIBER_MAX_DEPTH = 30;
 const REACT_PATH_MAX_COMPONENTS = 8;
 const REACT_DOM_WALK_MAX_DEPTH = 12;
-const REACT_FIBER_KEY_PREFIXES = ["__reactFiber$", "__reactInternalInstance$"] as const;
+const REACT_FIBER_KEY_PREFIXES = ['__reactFiber$', '__reactInternalInstance$'] as const;
 
 /**
  * Attempt to find React fiber from the target element and its ancestors.
@@ -392,13 +403,15 @@ function getReactFiberFromElement(target: Element): ReactFiberNode | null {
     return null;
   }
 
-  const fiberKey = keys.find((key) => REACT_FIBER_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)));
+  const fiberKey = keys.find((key) =>
+    REACT_FIBER_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)),
+  );
   if (!fiberKey) {
     return null;
   }
 
   const value = (target as unknown as Record<string, unknown>)[fiberKey];
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return null;
   }
   return value as ReactFiberNode;
@@ -406,7 +419,7 @@ function getReactFiberFromElement(target: Element): ReactFiberNode | null {
 
 function getComponentNameFromFiber(fiber: ReactFiberNode): string | null {
   // React HostComponent type is a string (e.g., "div"), which is not a component name.
-  if (typeof fiber.type === "string") {
+  if (typeof fiber.type === 'string') {
     return null;
   }
 
@@ -422,13 +435,13 @@ function readComponentNameFromType(type: unknown, depth: number): string | null 
     return null;
   }
 
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     const fn = type as Function & { displayName?: string };
     const name = fn.displayName ?? fn.name;
     return normalizeComponentName(name);
   }
 
-  if (typeof type !== "object") {
+  if (typeof type !== 'object') {
     return null;
   }
 
@@ -462,8 +475,10 @@ function readComponentNameFromType(type: unknown, depth: number): string | null 
 
   // ContextProvider often has a readable name on _context.displayName.
   const contextRecord = record._context;
-  if (contextRecord && typeof contextRecord === "object") {
-    const contextName = normalizeComponentName((contextRecord as Record<string, unknown>).displayName);
+  if (contextRecord && typeof contextRecord === 'object') {
+    const contextName = normalizeComponentName(
+      (contextRecord as Record<string, unknown>).displayName,
+    );
     if (contextName) {
       return `${contextName}.Provider`;
     }
@@ -473,7 +488,7 @@ function readComponentNameFromType(type: unknown, depth: number): string | null 
 }
 
 function normalizeComponentName(value: unknown): string | null {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return null;
   }
   const normalized = value.trim();

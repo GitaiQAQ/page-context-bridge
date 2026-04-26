@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { executeContentScriptTool } from "@page-context/builtin-tools";
+import { executeContentScriptTool } from '@page-context/builtin-tools';
 
-describe("executeContentScriptTool", () => {
+describe('executeContentScriptTool', () => {
   beforeEach(() => {
     document.body.innerHTML = `
       <main>
@@ -14,23 +14,31 @@ describe("executeContentScriptTool", () => {
         </ul>
       </main>
     `;
-    document.title = "Demo";
+    document.title = 'Demo';
   });
 
-  it("returns page info and queries elements", () => {
+  it('returns page info and queries elements', () => {
     const environment = { win: window, doc: document, consoleEntries: [] };
-    expect(executeContentScriptTool("builtin.get_page_info", {}, environment)).toMatchObject({ title: "Demo" });
-    expect(executeContentScriptTool("builtin.query_elements", { selector: ".item" }, environment)).toMatchObject({ count: 2 });
+    expect(executeContentScriptTool('builtin.get_page_info', {}, environment)).toMatchObject({
+      title: 'Demo',
+    });
+    expect(
+      executeContentScriptTool('builtin.query_elements', { selector: '.item' }, environment),
+    ).toMatchObject({ count: 2 });
   });
 
-  it("fills input fields with DOM events", () => {
+  it('fills input fields with DOM events', () => {
     const events: string[] = [];
-    document.getElementById("name")?.addEventListener("input", () => events.push("input"));
-    document.getElementById("name")?.addEventListener("change", () => events.push("change"));
+    document.getElementById('name')?.addEventListener('input', () => events.push('input'));
+    document.getElementById('name')?.addEventListener('change', () => events.push('change'));
 
-    const result = executeContentScriptTool("builtin.fill_input", { selector: "#name", value: "Trae" }, { win: window, doc: document, consoleEntries: [] });
-    expect(result).toMatchObject({ filled: true, value: "Trae" });
-    expect((document.getElementById("name") as HTMLInputElement).value).toBe("Trae");
-    expect(events).toEqual(["input", "change"]);
+    const result = executeContentScriptTool(
+      'builtin.fill_input',
+      { selector: '#name', value: 'Trae' },
+      { win: window, doc: document, consoleEntries: [] },
+    );
+    expect(result).toMatchObject({ filled: true, value: 'Trae' });
+    expect((document.getElementById('name') as HTMLInputElement).value).toBe('Trae');
+    expect(events).toEqual(['input', 'change']);
   });
 });

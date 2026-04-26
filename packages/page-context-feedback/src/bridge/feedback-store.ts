@@ -22,7 +22,7 @@ import type {
   FeedbackStateSnapshotResult,
   FeedbackThreadMessage,
   FeedbackUiAnchor,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 import {
   cloneValue,
   normalizeText,
@@ -30,15 +30,15 @@ import {
   normalizeUiRect,
   normalizeUiTextRange,
   uniqueStrings,
-} from "./feedback-normalizers.js";
+} from './feedback-normalizers.js';
 
 const DEFAULT_EVENT_RING_SIZE = 500;
 
 const ALLOWED_STATUS_TRANSITIONS: Record<FeedbackAnnotationStatus, FeedbackAnnotationStatus[]> = {
-  open: ["claimed", "dismissed"],
-  claimed: ["in_progress", "resolved", "dismissed"],
-  in_progress: ["needs_info", "resolved", "dismissed"],
-  needs_info: ["claimed", "in_progress", "dismissed"],
+  open: ['claimed', 'dismissed'],
+  claimed: ['in_progress', 'resolved', 'dismissed'],
+  in_progress: ['needs_info', 'resolved', 'dismissed'],
+  needs_info: ['claimed', 'in_progress', 'dismissed'],
   resolved: [],
   dismissed: [],
 };
@@ -73,7 +73,7 @@ export interface CreateFeedbackAnnotationInput {
     scene?: string;
     route?: string;
   };
-  manifestSummary?: FeedbackContext["manifestSummary"];
+  manifestSummary?: FeedbackContext['manifestSummary'];
   linkedCapabilities: FeedbackCapabilityLinks;
 }
 
@@ -86,18 +86,27 @@ export interface ReplyFeedbackAnnotationInput {
   annotationId: string;
   actor: FeedbackActor;
   body: string;
-  kind?: FeedbackThreadMessage["kind"];
+  kind?: FeedbackThreadMessage['kind'];
 }
 
-export interface ResolveFeedbackAnnotationInput extends Omit<FeedbackAnnotationResolveParams, "actor"> {
+export interface ResolveFeedbackAnnotationInput extends Omit<
+  FeedbackAnnotationResolveParams,
+  'actor'
+> {
   actor: FeedbackActor;
 }
 
-export interface DismissFeedbackAnnotationInput extends Omit<FeedbackAnnotationDismissParams, "actor"> {
+export interface DismissFeedbackAnnotationInput extends Omit<
+  FeedbackAnnotationDismissParams,
+  'actor'
+> {
   actor: FeedbackActor;
 }
 
-export interface UpdateFeedbackAnnotationInput extends Omit<FeedbackAnnotationUpdateParams, "actor"> {
+export interface UpdateFeedbackAnnotationInput extends Omit<
+  FeedbackAnnotationUpdateParams,
+  'actor'
+> {
   actor: FeedbackActor;
 }
 
@@ -126,7 +135,9 @@ export class FeedbackStore {
   ) {
     this.maxEvents = options.maxEvents ?? DEFAULT_EVENT_RING_SIZE;
     this.now = options.now ?? (() => new Date().toISOString());
-    this.createId = options.createId ?? ((prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`);
+    this.createId =
+      options.createId ??
+      ((prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`);
   }
 
   readSnapshot(params: FeedbackStateSnapshotParams = {}): FeedbackStateSnapshotResult {
@@ -193,12 +204,12 @@ export class FeedbackStore {
     const targetUiAnchor = normalizedUiAnchor ? cloneValue(normalizedUiAnchor) : undefined;
     const contextUiAnchor = normalizedUiAnchor ? cloneValue(normalizedUiAnchor) : undefined;
     const annotation: FeedbackAnnotation = {
-      id: this.createId("annotation"),
+      id: this.createId('annotation'),
       sessionId: session.id,
       author: input.actor,
       body: input.body,
-      status: "open",
-      priority: input.priority ?? "normal",
+      status: 'open',
+      priority: input.priority ?? 'normal',
       target: {
         tabId: input.tabId,
         url: input.url,
@@ -239,7 +250,7 @@ export class FeedbackStore {
     this.appendEvent({
       sessionId: session.id,
       annotationId: annotation.id,
-      eventType: "annotation.created",
+      eventType: 'annotation.created',
       source: input.actor.source,
       payload: { status: annotation.status, priority: annotation.priority },
     });
@@ -249,14 +260,14 @@ export class FeedbackStore {
 
   claimAnnotation(input: ClaimFeedbackAnnotationInput): FeedbackAnnotation {
     const annotation = this.requireAnnotation(input.annotationId);
-    this.transition(annotation, "claimed");
+    this.transition(annotation, 'claimed');
     annotation.claimedBy = input.actor;
     annotation.updatedAt = this.now();
 
     this.appendEvent({
       sessionId: annotation.sessionId,
       annotationId: annotation.id,
-      eventType: "annotation.claimed",
+      eventType: 'annotation.claimed',
       source: input.actor.source,
       payload: { status: annotation.status, claimedBy: input.actor.id },
     });
@@ -267,11 +278,11 @@ export class FeedbackStore {
   replyAnnotation(input: ReplyFeedbackAnnotationInput): FeedbackAnnotation {
     const annotation = this.requireAnnotation(input.annotationId);
     const reply: FeedbackThreadMessage = {
-      id: this.createId("thread"),
+      id: this.createId('thread'),
       annotationId: annotation.id,
       author: input.actor,
       body: input.body,
-      kind: input.kind ?? "comment",
+      kind: input.kind ?? 'comment',
       createdAt: this.now(),
     };
 
@@ -281,7 +292,7 @@ export class FeedbackStore {
     this.appendEvent({
       sessionId: annotation.sessionId,
       annotationId: annotation.id,
-      eventType: "annotation.replied",
+      eventType: 'annotation.replied',
       source: input.actor.source,
       payload: { kind: reply.kind, authorId: reply.author.id },
     });
@@ -291,18 +302,18 @@ export class FeedbackStore {
 
   resolveAnnotation(input: ResolveFeedbackAnnotationInput): FeedbackAnnotation {
     const annotation = this.requireAnnotation(input.annotationId);
-    this.transition(annotation, "resolved");
+    this.transition(annotation, 'resolved');
     annotation.resolvedBy = input.actor;
     annotation.resolution = normalizeText(input.resolution);
     annotation.updatedAt = this.now();
 
     if (annotation.resolution) {
       annotation.thread.push({
-        id: this.createId("thread"),
+        id: this.createId('thread'),
         annotationId: annotation.id,
         author: input.actor,
         body: annotation.resolution,
-        kind: "resolution_note",
+        kind: 'resolution_note',
         createdAt: this.now(),
       });
     }
@@ -310,7 +321,7 @@ export class FeedbackStore {
     this.appendEvent({
       sessionId: annotation.sessionId,
       annotationId: annotation.id,
-      eventType: "annotation.resolved",
+      eventType: 'annotation.resolved',
       source: input.actor.source,
       payload: { status: annotation.status, resolvedBy: input.actor.id },
     });
@@ -320,14 +331,14 @@ export class FeedbackStore {
 
   dismissAnnotation(input: DismissFeedbackAnnotationInput): FeedbackAnnotation {
     const annotation = this.requireAnnotation(input.annotationId);
-    this.transition(annotation, "dismissed");
+    this.transition(annotation, 'dismissed');
     annotation.dismissReason = normalizeText(input.dismissReason);
     annotation.updatedAt = this.now();
 
     this.appendEvent({
       sessionId: annotation.sessionId,
       annotationId: annotation.id,
-      eventType: "annotation.dismissed",
+      eventType: 'annotation.dismissed',
       source: input.actor.source,
       payload: { status: annotation.status },
     });
@@ -339,13 +350,13 @@ export class FeedbackStore {
     const annotation = this.requireAnnotation(input.annotationId);
 
     // Final state annotations cannot be edited again to avoid silent modification of "processed items".
-    if (annotation.status === "resolved" || annotation.status === "dismissed") {
+    if (annotation.status === 'resolved' || annotation.status === 'dismissed') {
       throw new Error(`Cannot update annotation in status: ${annotation.status}`);
     }
 
     const normalizedBody = normalizeText(input.body);
     if (!normalizedBody) {
-      throw new Error("Annotation body is required");
+      throw new Error('Annotation body is required');
     }
     annotation.body = normalizedBody;
     if (input.priority) {
@@ -356,7 +367,7 @@ export class FeedbackStore {
     this.appendEvent({
       sessionId: annotation.sessionId,
       annotationId: annotation.id,
-      eventType: "annotation.updated",
+      eventType: 'annotation.updated',
       source: input.actor.source,
       payload: { status: annotation.status, priority: annotation.priority },
     });
@@ -388,7 +399,7 @@ export class FeedbackStore {
 
     const now = this.now();
     const session: FeedbackSession = {
-      id: this.createId("session"),
+      id: this.createId('session'),
       tenantId: this.tenantId,
       tabId: input.tabId,
       url: input.url,
@@ -396,7 +407,7 @@ export class FeedbackStore {
       app: input.app,
       scene: input.scene,
       route: input.route,
-      status: "active",
+      status: 'active',
       createdAt: now,
       updatedAt: now,
       lastEventSeq: this.state.lastSeq,
@@ -408,8 +419,8 @@ export class FeedbackStore {
 
     this.appendEvent({
       sessionId: session.id,
-      eventType: "session.started",
-      source: "bridge",
+      eventType: 'session.started',
+      source: 'bridge',
       payload: { tabId: session.tabId, url: session.url },
     });
 
@@ -420,11 +431,11 @@ export class FeedbackStore {
     sessionId: string;
     annotationId?: string;
     eventType: FeedbackEventType;
-    source: FeedbackActor["source"];
+    source: FeedbackActor['source'];
     payload: Record<string, unknown>;
   }): FeedbackEvent {
     const event: FeedbackEvent = {
-      eventId: this.createId("event"),
+      eventId: this.createId('event'),
       tenantId: this.tenantId,
       sessionId: input.sessionId,
       annotationId: input.annotationId,
@@ -478,7 +489,9 @@ export class FeedbackStore {
       const session = this.state.sessionsById.get(sessionId);
       return session ? [session] : [];
     }
-    return Array.from(this.state.sessionsById.values()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    return Array.from(this.state.sessionsById.values()).sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    );
   }
 
   private bumpSnapshotVersion(): void {

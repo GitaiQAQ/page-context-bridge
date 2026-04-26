@@ -10,10 +10,12 @@ export interface ActiveTabFeedbackContext {
   selectedText?: string;
 }
 
-export async function resolveFeedbackTab(sender?: chrome.runtime.MessageSender): Promise<chrome.tabs.Tab | undefined> {
+export async function resolveFeedbackTab(
+  sender?: chrome.runtime.MessageSender,
+): Promise<chrome.tabs.Tab | undefined> {
   const senderTab = sender?.tab;
   const senderTabId = senderTab?.id;
-  if (typeof senderTabId === "number") {
+  if (typeof senderTabId === 'number') {
     if (senderTab?.url) return senderTab;
     return await chrome.tabs.get(senderTabId);
   }
@@ -21,10 +23,12 @@ export async function resolveFeedbackTab(sender?: chrome.runtime.MessageSender):
   return activeTab;
 }
 
-export async function captureActiveTabFeedbackContext(sender?: chrome.runtime.MessageSender): Promise<ActiveTabFeedbackContext> {
+export async function captureActiveTabFeedbackContext(
+  sender?: chrome.runtime.MessageSender,
+): Promise<ActiveTabFeedbackContext> {
   const tab = await resolveFeedbackTab(sender);
   if (!tab?.id || !tab.url) {
-    throw new Error("No tab available for feedback");
+    throw new Error('No tab available for feedback');
   }
   return {
     tabId: tab.id,
@@ -38,20 +42,26 @@ async function readSelectedText(tabId: number): Promise<string | undefined> {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      world: "MAIN",
+      world: 'MAIN',
       func: () => {
         const win = window as Window & { document: Document };
-        const fromSelection = win.getSelection()?.toString?.() ?? "";
+        const fromSelection = win.getSelection()?.toString?.() ?? '';
         if (fromSelection.trim()) return fromSelection;
         const activeElement = win.document.activeElement;
-        if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) return "";
+        if (
+          !(
+            activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLTextAreaElement
+          )
+        )
+          return '';
         const start = activeElement.selectionStart ?? 0;
         const end = activeElement.selectionEnd ?? 0;
-        if (start === end) return "";
+        if (start === end) return '';
         return activeElement.value.slice(start, end);
       },
     });
-    const text = String(results[0]?.result ?? "").trim();
+    const text = String(results[0]?.result ?? '').trim();
     return text || undefined;
   } catch {
     return undefined;

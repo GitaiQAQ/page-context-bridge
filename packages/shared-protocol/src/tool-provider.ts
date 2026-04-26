@@ -28,7 +28,7 @@ export interface ToolSpec {
  * - `content-script`: Needs DOM access (runs in page context).
  * - `service-worker`: Needs extension APIs only (runs in background).
  */
-export type ToolExecutionContext = "content-script" | "service-worker";
+export type ToolExecutionContext = 'content-script' | 'service-worker';
 
 /**
  * A complete tool definition with its execution context.
@@ -42,7 +42,11 @@ export interface ToolDefinition extends ToolSpec {
  * Bridge-side tool registration callback.
  * Called by the bridge-server to send a tool call to the extension.
  */
-export type BridgeToolCallFn = (tool: string, args: Record<string, unknown>, tabId?: number) => Promise<unknown>;
+export type BridgeToolCallFn = (
+  tool: string,
+  args: Record<string, unknown>,
+  tabId?: number,
+) => Promise<unknown>;
 
 /**
  * Tool provider for the MCP bridge server (Node.js).
@@ -58,7 +62,15 @@ export interface BridgeToolProvider {
    * The `sendToExtension` callback is used to route tool calls to the extension.
    */
   registerOnBridge(
-    registerTool: (name: string, schema: { description: string; inputSchema: Record<string, unknown>; annotations?: Record<string, unknown> }, handler: (args: Record<string, unknown>) => Promise<unknown>) => { remove: () => void },
+    registerTool: (
+      name: string,
+      schema: {
+        description: string;
+        inputSchema: Record<string, unknown>;
+        annotations?: Record<string, unknown>;
+      },
+      handler: (args: Record<string, unknown>) => Promise<unknown>,
+    ) => { remove: () => void },
     sendToExtension: BridgeToolCallFn,
   ): Map<string, { remove: () => void }>;
 }
@@ -76,12 +88,20 @@ export interface ExtensionToolProvider {
    * Execute a tool in the content script context.
    * Only called for tools with executionContext === "content-script".
    */
-  executeInContentScript?(tool: string, args: Record<string, unknown>, env: ContentScriptToolEnv): unknown;
+  executeInContentScript?(
+    tool: string,
+    args: Record<string, unknown>,
+    env: ContentScriptToolEnv,
+  ): unknown;
   /**
    * Execute a tool in the service worker context.
    * Only called for tools with executionContext === "service-worker".
    */
-  executeInServiceWorker?(tool: string, args: Record<string, unknown>, ctx: ServiceWorkerToolContext): Promise<unknown>;
+  executeInServiceWorker?(
+    tool: string,
+    args: Record<string, unknown>,
+    ctx: ServiceWorkerToolContext,
+  ): Promise<unknown>;
 }
 
 /** Environment available to content-script tools. */
@@ -112,7 +132,7 @@ export interface ServiceWorkerToolContext {
   closeTab(tabId: number): Promise<void>;
 
   /** Wait until the tab loading status matches. */
-  waitForTabStatus(tabId: number, status: "loading" | "complete", timeoutMs: number): Promise<void>;
+  waitForTabStatus(tabId: number, status: 'loading' | 'complete', timeoutMs: number): Promise<void>;
 
   /** Send a CDP command to the tab (requires extension 'debugger' permission). */
   cdpSendCommand(tabId: number, method: string, params?: Record<string, unknown>): Promise<unknown>;

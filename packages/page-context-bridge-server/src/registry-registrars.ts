@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {
   FeedbackAnnotationClaimParams,
   FeedbackAnnotationCreateParams,
@@ -11,12 +11,24 @@ import type {
   BridgeToolProvider,
   ToolSpec,
   PageContextManifest,
-} from "@page-context/shared-protocol";
-import { ExtensionControlBridgeProvider, FeedbackControlBridgeProvider } from "@page-context/builtin-tools";
-import { z } from "zod";
+} from '@page-context/shared-protocol';
+import {
+  ExtensionControlBridgeProvider,
+  FeedbackControlBridgeProvider,
+} from '@page-context/builtin-tools';
+import { z } from 'zod';
 
-import type { ExtensionRpcCaller, PageToolSpec, RemovableHandle, ServerHandleStore } from "./registry-types.js";
-import { createTextResponse, expandBuiltinToolNameAliases, getOrCreateServerHandleMap } from "./registry-utils.js";
+import type {
+  ExtensionRpcCaller,
+  PageToolSpec,
+  RemovableHandle,
+  ServerHandleStore,
+} from './registry-types.js';
+import {
+  createTextResponse,
+  expandBuiltinToolNameAliases,
+  getOrCreateServerHandleMap,
+} from './registry-utils.js';
 
 /**
  * Handle state for builtin / feedback / extension-control registrars.
@@ -51,16 +63,18 @@ export interface ExtensionControlRegistrarInput {
   extensionToolControlProvider: ExtensionControlBridgeProvider;
   rpcCaller: Pick<
     ExtensionRpcCaller,
-    | "getRuntimeStatus"
-    | "reconnectExtension"
-    | "debugToolCall"
-    | "ensureMainWorldHost"
-    | "ensureAgentationMain"
-    | "getContextManifestDebug"
-    | "getPageToolsTree"
-    | "setPageToolsEnabledBatch"
+    | 'getRuntimeStatus'
+    | 'reconnectExtension'
+    | 'debugToolCall'
+    | 'ensureMainWorldHost'
+    | 'ensureAgentationMain'
+    | 'getContextManifestDebug'
+    | 'getPageToolsTree'
+    | 'setPageToolsEnabledBatch'
   >;
-  refreshPageToolsForTab: (tabId: number) => Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }>;
+  refreshPageToolsForTab: (
+    tabId: number,
+  ) => Promise<{ tools: PageToolSpec[]; manifest: PageContextManifest | null }>;
   normalizePageToolName: (tool: { name: string; _namespace?: string }) => string;
 }
 
@@ -79,7 +93,7 @@ export function syncBuiltinToolsOnServer(input: {
   state: RegistryRegistrarState;
   mcpServer: McpServer;
   toolProviders: BridgeToolProvider[];
-  rpcCaller: Pick<ExtensionRpcCaller, "sendToolCall">;
+  rpcCaller: Pick<ExtensionRpcCaller, 'sendToolCall'>;
 }): void {
   const { state, mcpServer, toolProviders, rpcCaller } = input;
   const handles = getOrCreateServerHandleMap(state.builtinToolHandlesByServer, mcpServer);
@@ -93,11 +107,12 @@ export function syncBuiltinToolsOnServer(input: {
 
   for (const provider of toolProviders) {
     const providerHandles = provider.registerOnBridge(
-      (name, schema, handler) => mcpServer.registerTool(
-        name,
-        schema as Parameters<typeof mcpServer.registerTool>[1],
-        handler as Parameters<typeof mcpServer.registerTool>[2],
-      ),
+      (name, schema, handler) =>
+        mcpServer.registerTool(
+          name,
+          schema as Parameters<typeof mcpServer.registerTool>[1],
+          handler as Parameters<typeof mcpServer.registerTool>[2],
+        ),
       (tool, args, tabId) => rpcCaller.sendToolCall(tool, args, tabId),
     );
 
@@ -121,7 +136,7 @@ export function syncBuiltinToolsOnAllServers(input: {
   state: RegistryRegistrarState;
   mcpServers: Iterable<McpServer>;
   toolProviders: BridgeToolProvider[];
-  rpcCaller: Pick<ExtensionRpcCaller, "sendToolCall">;
+  rpcCaller: Pick<ExtensionRpcCaller, 'sendToolCall'>;
   toolSpecs: ToolSpec[];
 }): void {
   const { state, mcpServers, toolProviders, rpcCaller, toolSpecs } = input;
@@ -148,7 +163,9 @@ export function registerFeedbackToolsOnServer(input: {
   const register = (
     name: string,
     config: { description: string; inputSchema: Record<string, z.ZodTypeAny> },
-    handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
+    handler: (
+      args: Record<string, unknown>,
+    ) => Promise<{ content: Array<{ type: 'text'; text: string }> }>,
   ) => {
     const handle = mcpServer.registerTool(
       name,
@@ -159,11 +176,12 @@ export function registerFeedbackToolsOnServer(input: {
   };
 
   const feedbackControlHandles = feedbackControlProvider.registerOnBridge(
-    (name, schema, handler) => mcpServer.registerTool(
-      name,
-      schema as unknown as Parameters<typeof mcpServer.registerTool>[1],
-      handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
-    ),
+    (name, schema, handler) =>
+      mcpServer.registerTool(
+        name,
+        schema as unknown as Parameters<typeof mcpServer.registerTool>[1],
+        handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
+      ),
     {
       getFeedbackSnapshot: (params) => feedbackRpc.getFeedbackSnapshot(params),
       getFeedbackDelta: (params) => feedbackRpc.getFeedbackDelta(params),
@@ -181,76 +199,89 @@ export function registerFeedbackToolsOnServer(input: {
 
   // The four below are legacy namespace query tools, retained for compatibility with existing prompt/tool call paths.
   register(
-    "feedback_list_sessions",
+    'feedback_list_sessions',
     {
-      description: "List feedback sessions for current tenant.",
+      description: 'List feedback sessions for current tenant.',
       inputSchema: {
         tabId: z.number().optional(),
       },
     },
     async (args) => {
-      const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
+      const tabId = typeof args.tabId === 'number' ? args.tabId : undefined;
       const sessions = feedbackRpc.listFeedbackSessions(tabId);
       return createTextResponse(JSON.stringify({ sessions }, null, 2));
     },
   );
 
   register(
-    "feedback_get_session",
+    'feedback_get_session',
     {
-      description: "Get one feedback session with all annotations.",
+      description: 'Get one feedback session with all annotations.',
       inputSchema: {
         sessionId: z.string().min(1),
       },
     },
     async (args) => {
-      const sessionId = typeof args.sessionId === "string" ? args.sessionId : "";
+      const sessionId = typeof args.sessionId === 'string' ? args.sessionId : '';
       const payload = feedbackRpc.getFeedbackSession(sessionId);
       if (!payload) {
-        return createTextResponse(JSON.stringify({ error: `Session not found: ${sessionId}` }, null, 2));
+        return createTextResponse(
+          JSON.stringify({ error: `Session not found: ${sessionId}` }, null, 2),
+        );
       }
       return createTextResponse(JSON.stringify(payload, null, 2));
     },
   );
 
   register(
-    "feedback_list_annotations",
+    'feedback_list_annotations',
     {
-      description: "List feedback annotations by session or tab.",
+      description: 'List feedback annotations by session or tab.',
       inputSchema: {
         sessionId: z.string().optional(),
         tabId: z.number().optional(),
       },
     },
     async (args) => {
-      const sessionId = typeof args.sessionId === "string" ? args.sessionId : undefined;
-      const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
+      const sessionId = typeof args.sessionId === 'string' ? args.sessionId : undefined;
+      const tabId = typeof args.tabId === 'number' ? args.tabId : undefined;
       const annotations = feedbackRpc.listFeedbackAnnotations({ sessionId, tabId });
       return createTextResponse(JSON.stringify({ annotations }, null, 2));
     },
   );
 
   register(
-    "feedback_get_annotation",
+    'feedback_get_annotation',
     {
-      description: "Get one annotation with thread and linked capabilities.",
+      description: 'Get one annotation with thread and linked capabilities.',
       inputSchema: {
         annotationId: z.string().min(1),
       },
     },
     async (args) => {
-      const annotationId = typeof args.annotationId === "string" ? args.annotationId : "";
+      const annotationId = typeof args.annotationId === 'string' ? args.annotationId : '';
       const annotation = feedbackRpc.getFeedbackAnnotation(annotationId);
       if (!annotation) {
-        return createTextResponse(JSON.stringify({ error: `Annotation not found: ${annotationId}` }, null, 2));
+        return createTextResponse(
+          JSON.stringify({ error: `Annotation not found: ${annotationId}` }, null, 2),
+        );
       }
       return createTextResponse(JSON.stringify({ annotation }, null, 2));
     },
   );
 }
 
-export function registerExtensionToolControlToolsOnServer(input: ExtensionControlRegistrarInput): void {
-  const { state, mcpServer, extensionToolControlProvider, rpcCaller, refreshPageToolsForTab, normalizePageToolName } = input;
+export function registerExtensionToolControlToolsOnServer(
+  input: ExtensionControlRegistrarInput,
+): void {
+  const {
+    state,
+    mcpServer,
+    extensionToolControlProvider,
+    rpcCaller,
+    refreshPageToolsForTab,
+    normalizePageToolName,
+  } = input;
   const handles = getOrCreateServerHandleMap(state.extensionToolControlHandlesByServer, mcpServer);
 
   if (handles.size > 0) {
@@ -258,11 +289,12 @@ export function registerExtensionToolControlToolsOnServer(input: ExtensionContro
   }
 
   const providerHandles = extensionToolControlProvider.registerOnBridge(
-    (name, schema, handler) => mcpServer.registerTool(
-      name,
-      schema as unknown as Parameters<typeof mcpServer.registerTool>[1],
-      handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
-    ),
+    (name, schema, handler) =>
+      mcpServer.registerTool(
+        name,
+        schema as unknown as Parameters<typeof mcpServer.registerTool>[1],
+        handler as unknown as Parameters<typeof mcpServer.registerTool>[2],
+      ),
     {
       getRuntimeStatus: () => rpcCaller.getRuntimeStatus(),
       reconnectExtension: () => rpcCaller.reconnectExtension(),

@@ -3,10 +3,19 @@ import type {
   ContextResourceDescriptor,
   ContextSkillDescriptor,
   ToolSpec,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
-import type { PageToolInstance, ToolInput, UserscriptBridgeAdapter } from "../types";
-import { buildSkillPrompt, listToolNames, normalizeSkillInput, previewValue, READONLY_ANNOTATION, toErrorMessage, toJsonResource, isObjectRecord } from "../utils";
+import type { PageToolInstance, ToolInput, UserscriptBridgeAdapter } from '../types';
+import {
+  buildSkillPrompt,
+  listToolNames,
+  normalizeSkillInput,
+  previewValue,
+  READONLY_ANNOTATION,
+  toErrorMessage,
+  toJsonResource,
+  isObjectRecord,
+} from '../utils';
 
 interface ReduxDevtoolsConnectionLike extends Record<string, unknown> {
   init?: (state: unknown) => unknown;
@@ -52,57 +61,57 @@ interface RecorderState {
   storeCounter: number;
 }
 
-const NS = "reduxDevtools";
-const INSTANCE = "primary";
+const NS = 'reduxDevtools';
+const INSTANCE = 'primary';
 const MAX_ACTIONS = 40;
-const REDUX_EXTENSION_KEY = "__REDUX_DEVTOOLS_EXTENSION__";
-const WRAP_MARKER = "__pageContextUserscriptReduxWrapped__";
+const REDUX_EXTENSION_KEY = '__REDUX_DEVTOOLS_EXTENSION__';
+const WRAP_MARKER = '__pageContextUserscriptReduxWrapped__';
 
 const RESOURCE_IDS = {
-  summary: "reduxDevtools.summary",
-  diagnostics: "reduxDevtools.diagnostics",
-  stores: "reduxDevtools.stores",
+  summary: 'reduxDevtools.summary',
+  diagnostics: 'reduxDevtools.diagnostics',
+  stores: 'reduxDevtools.stores',
 } as const;
 
 const SKILL_IDS = {
-  storeHealth: "reduxDevtools.analyze-store-health",
-  actionFlow: "reduxDevtools.trace-action-flow",
-  connectionGap: "reduxDevtools.explain-connection-gaps",
+  storeHealth: 'reduxDevtools.analyze-store-health',
+  actionFlow: 'reduxDevtools.trace-action-flow',
+  connectionGap: 'reduxDevtools.explain-connection-gaps',
 } as const;
 
 const NAMESPACE: ContextNamespaceDescriptor = {
   namespace: NS,
-  title: "Redux DevTools",
-  description: "Read-only recorder for Redux DevTools extension connect/init/send/subscribe.",
-  tags: ["redux-devtools", "readonly", "actions"],
+  title: 'Redux DevTools',
+  description: 'Read-only recorder for Redux DevTools extension connect/init/send/subscribe.',
+  tags: ['redux-devtools', 'readonly', 'actions'],
 };
 
 const TOOLS: ToolSpec[] = [
   {
-    name: "listStores",
-    description: "List store instances captured by the recorder.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    name: 'listStores',
+    description: 'List store instances captured by the recorder.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "inspectStore",
-    description: "Inspect the latest state and actions for a store.",
+    name: 'inspectStore',
+    description: 'Inspect the latest state and actions for a store.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        storeId: { type: "string", description: "A storeId returned by listStores." },
+        storeId: { type: 'string', description: 'A storeId returned by listStores.' },
       },
       additionalProperties: false,
     },
     annotations: READONLY_ANNOTATION,
   },
   {
-    name: "listRecentActions",
-    description: "Read recent actions for a store.",
+    name: 'listRecentActions',
+    description: 'Read recent actions for a store.',
     inputSchema: {
-      type: "object",
+      type: 'object',
       properties: {
-        storeId: { type: "string", description: "Optional. Defaults to the first known store." },
+        storeId: { type: 'string', description: 'Optional. Defaults to the first known store.' },
       },
       additionalProperties: false,
     },
@@ -114,29 +123,29 @@ const RESOURCES: ContextResourceDescriptor[] = [
   {
     id: RESOURCE_IDS.summary,
     namespace: NS,
-    title: "Redux DevTools Summary",
-    description: "Redux DevTools recorder detection summary.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["summary"],
+    title: 'Redux DevTools Summary',
+    description: 'Redux DevTools recorder detection summary.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['summary'],
   },
   {
     id: RESOURCE_IDS.diagnostics,
     namespace: NS,
-    title: "Redux DevTools Diagnostics",
-    description: "Extension interception and fallback diagnostics.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["diagnostics"],
+    title: 'Redux DevTools Diagnostics',
+    description: 'Extension interception and fallback diagnostics.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['diagnostics'],
   },
   {
     id: RESOURCE_IDS.stores,
     namespace: NS,
-    title: "Redux DevTools Stores",
-    description: "Current store list captured by the recorder.",
-    mimeType: "application/json",
-    kind: "json",
-    tags: ["stores"],
+    title: 'Redux DevTools Stores',
+    description: 'Current store list captured by the recorder.',
+    mimeType: 'application/json',
+    kind: 'json',
+    tags: ['stores'],
   },
 ];
 
@@ -144,36 +153,39 @@ const SKILLS: ContextSkillDescriptor[] = [
   {
     id: SKILL_IDS.storeHealth,
     namespace: NS,
-    title: "Analyze Store Health",
-    description: "Analyze store activity and state update signals.",
-    intentTags: ["analysis", "redux", "state"],
+    title: 'Analyze Store Health',
+    description: 'Analyze store activity and state update signals.',
+    intentTags: ['analysis', 'redux', 'state'],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.stores, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!, TOOLS[1]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
   {
     id: SKILL_IDS.actionFlow,
     namespace: NS,
-    title: "Trace Action Flow",
-    description: "Trace state changes from recent actions.",
-    intentTags: ["analysis", "redux", "actions"],
+    title: 'Trace Action Flow',
+    description: 'Trace state changes from recent actions.',
+    intentTags: ['analysis', 'redux', 'actions'],
     resourceIds: [RESOURCE_IDS.stores, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[2]!, TOOLS[1]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
   {
     id: SKILL_IDS.connectionGap,
     namespace: NS,
-    title: "Explain Recorder Coverage Gaps",
-    description: "Explain why the recorder did not capture the target store.",
-    intentTags: ["analysis", "diagnostics", "redux-devtools"],
+    title: 'Explain Recorder Coverage Gaps',
+    description: 'Explain why the recorder did not capture the target store.',
+    intentTags: ['analysis', 'diagnostics', 'redux-devtools'],
     resourceIds: [RESOURCE_IDS.summary, RESOURCE_IDS.diagnostics],
     toolNames: listToolNames(NS, INSTANCE, [TOOLS[0]!]),
-    mode: "analysis",
+    mode: 'analysis',
   },
 ];
 
-export function createReduxDevtoolsUserscriptAdapter(win: Window, _doc: Document): UserscriptBridgeAdapter {
+export function createReduxDevtoolsUserscriptAdapter(
+  win: Window,
+  _doc: Document,
+): UserscriptBridgeAdapter {
   const recorder = createReduxDevtoolsRecorder(win);
   recorder.start();
 
@@ -184,21 +196,25 @@ export function createReduxDevtoolsUserscriptAdapter(win: Window, _doc: Document
   };
 
   return {
-    adapterId: "redux-devtools",
+    adapterId: 'redux-devtools',
     namespace: NAMESPACE,
     listInstances: () => [primaryInstance],
     listResources: () => RESOURCES,
     readResource: (id) => readReduxResource(id, recorder),
     listSkills: () => SKILLS,
     getSkill: (id, input) => getReduxSkillPrompt(id, input ?? {}, recorder),
-    getSceneHint: () => "redux-devtools",
+    getSceneHint: () => 'redux-devtools',
   };
 }
 
-function callReduxTool(name: string, input: ToolInput, recorder: ReturnType<typeof createReduxDevtoolsRecorder>): unknown {
+function callReduxTool(
+  name: string,
+  input: ToolInput,
+  recorder: ReturnType<typeof createReduxDevtoolsRecorder>,
+): unknown {
   const snapshot = recorder.snapshot();
 
-  if (name === "listStores") {
+  if (name === 'listStores') {
     return {
       extensionDetected: snapshot.extensionDetected,
       wrapped: snapshot.wrapped,
@@ -212,10 +228,10 @@ function callReduxTool(name: string, input: ToolInput, recorder: ReturnType<type
     };
   }
 
-  if (name === "inspectStore") {
+  if (name === 'inspectStore') {
     const store = resolveStore(snapshot.stores, input.storeId);
     if (!store) {
-      return { ok: false, reason: "Store not found. Run listStores first." };
+      return { ok: false, reason: 'Store not found. Run listStores first.' };
     }
     return {
       ok: true,
@@ -229,10 +245,10 @@ function callReduxTool(name: string, input: ToolInput, recorder: ReturnType<type
     };
   }
 
-  if (name === "listRecentActions") {
+  if (name === 'listRecentActions') {
     const store = resolveStore(snapshot.stores, input.storeId);
     if (!store) {
-      return { ok: false, reason: "Store not found. Run listStores first." };
+      return { ok: false, reason: 'Store not found. Run listStores first.' };
     }
     return {
       ok: true,
@@ -262,7 +278,11 @@ function readReduxResource(id: string, recorder: ReturnType<typeof createReduxDe
   return toJsonResource(id, { error: `Unknown resource id: ${id}` });
 }
 
-function getReduxSkillPrompt(id: string, input: ToolInput, recorder: ReturnType<typeof createReduxDevtoolsRecorder>) {
+function getReduxSkillPrompt(
+  id: string,
+  input: ToolInput,
+  recorder: ReturnType<typeof createReduxDevtoolsRecorder>,
+) {
   const skill = SKILLS.find((item) => item.id === id);
   if (!skill) {
     return undefined;
@@ -281,7 +301,7 @@ function getReduxSkillPrompt(id: string, input: ToolInput, recorder: ReturnType<
 }
 
 function resolveStore(stores: StoreRecord[], storeId: unknown): StoreRecord | undefined {
-  if (typeof storeId === "string" && storeId) {
+  if (typeof storeId === 'string' && storeId) {
     return stores.find((store) => store.storeId === storeId);
   }
   return stores[0];
@@ -322,7 +342,9 @@ function observeReduxExtension(win: Window, state: RecorderState): void {
 
   const descriptor = Object.getOwnPropertyDescriptor(win, REDUX_EXTENSION_KEY);
   if (descriptor && descriptor.configurable === false) {
-    state.diagnostics.push("window.__REDUX_DEVTOOLS_EXTENSION__ cannot be redefined, so the interception setter cannot be installed.");
+    state.diagnostics.push(
+      'window.__REDUX_DEVTOOLS_EXTENSION__ cannot be redefined, so the interception setter cannot be installed.',
+    );
     return;
   }
 
@@ -346,14 +368,16 @@ function wrapReduxExtension(extensionLike: unknown, state: RecorderState): void 
   }
   state.extensionDetected = true;
 
-  const extension = extensionLike as ReduxDevtoolsExtensionLike & { __pageContextUserscriptReduxWrapped__?: boolean };
+  const extension = extensionLike as ReduxDevtoolsExtensionLike & {
+    __pageContextUserscriptReduxWrapped__?: boolean;
+  };
   if (extension[WRAP_MARKER]) {
     state.wrapped = true;
     return;
   }
   const originalConnect = extension.connect;
-  if (typeof originalConnect !== "function") {
-    state.diagnostics.push("The Redux DevTools extension does not expose connect().");
+  if (typeof originalConnect !== 'function') {
+    state.diagnostics.push('The Redux DevTools extension does not expose connect().');
     return;
   }
 
@@ -367,18 +391,28 @@ function wrapReduxExtension(extensionLike: unknown, state: RecorderState): void 
     return wrapped;
   };
 
-  Object.defineProperty(extension, WRAP_MARKER, { value: true, enumerable: false, configurable: false });
+  Object.defineProperty(extension, WRAP_MARKER, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+  });
   state.wrapped = true;
 }
 
-function createStoreRecord(options: Record<string, unknown> | undefined, state: RecorderState): StoreRecord {
+function createStoreRecord(
+  options: Record<string, unknown> | undefined,
+  state: RecorderState,
+): StoreRecord {
   state.storeCounter += 1;
-  const storeName = typeof options?.name === "string" && options.name ? options.name : `store-${state.storeCounter}`;
+  const storeName =
+    typeof options?.name === 'string' && options.name
+      ? options.name
+      : `store-${state.storeCounter}`;
   const now = new Date().toISOString();
   const store: StoreRecord = {
     storeId: `${storeName}#${state.storeCounter}`,
     name: storeName,
-    latestStatePreview: "uninitialized",
+    latestStatePreview: 'uninitialized',
     latestStateRaw: undefined,
     latestActionType: null,
     recentActions: [],
@@ -389,11 +423,15 @@ function createStoreRecord(options: Record<string, unknown> | undefined, state: 
   return store;
 }
 
-function wrapConnection(connection: ReduxDevtoolsConnectionLike, store: StoreRecord, state: RecorderState): ReduxDevtoolsConnectionLike {
+function wrapConnection(
+  connection: ReduxDevtoolsConnectionLike,
+  store: StoreRecord,
+  state: RecorderState,
+): ReduxDevtoolsConnectionLike {
   const wrapped: ReduxDevtoolsConnectionLike = {
     ...connection,
     init(payload) {
-      pushAction(store, "@@INIT", payload);
+      pushAction(store, '@@INIT', payload);
       return connection.init?.(payload);
     },
     send(action, payload) {
@@ -401,7 +439,7 @@ function wrapConnection(connection: ReduxDevtoolsConnectionLike, store: StoreRec
       return connection.send?.(action, payload);
     },
     subscribe(listener) {
-      if (typeof connection.subscribe !== "function") {
+      if (typeof connection.subscribe !== 'function') {
         state.diagnostics.push(`store ${store.storeId} connection.subscribe is not available.`);
         return () => undefined;
       }
@@ -413,11 +451,13 @@ function wrapConnection(connection: ReduxDevtoolsConnectionLike, store: StoreRec
   };
 
   // Subscribe once proactively so extension-driven messages are still recorded when the app never calls subscribe.
-  if (typeof connection.subscribe === "function") {
+  if (typeof connection.subscribe === 'function') {
     try {
       connection.subscribe((message) => handleDevtoolsMessage(store, message));
     } catch (error) {
-      state.diagnostics.push(`store ${store.storeId} auto-subscribe failed: ${toErrorMessage(error)}`);
+      state.diagnostics.push(
+        `store ${store.storeId} auto-subscribe failed: ${toErrorMessage(error)}`,
+      );
     }
   }
 
@@ -429,11 +469,11 @@ function handleDevtoolsMessage(store: StoreRecord, message: unknown): void {
     return;
   }
 
-  if (typeof message.type === "string" && message.type) {
+  if (typeof message.type === 'string' && message.type) {
     pushAction(store, `EXT:${message.type}`, message);
   }
 
-  if (typeof message.state === "string" && message.state) {
+  if (typeof message.state === 'string' && message.state) {
     try {
       const parsed = JSON.parse(message.state);
       updateStoreState(store, parsed);
@@ -464,11 +504,11 @@ function updateStoreState(store: StoreRecord, statePayload: unknown): void {
 }
 
 function readActionType(action: unknown): string {
-  if (typeof action === "string") {
+  if (typeof action === 'string') {
     return action;
   }
-  if (isObjectRecord(action) && typeof action.type === "string" && action.type) {
+  if (isObjectRecord(action) && typeof action.type === 'string' && action.type) {
     return action.type;
   }
-  return "UNKNOWN_ACTION";
+  return 'UNKNOWN_ACTION';
 }

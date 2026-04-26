@@ -3,7 +3,7 @@
  * Contains the RpcPeer class, message creation/parsing helpers, and type definitions.
  */
 
-export const JSON_RPC_VERSION = "2.0" as const;
+export const JSON_RPC_VERSION = '2.0' as const;
 
 export const RPC_ERROR_CODES = {
   parseError: -32700,
@@ -65,7 +65,7 @@ export class RpcProtocolError extends Error {
 
   constructor(code: number, message: string, data?: unknown) {
     super(message);
-    this.name = "RpcProtocolError";
+    this.name = 'RpcProtocolError';
     this.code = code;
     this.data = data;
   }
@@ -86,8 +86,8 @@ interface PendingRequest {
 }
 
 export class RpcPeer {
-  private readonly sendImpl: RpcPeerOptions["send"];
-  private readonly getMeta?: RpcPeerOptions["getMeta"];
+  private readonly sendImpl: RpcPeerOptions['send'];
+  private readonly getMeta?: RpcPeerOptions['getMeta'];
   private readonly defaultTimeoutMs: number;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly handlers = new Map<string, RpcHandler>();
@@ -106,7 +106,11 @@ export class RpcPeer {
     this.handlers.delete(method);
   }
 
-  async request<TResult = unknown>(method: string, params?: unknown, options?: { timeoutMs?: number; meta?: RpcMeta }): Promise<TResult> {
+  async request<TResult = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { timeoutMs?: number; meta?: RpcMeta },
+  ): Promise<TResult> {
     const id = createRequestId();
     const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
     const request = createRequest(method, params, id, mergeMeta(this.getMeta?.(), options?.meta));
@@ -114,7 +118,12 @@ export class RpcPeer {
     return await new Promise<TResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new RpcProtocolError(RPC_ERROR_CODES.timeout, `RPC request '${method}' timed out after ${timeoutMs}ms`));
+        reject(
+          new RpcProtocolError(
+            RPC_ERROR_CODES.timeout,
+            `RPC request '${method}' timed out after ${timeoutMs}ms`,
+          ),
+        );
       }, timeoutMs);
 
       this.pending.set(id, {
@@ -148,12 +157,25 @@ export class RpcPeer {
       if (!handler) {
         return;
       }
-      await handler(message.params, createRequest(message.method, message.params, "notification", message.meta));
+      await handler(
+        message.params,
+        createRequest(message.method, message.params, 'notification', message.meta),
+      );
       return;
     }
 
     if (!handler) {
-      await this.sendImpl(serializeMessage(createErrorResponse(message.id, new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Method not found: ${message.method}`))));
+      await this.sendImpl(
+        serializeMessage(
+          createErrorResponse(
+            message.id,
+            new RpcProtocolError(
+              RPC_ERROR_CODES.methodNotFound,
+              `Method not found: ${message.method}`,
+            ),
+          ),
+        ),
+      );
       return;
     }
 
@@ -168,7 +190,11 @@ export class RpcPeer {
   failAllPending(reason: string | Error): void {
     for (const [id, pending] of this.pending.entries()) {
       clearTimeout(pending.timer);
-      pending.reject(reason instanceof Error ? reason : new RpcProtocolError(RPC_ERROR_CODES.disconnected, reason));
+      pending.reject(
+        reason instanceof Error
+          ? reason
+          : new RpcProtocolError(RPC_ERROR_CODES.disconnected, reason),
+      );
       this.pending.delete(id);
     }
   }
@@ -186,8 +212,10 @@ export class RpcPeer {
     clearTimeout(pending.timer);
     this.pending.delete(message.id);
 
-    if ("error" in message) {
-      pending.reject(new RpcProtocolError(message.error.code, message.error.message, message.error.data));
+    if ('error' in message) {
+      pending.reject(
+        new RpcProtocolError(message.error.code, message.error.message, message.error.data),
+      );
       return;
     }
 
@@ -197,7 +225,12 @@ export class RpcPeer {
 
 // ── Message helpers ──
 
-export function createRequest(method: string, params?: unknown, id = createRequestId(), meta?: RpcMeta): RpcRequest {
+export function createRequest(
+  method: string,
+  params?: unknown,
+  id = createRequestId(),
+  meta?: RpcMeta,
+): RpcRequest {
   return {
     jsonrpc: JSON_RPC_VERSION,
     id,
@@ -207,7 +240,11 @@ export function createRequest(method: string, params?: unknown, id = createReque
   };
 }
 
-export function createNotification(method: string, params?: unknown, meta?: RpcMeta): RpcNotification {
+export function createNotification(
+  method: string,
+  params?: unknown,
+  meta?: RpcMeta,
+): RpcNotification {
   return {
     jsonrpc: JSON_RPC_VERSION,
     method,
@@ -242,11 +279,15 @@ export function parseMessage(raw: string): RpcMessage {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new RpcProtocolError(RPC_ERROR_CODES.parseError, "Failed to parse JSON-RPC message", error);
+    throw new RpcProtocolError(
+      RPC_ERROR_CODES.parseError,
+      'Failed to parse JSON-RPC message',
+      error,
+    );
   }
 
   if (!isJsonRpcEnvelope(parsed)) {
-    throw new RpcProtocolError(RPC_ERROR_CODES.invalidRequest, "Invalid JSON-RPC envelope", parsed);
+    throw new RpcProtocolError(RPC_ERROR_CODES.invalidRequest, 'Invalid JSON-RPC envelope', parsed);
   }
 
   return parsed;
@@ -257,19 +298,28 @@ export function serializeMessage(message: RpcMessage): string {
 }
 
 export function isRpcRequest(value: unknown): value is RpcRequest {
-  return isJsonRpcEnvelope(value) && typeof (value as RpcRequest).id === "string" && typeof (value as RpcRequest).method === "string";
+  return (
+    isJsonRpcEnvelope(value) &&
+    typeof (value as RpcRequest).id === 'string' &&
+    typeof (value as RpcRequest).method === 'string'
+  );
 }
 
 export function isRpcNotification(value: unknown): value is RpcNotification {
-  return isJsonRpcEnvelope(value)
-    && !("id" in (value as unknown as Record<string, unknown>))
-    && typeof (value as RpcNotification).method === "string";
+  return (
+    isJsonRpcEnvelope(value) &&
+    !('id' in (value as unknown as Record<string, unknown>)) &&
+    typeof (value as RpcNotification).method === 'string'
+  );
 }
 
 export function isRpcResponse(value: unknown): value is RpcResponse {
-  return isJsonRpcEnvelope(value)
-    && typeof (value as RpcResponse).id === "string"
-    && (("result" in (value as unknown as Record<string, unknown>)) || ("error" in (value as unknown as Record<string, unknown>)));
+  return (
+    isJsonRpcEnvelope(value) &&
+    typeof (value as RpcResponse).id === 'string' &&
+    ('result' in (value as unknown as Record<string, unknown>) ||
+      'error' in (value as unknown as Record<string, unknown>))
+  );
 }
 
 export function normalizeError(error: unknown): RpcProtocolError {
@@ -278,14 +328,20 @@ export function normalizeError(error: unknown): RpcProtocolError {
   }
 
   if (error instanceof Error) {
-    return new RpcProtocolError(RPC_ERROR_CODES.internalError, error.message, { stack: error.stack });
+    return new RpcProtocolError(RPC_ERROR_CODES.internalError, error.message, {
+      stack: error.stack,
+    });
   }
 
   return new RpcProtocolError(RPC_ERROR_CODES.internalError, String(error));
 }
 
 function isJsonRpcEnvelope(value: unknown): value is RpcMessage {
-  return Boolean(value) && typeof value === "object" && (value as { jsonrpc?: string }).jsonrpc === JSON_RPC_VERSION;
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    (value as { jsonrpc?: string }).jsonrpc === JSON_RPC_VERSION
+  );
 }
 
 function createRequestId(): string {

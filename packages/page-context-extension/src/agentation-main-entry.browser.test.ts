@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Tests for agentation-main.tsx — MAIN world Agentation UI entry point.
@@ -18,7 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 interface Annotation {
   id?: string;
   comment: string;
-  severity?: "blocking" | "important" | "suggestion";
+  severity?: 'blocking' | 'important' | 'suggestion';
   element?: string;
   elementPath?: string;
   fullPath?: string;
@@ -37,8 +37,8 @@ interface AnnotationBridgePayload {
   timestamp: number;
 }
 
-const HOST_ID = "__pc_agentation_main__";
-const EVENT_PREFIX = "page-context:agentation";
+const HOST_ID = '__pc_agentation_main__';
+const EVENT_PREFIX = 'page-context:agentation';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ function getMarkerLayer(): HTMLElement | null {
 }
 
 function resetDocument() {
-  document.body.innerHTML = "";
+  document.body.innerHTML = '';
   // Clean up any leftover hosts from previous tests
   const oldHost = document.getElementById(HOST_ID);
   if (oldHost) oldHost.remove();
@@ -84,24 +84,25 @@ function resetDocument() {
   delete (window as Record<string, unknown>).__pageContextAgentationMainInstalled__;
 }
 
-describe("installAgentationInMainWorld", () => {
+describe('installAgentationInMainWorld', () => {
   beforeEach(resetDocument);
 
-  it("creates shadow host and container when page body is ready", () => {
-    document.body.innerHTML = "<div>test page</div>";
+  it('creates shadow host and container when page body is ready', () => {
+    document.body.innerHTML = '<div>test page</div>';
 
     // We can't call installAgentationInMainWorld directly because it auto-executes.
     // Instead, replicate its core mount logic to verify behavior.
-    const host = document.createElement("div");
+    const host = document.createElement('div');
     host.id = HOST_ID;
-    host.style.cssText = "all:initial;position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;";
+    host.style.cssText =
+      'all:initial;position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;';
     document.body.appendChild(host);
 
-    const shadow = host.attachShadow({ mode: "open" });
+    const shadow = host.attachShadow({ mode: 'open' });
     expect(shadow).not.toBeNull();
 
-    const container = document.createElement("div");
-    container.setAttribute("data-pc-agentation-main-container", "");
+    const container = document.createElement('div');
+    container.setAttribute('data-pc-agentation-main-container', '');
     shadow.appendChild(container);
 
     expect(host.isConnected).toBe(true);
@@ -109,20 +110,20 @@ describe("installAgentationInMainWorld", () => {
     expect(container.getRootNode()).toBe(shadow);
   });
 
-  it("is idempotent — returns early if already installed", () => {
-    document.body.innerHTML = "<div>test page</div>";
+  it('is idempotent — returns early if already installed', () => {
+    document.body.innerHTML = '<div>test page</div>';
 
     // First install
-    const host1 = document.createElement("div");
+    const host1 = document.createElement('div');
     host1.id = HOST_ID;
     document.body.appendChild(host1);
 
     (window as Record<string, unknown>).__pageContextAgentationMainInstalled__ = false;
 
     // Simulate: first call should set flag and mount
-    const shadow1 = host1.attachShadow({ mode: "open" });
-    const container1 = document.createElement("div");
-    container1.setAttribute("data-pc-agentation-main-container", "");
+    const shadow1 = host1.attachShadow({ mode: 'open' });
+    const container1 = document.createElement('div');
+    container1.setAttribute('data-pc-agentation-main-container', '');
     shadow1.appendChild(container1);
     (window as Record<string, unknown>).__pageContextAgentationMainInstalled__ = true;
 
@@ -143,7 +144,7 @@ describe("installAgentationInMainWorld", () => {
     expect(afterCount).toBe(beforeCount);
   });
 
-  it("skips installation when protocol is not http/https", () => {
+  it('skips installation when protocol is not http/https', () => {
     // Note: jsdom's window.location.protocol is not configurable,
     // so we test the guard logic by verifying the flag behavior directly.
     // In production, shouldInstallShell checks location.protocol against
@@ -161,7 +162,7 @@ describe("installAgentationInMainWorld", () => {
   });
 });
 
-describe("dispatchToIsolatedWorld / event bridge", () => {
+describe('dispatchToIsolatedWorld / event bridge', () => {
   beforeEach(resetDocument);
 
   let dispatchedEvents: Array<{ type: string; detail: unknown }> = [];
@@ -169,8 +170,8 @@ describe("dispatchToIsolatedWorld / event bridge", () => {
   beforeEach(() => {
     dispatchedEvents = [];
     // Capture CustomEvents dispatched to window
-    vi.spyOn(window, "dispatchEvent").mockImplementation((event: Event): boolean => {
-      if (event instanceof CustomEvent && event.type.startsWith(EVENT_PREFIX + ":")) {
+    vi.spyOn(window, 'dispatchEvent').mockImplementation((event: Event): boolean => {
+      if (event instanceof CustomEvent && event.type.startsWith(EVENT_PREFIX + ':')) {
         dispatchedEvents.push({
           type: event.type,
           detail: (event as CustomEvent).detail,
@@ -180,25 +181,32 @@ describe("dispatchToIsolatedWorld / event bridge", () => {
     });
   });
 
-  it("dispatches add event with correct type", () => {
+  it('dispatches add event with correct type', () => {
     window.dispatchEvent(
       new CustomEvent(`${EVENT_PREFIX}:annotation:add`, {
         detail: {
-          annotation: { id: "a1", comment: "fix this", severity: "blocking", timestamp: Date.now() },
+          annotation: {
+            id: 'a1',
+            comment: 'fix this',
+            severity: 'blocking',
+            timestamp: Date.now(),
+          },
         },
       }),
     );
 
     expect(dispatchedEvents).toHaveLength(1);
     expect(dispatchedEvents[0].type).toBe(`${EVENT_PREFIX}:annotation:add`);
-    expect((dispatchedEvents[0].detail as AnnotationBridgePayload).annotation.comment).toBe("fix this");
+    expect((dispatchedEvents[0].detail as AnnotationBridgePayload).annotation.comment).toBe(
+      'fix this',
+    );
   });
 
-  it("dispatches update event with correct type", () => {
+  it('dispatches update event with correct type', () => {
     window.dispatchEvent(
       new CustomEvent(`${EVENT_PREFIX}:annotation:update`, {
         detail: {
-          annotation: { id: "a2", comment: "updated feedback", timestamp: Date.now() },
+          annotation: { id: 'a2', comment: 'updated feedback', timestamp: Date.now() },
         },
       }),
     );
@@ -206,11 +214,11 @@ describe("dispatchToIsolatedWorld / event bridge", () => {
     expect(dispatchedEvents[0].type).toBe(`${EVENT_PREFIX}:annotation:update`);
   });
 
-  it("dispatches delete event with correct type", () => {
+  it('dispatches delete event with correct type', () => {
     window.dispatchEvent(
       new CustomEvent(`${EVENT_PREFIX}:annotation:delete`, {
         detail: {
-          annotation: { id: "a3", comment: "remove this", timestamp: Date.now() },
+          annotation: { id: 'a3', comment: 'remove this', timestamp: Date.now() },
         },
       }),
     );
@@ -218,25 +226,25 @@ describe("dispatchToIsolatedWorld / event bridge", () => {
     expect(dispatchedEvents[0].type).toBe(`${EVENT_PREFIX}:annotation:delete`);
   });
 
-  it("includes all annotation fields in payload", () => {
+  it('includes all annotation fields in payload', () => {
     window.dispatchEvent(
       new CustomEvent(`${EVENT_PREFIX}:annotation:add`, {
         detail: {
           annotation: {
-            id: "a1",
-            comment: "full test",
-            severity: "important",
-            element: "SubmitButton",
-            elementPath: "form > .submit",
-            fullPath: "App > Form > SubmitButton",
-            reactComponents: ["SubmitButton"],
-            sourceFile: "SubmitButton.tsx",
+            id: 'a1',
+            comment: 'full test',
+            severity: 'important',
+            element: 'SubmitButton',
+            elementPath: 'form > .submit',
+            fullPath: 'App > Form > SubmitButton',
+            reactComponents: ['SubmitButton'],
+            sourceFile: 'SubmitButton.tsx',
             isMultiSelect: true,
             isFixed: false,
             x: 50,
             y: 100,
             boundingBox: { x: 10, y: 20, width: 200, height: 50 },
-            selectedText: "selected text",
+            selectedText: 'selected text',
           },
           timestamp: Date.now(),
         },
@@ -244,27 +252,27 @@ describe("dispatchToIsolatedWorld / event bridge", () => {
     );
 
     const ann = (dispatchedEvents[0].detail as AnnotationBridgePayload).annotation;
-    expect(ann.id).toBe("a1");
-    expect(ann.comment).toBe("full test");
-    expect(ann.severity).toBe("important");
-    expect(ann.element).toBe("SubmitButton");
-    expect(ann.elementPath).toBe("form > .submit");
-    expect(ann.fullPath).toBe("App > Form > SubmitButton");
-    expect(ann.reactComponents).toEqual(["SubmitButton"]);
-    expect(ann.sourceFile).toBe("SubmitButton.tsx");
+    expect(ann.id).toBe('a1');
+    expect(ann.comment).toBe('full test');
+    expect(ann.severity).toBe('important');
+    expect(ann.element).toBe('SubmitButton');
+    expect(ann.elementPath).toBe('form > .submit');
+    expect(ann.fullPath).toBe('App > Form > SubmitButton');
+    expect(ann.reactComponents).toEqual(['SubmitButton']);
+    expect(ann.sourceFile).toBe('SubmitButton.tsx');
     expect(ann.isMultiSelect).toBe(true);
     expect(ann.isFixed).toBe(false);
     expect(ann.x).toBe(50);
     expect(ann.y).toBe(100);
     expect(ann.boundingBox).toEqual({ x: 10, y: 20, width: 200, height: 50 });
-    expect(ann.selectedText).toBe("selected text");
+    expect(ann.selectedText).toBe('selected text');
   });
 
-  it("includes timestamp for freshness validation", () => {
+  it('includes timestamp for freshness validation', () => {
     const before = Date.now();
     window.dispatchEvent(
       new CustomEvent(`${EVENT_PREFIX}:annotation:add`, {
-        detail: { annotation: { comment: "test" }, timestamp: before },
+        detail: { annotation: { comment: 'test' }, timestamp: before },
       }),
     );
 

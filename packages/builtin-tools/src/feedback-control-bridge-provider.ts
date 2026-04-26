@@ -1,7 +1,7 @@
 /**
  * Bridge-side provider for feedback control tools.
  *
- * These tools only handle "parameter adaptation + capability orchestration", 
+ * These tools only handle "parameter adaptation + capability orchestration",
  * actual state values are still maintained by bridge's feedback-store.
  * Names follow the `feedback.*` namespace pattern.
  */
@@ -17,11 +17,11 @@ import type {
   FeedbackAnnotationUpdateParams,
   FeedbackStateDeltaParams,
   FeedbackStateSnapshotParams,
-} from "@page-context/shared-protocol";
-import { z } from "zod";
+} from '@page-context/shared-protocol';
+import { z } from 'zod';
 
 function createTextResponse(text: string) {
-  return { content: [{ type: "text" as const, text }] };
+  return { content: [{ type: 'text' as const, text }] };
 }
 
 export interface FeedbackControlBridgeRpc {
@@ -40,19 +40,18 @@ export interface FeedbackControlBridgeProviderOptions {
 }
 
 export const FEEDBACK_CONTROL_TOOL_SUFFIXES = {
-  getSnapshot: "get_snapshot",
-  watchEvents: "watch_events",
-  createAnnotation: "create_annotation",
-  updateAnnotation: "update_annotation",
-  claim: "claim",
-  reply: "reply",
-  resolve: "resolve",
-  dismiss: "dismiss",
+  getSnapshot: 'get_snapshot',
+  watchEvents: 'watch_events',
+  createAnnotation: 'create_annotation',
+  updateAnnotation: 'update_annotation',
+  claim: 'claim',
+  reply: 'reply',
+  resolve: 'resolve',
+  dismiss: 'dismiss',
 } as const;
 
-
-const feedbackPrioritySchema = z.enum(["low", "normal", "high", "critical"]);
-const feedbackActorSourceSchema = z.enum(["user", "agent", "bridge", "extension"]);
+const feedbackPrioritySchema = z.enum(['low', 'normal', 'high', 'critical']);
+const feedbackActorSourceSchema = z.enum(['user', 'agent', 'bridge', 'extension']);
 
 // uiAnchor only performs structural validation; detailed cleaning continues to feedback-store to avoid duplicate rule implementation.
 const feedbackUiRectSchema = z.object({
@@ -62,13 +61,15 @@ const feedbackUiRectSchema = z.object({
   height: z.number(),
 });
 
-const feedbackUiTextRangeSchema = z.object({
-  start: z.number().int().nonnegative(),
-  end: z.number().int().nonnegative(),
-}).refine((value) => value.end >= value.start, {
-  path: ["end"],
-  message: "end must be greater than or equal to start",
-});
+const feedbackUiTextRangeSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+  })
+  .refine((value) => value.end >= value.start, {
+    path: ['end'],
+    message: 'end must be greater than or equal to start',
+  });
 
 const feedbackUiAnchorSchema = z.object({
   elementId: z.string().optional(),
@@ -123,7 +124,7 @@ const feedbackClaimAnnotationSchema = z.object({
 const feedbackReplyAnnotationSchema = z.object({
   annotationId: z.string().trim().min(1),
   body: z.string().trim().min(1),
-  kind: z.enum(["comment", "action_note", "resolution_note"]).optional(),
+  kind: z.enum(['comment', 'action_note', 'resolution_note']).optional(),
   actorSource: feedbackActorSourceSchema.optional(),
   actorId: z.string().trim().min(1).optional(),
   actorName: z.string().trim().min(1).optional(),
@@ -146,11 +147,11 @@ const feedbackDismissAnnotationSchema = z.object({
 });
 
 export class FeedbackControlBridgeProvider {
-  readonly id = "feedback-control";
+  readonly id = 'feedback-control';
   private readonly namespace: string;
 
   constructor(options: FeedbackControlBridgeProviderOptions = {}) {
-    this.namespace = options.namespace ?? "feedback";
+    this.namespace = options.namespace ?? 'feedback';
   }
 
   getToolNames(): {
@@ -178,8 +179,14 @@ export class FeedbackControlBridgeProvider {
   registerOnBridge(
     registerTool: (
       name: string,
-      schema: { description: string; inputSchema: Record<string, z.ZodTypeAny>; annotations?: Record<string, unknown> },
-      handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
+      schema: {
+        description: string;
+        inputSchema: Record<string, z.ZodTypeAny>;
+        annotations?: Record<string, unknown>;
+      },
+      handler: (
+        args: Record<string, unknown>,
+      ) => Promise<{ content: Array<{ type: 'text'; text: string }> }>,
     ) => { remove: () => void },
     rpc: FeedbackControlBridgeRpc,
   ): Map<string, { remove: () => void }> {
@@ -188,14 +195,20 @@ export class FeedbackControlBridgeProvider {
 
     const register = (
       name: string,
-      config: { description: string; inputSchema: Record<string, z.ZodTypeAny>; annotations?: Record<string, unknown> },
-      handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: "text"; text: string }> }>,
+      config: {
+        description: string;
+        inputSchema: Record<string, z.ZodTypeAny>;
+        annotations?: Record<string, unknown>;
+      },
+      handler: (
+        args: Record<string, unknown>,
+      ) => Promise<{ content: Array<{ type: 'text'; text: string }> }>,
     ) => {
       handles.set(name, registerTool(name, config, handler));
     };
 
     const getSnapshotConfig = {
-      description: "Read feedback snapshot (sessions + annotations + cursor metadata).",
+      description: 'Read feedback snapshot (sessions + annotations + cursor metadata).',
       inputSchema: {
         tabId: feedbackGetSnapshotSchema.shape.tabId,
         sessionId: feedbackGetSnapshotSchema.shape.sessionId,
@@ -203,7 +216,7 @@ export class FeedbackControlBridgeProvider {
       annotations: { readOnlyHint: true },
     };
     const createAnnotationConfig = {
-      description: "Create a feedback annotation from MCP side with tab context.",
+      description: 'Create a feedback annotation from MCP side with tab context.',
       inputSchema: {
         body: feedbackCreateAnnotationSchema.shape.body,
         priority: feedbackCreateAnnotationSchema.shape.priority,
@@ -218,7 +231,7 @@ export class FeedbackControlBridgeProvider {
       },
     };
     const watchEventsConfig = {
-      description: "Read feedback delta events after a cursor.",
+      description: 'Read feedback delta events after a cursor.',
       inputSchema: {
         afterSeq: feedbackWatchEventsSchema.shape.afterSeq,
         sessionId: feedbackWatchEventsSchema.shape.sessionId,
@@ -226,7 +239,7 @@ export class FeedbackControlBridgeProvider {
       annotations: { readOnlyHint: true },
     };
     const updateAnnotationConfig = {
-      description: "Update an existing feedback annotation body/priority.",
+      description: 'Update an existing feedback annotation body/priority.',
       inputSchema: {
         annotationId: feedbackUpdateAnnotationSchema.shape.annotationId,
         body: feedbackUpdateAnnotationSchema.shape.body,
@@ -237,7 +250,7 @@ export class FeedbackControlBridgeProvider {
       },
     };
     const claimConfig = {
-      description: "Claim an open feedback annotation for execution.",
+      description: 'Claim an open feedback annotation for execution.',
       inputSchema: {
         annotationId: feedbackClaimAnnotationSchema.shape.annotationId,
         actorSource: feedbackClaimAnnotationSchema.shape.actorSource,
@@ -246,7 +259,7 @@ export class FeedbackControlBridgeProvider {
       },
     };
     const replyConfig = {
-      description: "Append a reply to an annotation thread.",
+      description: 'Append a reply to an annotation thread.',
       inputSchema: {
         annotationId: feedbackReplyAnnotationSchema.shape.annotationId,
         body: feedbackReplyAnnotationSchema.shape.body,
@@ -257,7 +270,7 @@ export class FeedbackControlBridgeProvider {
       },
     };
     const resolveConfig = {
-      description: "Resolve a claimed feedback annotation.",
+      description: 'Resolve a claimed feedback annotation.',
       inputSchema: {
         annotationId: feedbackResolveAnnotationSchema.shape.annotationId,
         resolution: feedbackResolveAnnotationSchema.shape.resolution,
@@ -267,7 +280,7 @@ export class FeedbackControlBridgeProvider {
       },
     };
     const dismissConfig = {
-      description: "Dismiss a feedback annotation.",
+      description: 'Dismiss a feedback annotation.',
       inputSchema: {
         annotationId: feedbackDismissAnnotationSchema.shape.annotationId,
         dismissReason: feedbackDismissAnnotationSchema.shape.dismissReason,
@@ -386,8 +399,8 @@ function toFeedbackActor(
   actorName: string | undefined,
 ): FeedbackActor {
   return {
-    source: actorSource ?? "agent",
-    id: actorId ?? "mcp.agent",
-    displayName: actorName ?? "MCP Agent",
+    source: actorSource ?? 'agent',
+    id: actorId ?? 'mcp.agent',
+    displayName: actorName ?? 'MCP Agent',
   };
 }

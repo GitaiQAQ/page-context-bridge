@@ -31,5 +31,7 @@
     "tools"
   ],
   "license": "MIT",
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  }
 }

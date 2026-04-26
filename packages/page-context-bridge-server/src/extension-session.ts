@@ -4,7 +4,7 @@
  * Multi-tenant: each tenant ID gets its own isolated extension slot.
  */
 
-import { WebSocket, WebSocketServer } from "ws";
+import { WebSocket, WebSocketServer } from 'ws';
 import {
   BRIDGE_METHODS,
   RPC_ERROR_CODES,
@@ -21,7 +21,7 @@ import {
   type PageContextManifest,
   RpcPeer,
   RpcProtocolError,
-} from "@page-context/shared-protocol";
+} from '@page-context/shared-protocol';
 
 import {
   validateParams,
@@ -40,11 +40,11 @@ import {
   feedbackAnnotationReplyParamsSchema,
   feedbackAnnotationResolveParamsSchema,
   feedbackAnnotationDismissParamsSchema,
-} from "./rpc-params.js";
-import type { McpRegistry, PageToolSpec } from "./mcp-registry.js";
-import { log } from "./mcp-registry.js";
-import { TenantManager } from "./tenant-manager.js";
-import type { ExtensionSlot } from "./tenant-manager.js";
+} from './rpc-params.js';
+import type { McpRegistry, PageToolSpec } from './mcp-registry.js';
+import { log } from './mcp-registry.js';
+import { TenantManager } from './tenant-manager.js';
+import type { ExtensionSlot } from './tenant-manager.js';
 
 const TOOL_CALL_TIMEOUT_MS = 30_000;
 const HEARTBEAT_GRACE_MS = 45_000;
@@ -52,7 +52,7 @@ const HEARTBEAT_GRACE_MS = 45_000;
 let wsServerReady = false;
 
 export interface PageToolEnableUpdate {
-  root?: "builtin" | "page";
+  root?: 'builtin' | 'page';
   tabId?: number;
   namespace?: string;
   instanceId?: string;
@@ -69,14 +69,18 @@ export function isWsServerReady(): boolean {
 function assertExtensionReady(tenantId: string, manager: TenantManager): ExtensionSlot {
   const tenant = manager.get(tenantId);
   if (!tenant?.extension) {
-        throw new Error(`No extension connected for session "${tenantId}". Load the extension and ensure its service worker is running.`);
+    throw new Error(
+      `No extension connected for session "${tenantId}". Load the extension and ensure its service worker is running.`,
+    );
   }
   if (tenant.extension.ws.readyState !== WebSocket.OPEN) {
     throw new Error(`Extension for session "${tenantId}" is not open.`);
   }
-    if (!tenant.extension.ready) {
-      throw new Error(`Extension for session "${tenantId}" transport is connected but not ready yet; waiting for session.register.`);
-    }
+  if (!tenant.extension.ready) {
+    throw new Error(
+      `Extension for session "${tenantId}" transport is connected but not ready yet; waiting for session.register.`,
+    );
+  }
   return tenant.extension;
 }
 
@@ -88,7 +92,11 @@ export async function sendToolCallToExtension<TResult = unknown>(
   tabId?: number,
 ): Promise<TResult> {
   const current = assertExtensionReady(tenantId, manager);
-  return await current.peer.request<TResult>(BRIDGE_METHODS.bridgeToolCall, { tool, args, tabId }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  return await current.peer.request<TResult>(
+    BRIDGE_METHODS.bridgeToolCall,
+    { tool, args, tabId },
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
 }
 
 export async function getContextManifestFromExtension(
@@ -112,7 +120,11 @@ export async function getContextManifestDebugFromExtension(
   tabId: number,
 ): Promise<ContextManifestDebugPayload> {
   const current = assertExtensionReady(tenantId, manager);
-  const result = await current.peer.request<unknown>(BRIDGE_METHODS.extensionContextManifestGet, { tabId }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  const result = await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionContextManifestGet,
+    { tabId },
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
   return normalizeContextManifestDebugPayload(result);
 }
 
@@ -121,7 +133,11 @@ export async function getRuntimeStatusFromExtension(
   manager: TenantManager,
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
-  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionStatusGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  return await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionStatusGet,
+    {},
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
 }
 
 export async function reconnectExtensionFromBridge(
@@ -130,7 +146,11 @@ export async function reconnectExtensionFromBridge(
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
   // Bridge only forwards reconnect command; retry backoff and session reconstruction remain the responsibility of extension's existing logic.
-  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionReconnect, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  return await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionReconnect,
+    {},
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
 }
 
 export async function debugToolCallOnExtension(
@@ -158,14 +178,12 @@ export async function ensureMainWorldHostFromBridge(
   const current = assertExtensionReady(tenantId, manager);
   // No parameter fallback repair here; let extension side perform unified validation and return clear errors to avoid bridge/extension divergence.
   const params: { tabId: number; frameId?: number } = { tabId };
-  if (typeof frameId === "number") {
+  if (typeof frameId === 'number') {
     params.frameId = frameId;
   }
-  return await current.peer.request<unknown>(
-    BRIDGE_METHODS.extensionMainWorldHostEnsure,
-    params,
-    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
-  );
+  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionMainWorldHostEnsure, params, {
+    timeoutMs: TOOL_CALL_TIMEOUT_MS,
+  });
 }
 
 export async function ensureAgentationMainFromBridge(
@@ -176,14 +194,12 @@ export async function ensureAgentationMainFromBridge(
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
   const params: { tabId: number; frameId?: number } = { tabId };
-  if (typeof frameId === "number") {
+  if (typeof frameId === 'number') {
     params.frameId = frameId;
   }
-  return await current.peer.request<unknown>(
-    BRIDGE_METHODS.extensionAgentationMainEnsure,
-    params,
-    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
-  );
+  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionAgentationMainEnsure, params, {
+    timeoutMs: TOOL_CALL_TIMEOUT_MS,
+  });
 }
 
 export async function readContextResourceFromExtension(
@@ -193,7 +209,11 @@ export async function readContextResourceFromExtension(
   resourceId: string,
 ): Promise<ContextResourcePayload> {
   const current = assertExtensionReady(tenantId, manager);
-  return await current.peer.request<ContextResourcePayload>(BRIDGE_METHODS.extensionContextResourceRead, { tabId, resourceId }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  return await current.peer.request<ContextResourcePayload>(
+    BRIDGE_METHODS.extensionContextResourceRead,
+    { tabId, resourceId },
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
 }
 
 export async function getContextSkillPromptFromExtension(
@@ -204,7 +224,11 @@ export async function getContextSkillPromptFromExtension(
   input?: Record<string, unknown>,
 ): Promise<ContextSkillPrompt | null> {
   const current = assertExtensionReady(tenantId, manager);
-  const result = await current.peer.request<{ prompt: ContextSkillPrompt | null }>(BRIDGE_METHODS.extensionContextSkillGet, { tabId, skillId, input }, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  const result = await current.peer.request<{ prompt: ContextSkillPrompt | null }>(
+    BRIDGE_METHODS.extensionContextSkillGet,
+    { tabId, skillId, input },
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
   return result.prompt;
 }
 
@@ -242,7 +266,11 @@ export async function getPageToolsTreeFromExtension(
   manager: TenantManager,
 ): Promise<unknown> {
   const current = assertExtensionReady(tenantId, manager);
-  return await current.peer.request<unknown>(BRIDGE_METHODS.extensionPageToolsTreeGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+  return await current.peer.request<unknown>(
+    BRIDGE_METHODS.extensionPageToolsTreeGet,
+    {},
+    { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+  );
 }
 
 export async function setPageToolsEnabledBatchOnExtension(
@@ -253,7 +281,11 @@ export async function setPageToolsEnabledBatchOnExtension(
   const current = assertExtensionReady(tenantId, manager);
   // In batch scenarios, reuse extension's existing setEnabled logic sequentially to ensure preference storage and publishing behavior remain consistent.
   if (updates.length === 0) {
-    return await current.peer.request<unknown>(BRIDGE_METHODS.extensionPageToolsTreeGet, {}, { timeoutMs: TOOL_CALL_TIMEOUT_MS });
+    return await current.peer.request<unknown>(
+      BRIDGE_METHODS.extensionPageToolsTreeGet,
+      {},
+      { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+    );
   }
 
   let latestTree: unknown = null;
@@ -272,7 +304,10 @@ function isRpcMethodNotFound(error: unknown): boolean {
 }
 
 function normalizeContextManifestDebugPayload(payload: unknown): ContextManifestDebugPayload {
-  if (isRecord(payload) && ("manifest" in payload || "rawManifest" in payload || "debug" in payload)) {
+  if (
+    isRecord(payload) &&
+    ('manifest' in payload || 'rawManifest' in payload || 'debug' in payload)
+  ) {
     const manifest = normalizeManifestValue(payload.manifest);
     const rawManifest = normalizeManifestValue(payload.rawManifest) ?? manifest;
     return {
@@ -302,23 +337,30 @@ function isLikelyPageContextManifest(value: unknown): value is PageContextManife
   if (!isRecord(value)) {
     return false;
   }
-  return typeof value.version === "string"
-    && typeof value.app === "string"
-    && typeof value.route === "string"
-    && typeof value.scene === "string"
-    && Array.isArray(value.namespaces)
-    && Array.isArray(value.resources)
-    && Array.isArray(value.skills)
-    && typeof value.generatedAt === "string";
+  return (
+    typeof value.version === 'string' &&
+    typeof value.app === 'string' &&
+    typeof value.route === 'string' &&
+    typeof value.scene === 'string' &&
+    Array.isArray(value.namespaces) &&
+    Array.isArray(value.resources) &&
+    Array.isArray(value.skills) &&
+    typeof value.generatedAt === 'string'
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === 'object' && value !== null;
 }
 
 // ── Per-tenant extension state creation ──
 
-function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: string, manager: TenantManager): ExtensionSlot {
+function createExtensionState(
+  ws: WebSocket,
+  registry: McpRegistry,
+  tenantId: string,
+  manager: TenantManager,
+): ExtensionSlot {
   let sessionId: string | null = null;
 
   const slot: ExtensionSlot = {
@@ -334,20 +376,26 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
     defaultTimeoutMs: TOOL_CALL_TIMEOUT_MS,
     getMeta: () => ({
       sessionId: sessionId ?? undefined,
-      source: "bridge",
-      target: "extension",
+      source: 'bridge',
+      target: 'extension',
     }),
   });
 
   const peer = slot.peer;
 
   peer.register(BRIDGE_METHODS.sessionRegister, async (params: unknown) => {
-    const payload = validateParams(sessionRegisterParamsSchema, params, BRIDGE_METHODS.sessionRegister);
+    const payload = validateParams(
+      sessionRegisterParamsSchema,
+      params,
+      BRIDGE_METHODS.sessionRegister,
+    );
     slot.ready = true;
     sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     slot.sessionId = sessionId;
     slot.lastHeartbeatAt = Date.now();
-    log(`[${tenantId}] Extension registered: ${payload.extensionId ?? "unknown"} v${payload.version ?? "unknown"} → session ${sessionId}`);
+    log(
+      `[${tenantId}] Extension registered: ${payload.extensionId ?? 'unknown'} v${payload.version ?? 'unknown'} → session ${sessionId}`,
+    );
     return { sessionId, heartbeatIntervalMs: 15_000 };
   });
 
@@ -357,31 +405,55 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
   });
 
   peer.register(BRIDGE_METHODS.bridgePageEvent, async (params: unknown) => {
-    const payload = validateParams(bridgePageEventParamsSchema, params, BRIDGE_METHODS.bridgePageEvent);
-    log(`[${tenantId}] PAGE_EVENT from tab`, payload.tabId ?? "unknown", JSON.stringify(payload.payload).slice(0, 200));
+    const payload = validateParams(
+      bridgePageEventParamsSchema,
+      params,
+      BRIDGE_METHODS.bridgePageEvent,
+    );
+    log(
+      `[${tenantId}] PAGE_EVENT from tab`,
+      payload.tabId ?? 'unknown',
+      JSON.stringify(payload.payload).slice(0, 200),
+    );
     return { ok: true };
   });
 
   peer.register(BRIDGE_METHODS.bridgePageToolsRegistered, async (params: unknown) => {
-    const payload = validateParams(bridgePageToolsRegisteredParamsSchema, params, BRIDGE_METHODS.bridgePageToolsRegistered);
+    const payload = validateParams(
+      bridgePageToolsRegisteredParamsSchema,
+      params,
+      BRIDGE_METHODS.bridgePageToolsRegistered,
+    );
     if (payload.tabId != null) {
       registry.unregisterPageToolsFromAllServers(payload.tabId);
       registry.setPageTools(payload.tabId, payload.tools ?? []);
       registry.registerPageToolsOnAllServers(payload.tabId, payload.tools ?? []);
-      const manifest = await getContextManifestFromExtension(tenantId, manager, payload.tabId).catch(() => null);
+      const manifest = await getContextManifestFromExtension(
+        tenantId,
+        manager,
+        payload.tabId,
+      ).catch(() => null);
       registry.syncContextManifestOnAllServers(payload.tabId, manifest);
     }
     return { ok: true };
   });
 
   peer.register(BRIDGE_METHODS.bridgeBuiltinToolsUpdated, async (params: unknown) => {
-    const payload = validateParams(bridgeBuiltinToolsUpdatedParamsSchema, params, BRIDGE_METHODS.bridgeBuiltinToolsUpdated);
+    const payload = validateParams(
+      bridgeBuiltinToolsUpdatedParamsSchema,
+      params,
+      BRIDGE_METHODS.bridgeBuiltinToolsUpdated,
+    );
     registry.syncBuiltinToolsOnAllServers(payload.tools ?? []);
     return { ok: true };
   });
 
   peer.register(BRIDGE_METHODS.bridgePageToolsUnregistered, async (params: unknown) => {
-    const payload = validateParams(bridgePageToolsUnregisteredParamsSchema, params, BRIDGE_METHODS.bridgePageToolsUnregistered);
+    const payload = validateParams(
+      bridgePageToolsUnregisteredParamsSchema,
+      params,
+      BRIDGE_METHODS.bridgePageToolsUnregistered,
+    );
     if (payload.tabId != null) {
       registry.deletePageTools(payload.tabId);
       registry.unregisterPageToolsFromAllServers(payload.tabId);
@@ -391,17 +463,33 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
   });
 
   peer.register(BRIDGE_METHODS.bridgeTabActivated, async (params: unknown) => {
-    const payload = validateParams(bridgeTabActivatedParamsSchema, params, BRIDGE_METHODS.bridgeTabActivated);
+    const payload = validateParams(
+      bridgeTabActivatedParamsSchema,
+      params,
+      BRIDGE_METHODS.bridgeTabActivated,
+    );
     if (payload.tabId != null) {
-      const manifest = await getContextManifestFromExtension(tenantId, manager, payload.tabId).catch(() => null);
+      const manifest = await getContextManifestFromExtension(
+        tenantId,
+        manager,
+        payload.tabId,
+      ).catch(() => null);
       registry.syncContextManifestOnAllServers(payload.tabId, manifest);
     }
     return { ok: true };
   });
   peer.register(BRIDGE_METHODS.bridgeTabUpdated, async (params: unknown) => {
-    const payload = validateParams(bridgeTabUpdatedParamsSchema, params, BRIDGE_METHODS.bridgeTabUpdated);
+    const payload = validateParams(
+      bridgeTabUpdatedParamsSchema,
+      params,
+      BRIDGE_METHODS.bridgeTabUpdated,
+    );
     if (payload.tabId != null) {
-      const manifest = await getContextManifestFromExtension(tenantId, manager, payload.tabId).catch(() => null);
+      const manifest = await getContextManifestFromExtension(
+        tenantId,
+        manager,
+        payload.tabId,
+      ).catch(() => null);
       registry.syncContextManifestOnAllServers(payload.tabId, manifest);
     }
     return { ok: true };
@@ -409,42 +497,74 @@ function createExtensionState(ws: WebSocket, registry: McpRegistry, tenantId: st
 
   // All feedback-related RPCs are handled by registry to ensure extension and MCP see the same state.
   peer.register(BRIDGE_METHODS.feedbackStateSnapshot, async (params: unknown) => {
-    const payload = validateParams(feedbackStateSnapshotParamsSchema, params ?? {}, BRIDGE_METHODS.feedbackStateSnapshot);
+    const payload = validateParams(
+      feedbackStateSnapshotParamsSchema,
+      params ?? {},
+      BRIDGE_METHODS.feedbackStateSnapshot,
+    );
     return registry.getFeedbackSnapshot(payload as FeedbackStateSnapshotParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackStateDelta, async (params: unknown) => {
-    const payload = validateParams(feedbackStateDeltaParamsSchema, params ?? {}, BRIDGE_METHODS.feedbackStateDelta);
+    const payload = validateParams(
+      feedbackStateDeltaParamsSchema,
+      params ?? {},
+      BRIDGE_METHODS.feedbackStateDelta,
+    );
     return registry.getFeedbackDelta(payload as FeedbackStateDeltaParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationCreate, async (params: unknown) => {
-    const payload = validateParams(feedbackAnnotationCreateParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationCreate);
+    const payload = validateParams(
+      feedbackAnnotationCreateParamsSchema,
+      params,
+      BRIDGE_METHODS.feedbackAnnotationCreate,
+    );
     return registry.createFeedbackAnnotation(payload as FeedbackAnnotationCreateParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationUpdate, async (params: unknown) => {
-    const payload = validateParams(feedbackAnnotationUpdateParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationUpdate);
+    const payload = validateParams(
+      feedbackAnnotationUpdateParamsSchema,
+      params,
+      BRIDGE_METHODS.feedbackAnnotationUpdate,
+    );
     return registry.updateFeedbackAnnotation(payload as FeedbackAnnotationUpdateParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationClaim, async (params: unknown) => {
-    const payload = validateParams(feedbackAnnotationClaimParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationClaim);
+    const payload = validateParams(
+      feedbackAnnotationClaimParamsSchema,
+      params,
+      BRIDGE_METHODS.feedbackAnnotationClaim,
+    );
     return registry.claimFeedbackAnnotation(payload as FeedbackAnnotationClaimParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationReply, async (params: unknown) => {
-    const payload = validateParams(feedbackAnnotationReplyParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationReply);
+    const payload = validateParams(
+      feedbackAnnotationReplyParamsSchema,
+      params,
+      BRIDGE_METHODS.feedbackAnnotationReply,
+    );
     return registry.replyFeedbackAnnotation(payload as FeedbackAnnotationReplyParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationResolve, async (params: unknown) => {
-    const payload = validateParams(feedbackAnnotationResolveParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationResolve);
+    const payload = validateParams(
+      feedbackAnnotationResolveParamsSchema,
+      params,
+      BRIDGE_METHODS.feedbackAnnotationResolve,
+    );
     return registry.resolveFeedbackAnnotation(payload as FeedbackAnnotationResolveParams);
   });
 
   peer.register(BRIDGE_METHODS.feedbackAnnotationDismiss, async (params: unknown) => {
-    const payload = validateParams(feedbackAnnotationDismissParamsSchema, params, BRIDGE_METHODS.feedbackAnnotationDismiss);
+    const payload = validateParams(
+      feedbackAnnotationDismissParamsSchema,
+      params,
+      BRIDGE_METHODS.feedbackAnnotationDismiss,
+    );
     return registry.dismissFeedbackAnnotation(payload as FeedbackAnnotationDismissParams);
   });
 
@@ -458,18 +578,21 @@ export function startWebSocketServer(extWsPort: number, manager: TenantManager):
     try {
       const wss = new WebSocketServer({ port: extWsPort, noServer: false });
 
-      wss.on("error", (error: Error) => {
+      wss.on('error', (error: Error) => {
         wsServerReady = false;
-        if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+        if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
           log(`ERROR: Port ${extWsPort} is already in use.`);
         } else {
-          log("ERROR: WebSocket server failed:", error instanceof Error ? error.message : String(error));
+          log(
+            'ERROR: WebSocket server failed:',
+            error instanceof Error ? error.message : String(error),
+          );
         }
         resolve(false);
       });
 
-      wss.on("connection", (ws: WebSocket, req) => {
-        const rawUrl = req.url ?? "/";
+      wss.on('connection', (ws: WebSocket, req) => {
+        const rawUrl = req.url ?? '/';
         const tenantId = TenantManager.extractTenantId(rawUrl);
         const tenant = manager.getOrCreate(tenantId);
 
@@ -477,22 +600,25 @@ export function startWebSocketServer(extWsPort: number, manager: TenantManager):
 
         // Evict previous extension for THIS tenant only
         if (tenant.extension && tenant.extension.ws.readyState === WebSocket.OPEN) {
-          tenant.extension.peer.failAllPending("Superseded by a newer extension connection");
-          tenant.extension.ws.close(1012, "Superseded by a newer extension connection");
+          tenant.extension.peer.failAllPending('Superseded by a newer extension connection');
+          tenant.extension.ws.close(1012, 'Superseded by a newer extension connection');
         }
 
         const slot = createExtensionState(ws, tenant.registry, tenantId, manager);
         tenant.extension = slot;
 
-        ws.on("message", (data: WebSocket.RawData) => {
+        ws.on('message', (data: WebSocket.RawData) => {
           void slot.peer.receive(data.toString()).catch((error: unknown) => {
-            log(`[${tenantId}] Failed to process message`, error instanceof Error ? error.message : String(error));
+            log(
+              `[${tenantId}] Failed to process message`,
+              error instanceof Error ? error.message : String(error),
+            );
           });
         });
 
-        ws.on("close", () => {
+        ws.on('close', () => {
           if (tenant.extension?.ws === ws) {
-            slot.peer.failAllPending("Extension disconnected while request was in flight");
+            slot.peer.failAllPending('Extension disconnected while request was in flight');
             tenant.extension = null;
             manager.touch(tenantId);
           }
@@ -500,13 +626,16 @@ export function startWebSocketServer(extWsPort: number, manager: TenantManager):
         });
       });
 
-      wss.on("listening", () => {
+      wss.on('listening', () => {
         wsServerReady = true;
         log(`Extension WebSocket server listening on ws://0.0.0.0:${extWsPort}`);
         resolve(true);
       });
     } catch (error) {
-      log("ERROR: Failed to create WebSocket server:", error instanceof Error ? error.message : String(error));
+      log(
+        'ERROR: Failed to create WebSocket server:',
+        error instanceof Error ? error.message : String(error),
+      );
       wsServerReady = false;
       resolve(false);
     }
@@ -522,8 +651,8 @@ export function startHeartbeatWatchdog(manager: TenantManager): void {
       if (!slot || !slot.ready) continue;
       if (Date.now() - slot.lastHeartbeatAt > HEARTBEAT_GRACE_MS) {
         log(`[${tenant.id}] Heartbeat timed out; closing stale session`);
-        slot.peer.failAllPending("Extension heartbeat timed out");
-        slot.ws.close(1011, "Heartbeat timed out");
+        slot.peer.failAllPending('Extension heartbeat timed out');
+        slot.ws.close(1011, 'Heartbeat timed out');
         tenant.extension = null;
       }
     }
