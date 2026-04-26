@@ -1,9 +1,9 @@
 /**
- * ESLint 9 Flat Config - 基础质量门禁
+ * ESLint 9 Flat Config - Base quality gate
  *
- * 设计原则：
- * - 规则精简，只关注真正的代码质量问题
- * - 使用 flat config 格式（ESLint 9 标准）
+ * Design principles:
+ * - Concise rules, focusing only on real code quality issues
+ * - Uses flat config format (ESLint 9 standard)
  */
 import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
@@ -11,7 +11,7 @@ import tsParser from '@typescript-eslint/parser';
 import prettierCompat from 'eslint-config-prettier';
 
 export default [
-  // 忽略构建产物、IDE 历史、第三方代码、构建脚本
+  // Ignore build artifacts, IDE history, third-party code, build scripts
   {
     ignores: [
       '**/dist/**',
@@ -26,7 +26,7 @@ export default [
     ],
   },
 
-  // 匹配所有源码文件
+  // Match all source files
   {
     files: ['**/*.{ts,tsx,js,cjs,mjs}'],
     languageOptions: {
@@ -34,18 +34,18 @@ export default [
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        // 不启用 project：monorepo 中大量文件不在统一 tsconfig 内，
-        // 启用后会导致 dist/scripts/vendor 等文件全部报 Parsing error
+        // Do not enable project: many files in monorepo are not in a unified tsconfig,
+        // enabling it would cause dist/scripts/vendor and other files to report Parsing errors.
       },
       globals: {
-        // 浏览器扩展环境
+        // Browser extension environment
         window: 'readonly',
         document: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
         chrome: 'readonly',
         browser: 'readonly',
-        // Node.js 工具链
+        // Node.js toolchain
         process: 'readonly',
         __dirname: 'readonly',
         __filename: 'readonly',
@@ -62,18 +62,18 @@ export default [
     },
 
     rules: {
-      // ---------- TypeScript 相关：允许快速迭代阶段的宽松策略 ----------
+      // ---------- TypeScript: relaxed policy for rapid iteration ----------
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/no-require-imports': 'off',
 
-      // ---------- 通用代码质量 ----------
+      // ---------- General code quality ----------
       'no-console': 'off',
       'no-constant-condition': 'warn',
     },
   },
 
-  // Prettier 兼容层：关闭所有与 Prettier 冲突的格式规则
+  // Prettier compatibility layer: disable all formatting rules that conflict with Prettier
   prettierCompat,
 ];

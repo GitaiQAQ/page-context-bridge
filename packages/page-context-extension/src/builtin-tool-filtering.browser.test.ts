@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-// 直接从真实包导入，不再经过 re-export shim
+// Import directly from real package, not through re-export shim
 import { filterBuiltinTools, setScopeEnabled } from '@page-context/tool-visibility';
 
 describe('builtin tool filtering', () => {

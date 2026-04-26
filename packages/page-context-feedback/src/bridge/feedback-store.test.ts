@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { FeedbackStore } from './feedback-store';
 
-/** 构造一个最小合法的 actor */
+/** Build a minimal valid actor */
 const mockActor = { id: 'user-1', source: 'sidepanel' as const };
 
-/** 构造最小合法的 linkedCapabilities */
+/** Build minimal valid linkedCapabilities */
 const mockCapabilities = {
   namespaceHints: [],
   relatedToolNames: [],
@@ -15,9 +15,9 @@ const mockCapabilities = {
 };
 
 /**
- * 创建可控制的 store 实例：
- * - now() 返回固定时间戳，确保断言稳定
- * - createId() 返回递增 ID，避免随机性
+ * Create a controllable store instance:
+ * - now() returns a fixed timestamp for stable assertions
+ * - createId() returns incremental IDs to avoid randomness
  */
 function createStore(nowStr = '2026-01-01T00:00:00.000Z') {
   let counter = 0;
@@ -28,10 +28,10 @@ function createStore(nowStr = '2026-01-01T00:00:00.000Z') {
 }
 
 describe('FeedbackStore', () => {
-  // ─── 创建 annotation ──────────────────────────────────────────
+  // ─── Create annotation ──────────────────────────────────────────
 
   describe('createAnnotation', () => {
-    it('创建 annotation 并自动关联 session', () => {
+    it('creates annotation and auto-associates session', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -48,7 +48,7 @@ describe('FeedbackStore', () => {
       expect(ann.author).toEqual(mockActor);
     });
 
-    it('同一 tabId 复用 session', () => {
+    it('reuses session for same tabId', () => {
       const store = createStore();
       const a1 = store.createAnnotation({
         actor: mockActor,
@@ -67,12 +67,12 @@ describe('FeedbackStore', () => {
 
       expect(a1.sessionId).toBe(a2.sessionId);
 
-      // 同一 session 下应有两个 annotation
+      // Same session should have two annotations
       const list = store.listAnnotationsBySession(a1.sessionId);
       expect(list).toHaveLength(2);
     });
 
-    it('不同 tabId 产生独立 session', () => {
+    it('different tabIds produce independent sessions', () => {
       const store = createStore();
       const a1 = store.createAnnotation({
         actor: mockActor,
@@ -92,7 +92,7 @@ describe('FeedbackStore', () => {
       expect(a1.sessionId).not.toBe(a2.sessionId);
     });
 
-    it('默认优先级为 normal', () => {
+    it('defaults priority to normal', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -104,7 +104,7 @@ describe('FeedbackStore', () => {
       expect(ann.priority).toBe('normal');
     });
 
-    it('支持自定义优先级', () => {
+    it('supports custom priority', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -117,7 +117,7 @@ describe('FeedbackStore', () => {
       expect(ann.priority).toBe('high');
     });
 
-    it('规范化 selectedText（去除空白）', () => {
+    it('normalizes selectedText (trims whitespace)', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -132,10 +132,10 @@ describe('FeedbackStore', () => {
     });
   });
 
-  // ─── 状态转换 ─────────────────────────────────────────────────
+  // ─── State transitions ─────────────────────────────────────────
 
   describe('claimAnnotation / resolveAnnotation / dismissAnnotation', () => {
-    it('open -> claimed -> resolved 完整流转', () => {
+    it('full flow: open -> claimed -> resolved', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -159,7 +159,7 @@ describe('FeedbackStore', () => {
       expect(resolved.resolvedBy).toEqual(mockActor);
     });
 
-    it('open -> dismissed 流转', () => {
+    it('flow: open -> dismissed', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -178,7 +178,7 @@ describe('FeedbackStore', () => {
       expect(dismissed.dismissReason).toBe('invalid');
     });
 
-    it('非法状态转换抛出异常', () => {
+    it('throws on invalid state transition', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -189,13 +189,13 @@ describe('FeedbackStore', () => {
       });
       store.dismissAnnotation({ annotationId: ann.id, actor: mockActor });
 
-      // dismissed 之后不能再 claim
+      // Cannot claim after dismissed
       expect(() => store.claimAnnotation({ annotationId: ann.id, actor: mockActor })).toThrow(
         'Invalid status transition',
       );
     });
 
-    it('不存在的 annotation 抛出异常', () => {
+    it('throws for nonexistent annotation', () => {
       const store = createStore();
       expect(() =>
         store.claimAnnotation({ annotationId: 'nonexistent', actor: mockActor }),
@@ -206,7 +206,7 @@ describe('FeedbackStore', () => {
   // ─── reply ─────────────────────────────────────────────────────
 
   describe('replyAnnotation', () => {
-    it('追加回复到 thread', () => {
+    it('appends reply to thread', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -223,10 +223,10 @@ describe('FeedbackStore', () => {
       });
       expect(updated.thread).toHaveLength(1);
       expect(updated.thread[0].body).toBe('reply text');
-      expect(updated.thread[0].kind).toBe('comment'); // 默认 kind
+      expect(updated.thread[0].kind).toBe('comment'); // default kind
     });
 
-    it('支持自定义 kind', () => {
+    it('supports custom kind', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -249,7 +249,7 @@ describe('FeedbackStore', () => {
   // ─── update ────────────────────────────────────────────────────
 
   describe('updateAnnotation', () => {
-    it('更新 open annotation 的 body 和 priority', () => {
+    it('updates body and priority of open annotation', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -269,7 +269,7 @@ describe('FeedbackStore', () => {
       expect(updated.priority).toBe('high');
     });
 
-    it('已终结状态（resolved/dismissed）不可编辑', () => {
+    it('cannot edit terminal states (resolved / dismissed)', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -278,7 +278,7 @@ describe('FeedbackStore', () => {
         url: 'https://x.com',
         linkedCapabilities: mockCapabilities,
       });
-      // open -> claimed -> resolved（合法路径）
+      // open -> claimed -> resolved (valid path)
       store.claimAnnotation({ annotationId: ann.id, actor: mockActor });
       store.resolveAnnotation({ annotationId: ann.id, actor: mockActor });
 
@@ -287,7 +287,7 @@ describe('FeedbackStore', () => {
       ).toThrow('Cannot update annotation in status: resolved');
     });
 
-    it('空 body 被拒绝', () => {
+    it('rejects empty body', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -303,10 +303,10 @@ describe('FeedbackStore', () => {
     });
   });
 
-  // ─── 查询 / 快照 ───────────────────────────────────────────────
+  // ─── Query / Snapshot ──────────────────────────────────────────
 
   describe('readSnapshot / readDelta / listSessions', () => {
-    it('readSnapshot 返回所有 sessions 和 annotations', () => {
+    it('readSnapshot returns all sessions and annotations', () => {
       const store = createStore();
       store.createAnnotation({
         actor: mockActor,
@@ -329,7 +329,7 @@ describe('FeedbackStore', () => {
       expect(snap.snapshotVersion).toBeGreaterThan(0);
     });
 
-    it('readDelta 只返回 afterSeq 之后的事件', () => {
+    it('readDelta only returns events after afterSeq', () => {
       const store = createStore();
       store.createAnnotation({
         actor: mockActor,
@@ -349,12 +349,12 @@ describe('FeedbackStore', () => {
       });
 
       const delta = store.readDelta({ afterSeq: snap1.lastSeq });
-      // 应包含第二个 annotation 的 created 事件 + session.started 事件
+      // Should contain second annotation created event + session.started event
       expect(delta.events.length).toBeGreaterThanOrEqual(1);
       expect(delta.lastSeq).toBeGreaterThan(snap1.lastSeq);
     });
 
-    it('listSessions 按 tabId 过滤', () => {
+    it('listSessions filters by tabId', () => {
       const store = createStore();
       store.createAnnotation({
         actor: mockActor,
@@ -373,14 +373,14 @@ describe('FeedbackStore', () => {
 
       expect(store.listSessions(1)).toHaveLength(1);
       expect(store.listSessions(99)).toHaveLength(1);
-      expect(store.listSessions()).toHaveLength(2); // 无参数返回全部
+      expect(store.listSessions()).toHaveLength(2); // no arg returns all
     });
   });
 
   // ─── getAnnotation / getSession ─────────────────────────────────
 
   describe('getAnnotation / getSession', () => {
-    it('按 ID 查找 annotation，不存在返回 null', () => {
+    it('finds annotation by ID, returns null if not found', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -394,7 +394,7 @@ describe('FeedbackStore', () => {
       expect(store.getAnnotation('nope')).toBeNull();
     });
 
-    it('按 ID 查找 session，不存在返回 null', () => {
+    it('finds session by ID, returns null if not found', () => {
       const store = createStore();
       const ann = store.createAnnotation({
         actor: mockActor,
@@ -409,10 +409,10 @@ describe('FeedbackStore', () => {
     });
   });
 
-  // ─── snapshotVersion 递增 ──────────────────────────────────────
+  // ─── snapshotVersion increment ──────────────────────────────────
 
   describe('snapshotVersion', () => {
-    it('每次写操作都递增版本号', () => {
+    it('increments version on every write operation', () => {
       const store = createStore();
       const snap0 = store.readSnapshot();
       const v0 = snap0.snapshotVersion;

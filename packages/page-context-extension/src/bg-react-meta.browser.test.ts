@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-// 直接从真实包导入，不再经过 re-export shim
+// Import directly from real package, not through re-export shim
 import { enrichUiAnchorReactMetaInMainWorld } from '@page-context/agentation';
 
 describe('enrichUiAnchorReactMetaInMainWorld', () => {

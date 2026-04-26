@@ -60,7 +60,7 @@ vi.mock('./bg-page-context', () => ({
   sleep: vi.fn(async () => undefined),
 }));
 
-// 直接 mock 真实包，不再经过 re-export shim
+// Mock real package directly, not through re-export shim
 
 vi.mock(
   '@page-context/tool-executor',

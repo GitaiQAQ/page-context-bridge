@@ -13,23 +13,23 @@ describe('feedback-normalizers', () => {
   // ─── normalizeText ──────────────────────────────────────────────
 
   describe('normalizeText', () => {
-    it('返回去除首尾空白的文本', () => {
+    it('returns trimmed text', () => {
       expect(normalizeText('  hello  ')).toBe('hello');
     });
 
-    it('空字符串返回 undefined', () => {
+    it('returns undefined for empty string', () => {
       expect(normalizeText('')).toBeUndefined();
     });
 
-    it('纯空白字符串返回 undefined', () => {
+    it('returns undefined for whitespace-only string', () => {
       expect(normalizeText('   ')).toBeUndefined();
     });
 
-    it('undefined 输入返回 undefined', () => {
+    it('returns undefined for undefined input', () => {
       expect(normalizeText(undefined)).toBeUndefined();
     });
 
-    it('无需修剪的文本原样返回', () => {
+    it('returns text as-is when no trimming needed', () => {
       expect(normalizeText('hello')).toBe('hello');
     });
   });
@@ -37,25 +37,25 @@ describe('feedback-normalizers', () => {
   // ─── normalizeUiRect ────────────────────────────────────────────
 
   describe('normalizeUiRect', () => {
-    it('有效矩形原样保留数值', () => {
+    it('keeps valid rect values as-is', () => {
       const rect = { x: 10, y: 20, width: 100, height: 200 };
       expect(normalizeUiRect(rect)).toEqual({ x: 10, y: 20, width: 100, height: 200 });
     });
 
-    it('undefined 返回 undefined', () => {
+    it('returns undefined for undefined input', () => {
       expect(normalizeUiRect(undefined)).toBeUndefined();
     });
 
-    it('NaN 坐标导致返回 undefined', () => {
+    it('returns undefined for NaN coordinates', () => {
       expect(normalizeUiRect({ x: NaN, y: 0, width: 1, height: 1 })).toBeUndefined();
     });
 
-    it('负宽或负高导致返回 undefined', () => {
+    it('returns undefined for negative width or height', () => {
       expect(normalizeUiRect({ x: 0, y: 0, width: -1, height: 10 })).toBeUndefined();
       expect(normalizeUiRect({ x: 0, y: 0, width: 10, height: -1 })).toBeUndefined();
     });
 
-    it('零尺寸是合法的（点/线）', () => {
+    it('zero size is valid (point / line)', () => {
       expect(normalizeUiRect({ x: 0, y: 0, width: 0, height: 0 })).toEqual({
         x: 0,
         y: 0,
@@ -68,27 +68,27 @@ describe('feedback-normalizers', () => {
   // ─── normalizeUiTextRange ───────────────────────────────────────
 
   describe('normalizeUiTextRange', () => {
-    it('有效范围正常返回', () => {
+    it('returns valid range as-is', () => {
       expect(normalizeUiTextRange({ start: 0, end: 5 })).toEqual({ start: 0, end: 5 });
     });
 
-    it('undefined 返回 undefined', () => {
+    it('returns undefined for undefined input', () => {
       expect(normalizeUiTextRange(undefined)).toBeUndefined();
     });
 
-    it('非整数被拒绝', () => {
+    it('rejects non-integer values', () => {
       expect(normalizeUiTextRange({ start: 0.5, end: 5 })).toBeUndefined();
     });
 
-    it('负起始位置被拒绝', () => {
+    it('rejects negative start position', () => {
       expect(normalizeUiTextRange({ start: -1, end: 5 })).toBeUndefined();
     });
 
-    it('end < start 被拒绝', () => {
+    it('rejects when end < start', () => {
       expect(normalizeUiTextRange({ start: 5, end: 3 })).toBeUndefined();
     });
 
-    it('start === end 是合法的（空选区）', () => {
+    it('start === end is valid (empty selection)', () => {
       expect(normalizeUiTextRange({ start: 3, end: 3 })).toEqual({ start: 3, end: 3 });
     });
   });
@@ -96,7 +96,7 @@ describe('feedback-normalizers', () => {
   // ─── normalizeUiAnchor ──────────────────────────────────────────
 
   describe('normalizeUiAnchor', () => {
-    it('完整锚点保留所有有效字段', () => {
+    it('keeps all valid fields for a complete anchor', () => {
       const anchor = {
         elementId: 'el-1',
         cssSelector: '#btn',
@@ -111,11 +111,11 @@ describe('feedback-normalizers', () => {
       expect(result).toEqual(anchor);
     });
 
-    it('undefined 返回 undefined', () => {
+    it('returns undefined for undefined input', () => {
       expect(normalizeUiAnchor(undefined)).toBeUndefined();
     });
 
-    it('所有字段无效时返回 undefined', () => {
+    it('returns undefined when all fields are invalid', () => {
       expect(
         normalizeUiAnchor({
           elementId: '   ',
@@ -130,7 +130,7 @@ describe('feedback-normalizers', () => {
       ).toBeUndefined();
     });
 
-    it('过滤掉非正整数的 framePath 条目', () => {
+    it('filters out non-positive-integer framePath entries', () => {
       const result = normalizeUiAnchor({
         cssSelector: '#ok',
         framePath: [0, -1, 3.5, 'a' as unknown as number, 2],
@@ -138,7 +138,7 @@ describe('feedback-normalizers', () => {
       expect(result?.framePath).toEqual([0, 2]);
     });
 
-    it('空 meta 对象被丢弃', () => {
+    it('drops empty meta object', () => {
       const result = normalizeUiAnchor({
         cssSelector: '#x',
         meta: {},
@@ -146,11 +146,11 @@ describe('feedback-normalizers', () => {
       expect(result?.meta).toBeUndefined();
     });
 
-    it('有内容的 meta 被深拷贝', () => {
+    it('deep clones non-empty meta', () => {
       const meta = { key: 'val' };
       const result = normalizeUiAnchor({ cssSelector: '#x', meta });
       expect(result?.meta).toEqual({ key: 'val' });
-      // 确认深拷贝：修改原始对象不影响结果
+      // Verify deep clone: mutating original does not affect result
       (meta as Record<string, unknown>).key = 'changed';
       expect((result?.meta as Record<string, unknown>)?.key).toBe('val');
     });
@@ -159,15 +159,15 @@ describe('feedback-normalizers', () => {
   // ─── uniqueStrings ──────────────────────────────────────────────
 
   describe('uniqueStrings', () => {
-    it('去重并保持顺序', () => {
+    it('deduplicates while preserving order', () => {
       expect(uniqueStrings(['a', 'b', 'a', 'c', 'b'])).toEqual(['a', 'b', 'c']);
     });
 
-    it('空数组返回空数组', () => {
+    it('returns empty array for empty input', () => {
       expect(uniqueStrings([])).toEqual([]);
     });
 
-    it('无重复项原样返回', () => {
+    it('returns array as-is when no duplicates', () => {
       expect(uniqueStrings(['x', 'y', 'z'])).toEqual(['x', 'y', 'z']);
     });
   });
@@ -175,7 +175,7 @@ describe('feedback-normalizers', () => {
   // ─── cloneValue ─────────────────────────────────────────────────
 
   describe('cloneValue', () => {
-    it('深拷贝普通对象', () => {
+    it('deep clones plain objects', () => {
       const original = { a: 1, b: { c: 2 } };
       const cloned = cloneValue(original);
       expect(cloned).toEqual(original);
@@ -185,7 +185,7 @@ describe('feedback-normalizers', () => {
       );
     });
 
-    it('深拷贝数组', () => {
+    it('deep clones arrays', () => {
       const original = [
         [1, 2],
         [3, 4],
@@ -195,7 +195,7 @@ describe('feedback-normalizers', () => {
       expect(cloned).not.toBe(original);
     });
 
-    it('基本类型直接返回', () => {
+    it('returns primitives as-is', () => {
       expect(cloneValue(42)).toBe(42);
       expect(cloneValue('str')).toBe('str');
       expect(cloneValue(null)).toBe(null);
