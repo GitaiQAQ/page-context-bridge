@@ -12,6 +12,33 @@ import {
 
 import { LitElement, html, css, type PropertyValues, type TemplateResult, nothing } from 'lit';
 import { customElement, state, query } from 'lit/decorators.js';
+
+/**
+ * Simple structured logger for side-panel debugging.
+ * Prefixes all messages with [side-panel] for easy filtering.
+ * Levels: log (default), warn, error.
+ */
+function spLog(message: string, level: 'log' | 'warn' | 'error' = 'log') {
+  const prefix = '[side-panel]';
+  if (level === 'error') console.error(prefix, message);
+  else if (level === 'warn') console.warn(prefix, message);
+  else console.log(prefix, message);
+}
+
+/** Minimal debounce utility for event handlers. */
+function createDebounce<T extends unknown[]>(
+  fn: (...args: T) => void,
+  ms: number,
+): (...args: T) => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return (...args: T) => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      fn(...args);
+      timer = null;
+    }, ms);
+  };
+}
 import { classMap } from 'lit/directives/class-map.js';
 import { when } from 'lit/directives/when.js';
 
@@ -187,6 +214,10 @@ export class SidePanelApp extends LitElement {
     changeInfo: { status?: string },
     tab: chrome.tabs.Tab,
   ) => void;
+  /** Debounced filter handler (150ms) to avoid re-rendering on every keystroke. */
+  private _debouncedFilterInput = createDebounce((value: string) => {
+    this._currentFilter = value;
+  }, 150);
 
   // ─── Lifecycle ─────────────────────────────────────────────────
   override connectedCallback(): void {
@@ -903,7 +934,7 @@ export class SidePanelApp extends LitElement {
     const container =
       this._iframeContainer ?? this.shadowRoot?.querySelector<HTMLElement>('#iframeContainer');
     if (!container) {
-      console.warn('[side-panel] _manageIframe: #iframeContainer not found in shadow DOM');
+      spLog('_manageIframe: #iframeContainer not found in shadow DOM');
       return;
     }
 
@@ -983,7 +1014,7 @@ export class SidePanelApp extends LitElement {
 
   private _handleToolsFilterInput(event: Event): void {
     const input = event.target as HTMLInputElement;
-    this._currentFilter = input.value.trim().toLowerCase();
+    this._debouncedFilterInput(input.value.trim().toLowerCase());
   }
 
   private _handleToolsPanelChange(event: Event): void {
@@ -1090,7 +1121,25 @@ export class SidePanelApp extends LitElement {
 
   // ─── Main Render ───────────────────────────────────────────────
   override render() {
-    console.log('[side-panel] render() called, _activeTab =', this._activeTab);
+    try {
+      return this._renderContent();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      spLog(`render error: ${message}`, 'error');
+      return html`
+        <div class="flex flex-col items-center justify-center flex-1 p-4 text-error">
+          <p class="text-sm font-semibold">Render Error</p>
+          <p class="text-xs mt-1 opacity-70 break-all">${message}</p>
+          <button class="btn btn-xs btn-ghost mt-2" @click=${() => this.requestUpdate()}>
+            Retry
+          </button>
+        </div>
+      `;
+    }
+  }
+
+  private _renderContent(): TemplateResult {
+    spLog(`render() called, _activeTab = ${this._activeTab}`);
     const toolsCount = this._toolTreeResponse
       ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled)`
       : '';
@@ -1316,6 +1365,7 @@ export class SidePanelApp extends LitElement {
       </div>
     `;
   }
+  // end _renderContent
 }
 
 declare global {

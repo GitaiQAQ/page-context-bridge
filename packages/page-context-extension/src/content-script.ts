@@ -10,7 +10,9 @@ import { createRuntimeListener, sendRuntimeRequest } from './runtime-rpc';
 const consoleEntries: ConsoleEntry[] = [];
 
 function log(...args: unknown[]): void {
-  console.log('[PAGE-CONTEXT-CS]', ...args);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[PAGE-CONTEXT-CS]', ...args);
+  }
 }
 
 createConsoleCapture(window, consoleEntries);

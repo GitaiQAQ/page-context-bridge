@@ -5,7 +5,7 @@ const discoverPageToolsInTabMock = vi.fn();
 const queueNotificationMock = vi.fn();
 
 let tabUpdatedListener:
-  | ((tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => void)
+  | ((tabId: number, changeInfo: { status?: string }, tab: chrome.tabs.Tab) => void)
   | null = null;
 let runtimeMessageListener:
   | ((
@@ -35,21 +35,18 @@ vi.mock('./bg-feedback-context', () => ({
   })),
 }));
 
-vi.mock(
-  '@page-context/agentation',
-  () => ({
-    enrichUiAnchorReactMetaInMainWorld: vi.fn(async (_tabId: number, anchor: unknown) => anchor),
-    ensureAgentationMainOnSenderTab: vi.fn(async () => ({ ok: true })),
-    ensureAgentationMainOnTab: vi.fn(async () => ({ ok: true })),
-    ensureMainWorldBridgeHostOnTab: vi.fn(async () => ({ ok: true })),
-    ensureMainWorldBridgeHostOnSenderTab: vi.fn(async () => ({ ok: true })),
-    getMainWorldInjectionTarget: vi.fn((params: unknown) => params),
-  }),
-  { virtual: true },
-);
+vi.mock('@page-context/agentation', () => ({
+  enrichUiAnchorReactMetaInMainWorld: vi.fn(async (_tabId: number, anchor: unknown) => anchor),
+  ensureAgentationMainOnSenderTab: vi.fn(async () => ({ ok: true })),
+  ensureAgentationMainOnTab: vi.fn(async () => ({ ok: true })),
+  ensureMainWorldBridgeHostOnTab: vi.fn(async () => ({ ok: true })),
+  ensureMainWorldBridgeHostOnSenderTab: vi.fn(async () => ({ ok: true })),
+  getMainWorldInjectionTarget: vi.fn((params: unknown) => params),
+}));
 
 vi.mock('./bg-page-context', () => ({
   discoverPageToolsInTab: discoverPageToolsInTabMock,
+  executePageToolInTab: vi.fn(async () => ({ ok: true, result: {} })),
   getRawPageContextManifest: vi.fn(async () => null),
   getPageContextSkill: vi.fn(async () => null),
   readPageContextResource: vi.fn(async () => ({
@@ -62,42 +59,34 @@ vi.mock('./bg-page-context', () => ({
 
 // Mock real package directly, not through re-export shim
 
-vi.mock(
-  '@page-context/tool-executor',
-  () => ({
-    executeToolCall: vi.fn(async () => ({ ok: true })),
-    getBuiltinToolDefinitions: vi.fn(() => []),
-    getExtensionToolProviders: vi.fn(() => []),
-    getServiceWorkerContext: vi.fn(() => ({})),
-  }),
-  { virtual: true },
-);
+vi.mock('@page-context/tool-executor', () => ({
+  executeToolCall: vi.fn(async () => ({ ok: true })),
+  getBuiltinToolDefinitions: vi.fn(() => []),
+  getExtensionToolProviders: vi.fn(() => []),
+  getServiceWorkerContext: vi.fn(() => ({})),
+}));
 
 vi.mock('./context-manifest-filter-debug', () => ({
   buildContextManifestFilterDebug: vi.fn(() => ({ filtered: true })),
 }));
 
-vi.mock(
-  '@page-context/tool-visibility',
-  () => ({
-    buildToolTree: vi.fn(async () => ({ tabs: [] })),
-    getEnabledBuiltinTools: vi.fn((tools: unknown[]) => tools),
-    getEnabledToolsForTab: vi.fn((entries?: Array<{ tools?: unknown[] }>) =>
-      (entries ?? []).flatMap((entry) => entry.tools ?? []),
-    ),
-    isToolEnabled: vi.fn(() => true),
-    setScopeEnabled: vi.fn((current: Record<string, unknown>) => current),
-    clearPageTools: vi.fn(),
-    publishPageToolsForTab: vi.fn(),
-    publishBuiltinTools: vi.fn(),
-    flattenPageTools: vi.fn((entries?: Array<{ tools?: unknown[] }>) =>
-      (entries ?? []).flatMap((entry) => entry.tools ?? []),
-    ),
-    mergePageToolEntry: vi.fn((entries: unknown[], entry: unknown) => [...entries, entry]),
-    normalizePageToolEntries: vi.fn((entries: unknown[]) => entries ?? []),
-  }),
-  { virtual: true },
-);
+vi.mock('@page-context/tool-visibility', () => ({
+  buildToolTree: vi.fn(async () => ({ tabs: [] })),
+  getEnabledBuiltinTools: vi.fn((tools: unknown[]) => tools),
+  getEnabledToolsForTab: vi.fn((entries?: Array<{ tools?: unknown[] }>) =>
+    (entries ?? []).flatMap((entry) => entry.tools ?? []),
+  ),
+  isToolEnabled: vi.fn(() => true),
+  setScopeEnabled: vi.fn((current: Record<string, unknown>) => current),
+  clearPageTools: vi.fn(),
+  publishPageToolsForTab: vi.fn(),
+  publishBuiltinTools: vi.fn(),
+  flattenPageTools: vi.fn((entries?: Array<{ tools?: unknown[] }>) =>
+    (entries ?? []).flatMap((entry) => entry.tools ?? []),
+  ),
+  mergePageToolEntry: vi.fn((entries: unknown[], entry: unknown) => [...entries, entry]),
+  normalizePageToolEntries: vi.fn((entries: unknown[]) => entries ?? []),
+}));
 
 describe('background page tools refresh lifecycle', () => {
   const originalChrome = globalThis.chrome;

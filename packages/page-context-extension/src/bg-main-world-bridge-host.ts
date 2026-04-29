@@ -7,6 +7,45 @@
 
 export type MainWorldBridgeHostInstaller = () => void;
 
+/** Shape of a page-context bridge that the host delegates to. */
+interface PageContextBridge {
+  version: string;
+  listNamespaces(): string[];
+  getNamespace(namespace: string): unknown;
+  getScene(): string;
+  listResources(): ResourceDescriptor[];
+  readResource(id: string): ResourcePayload;
+  listSkills(): SkillDescriptor[];
+  getSkill(id: string, input?: Record<string, unknown>): unknown;
+  getManifest(): ManifestDescriptor | null;
+}
+
+interface ResourceDescriptor {
+  id: string;
+  [key: string]: unknown;
+}
+
+interface ResourcePayload {
+  id: string;
+  mimeType: string;
+  text: string;
+}
+
+interface SkillDescriptor {
+  id: string;
+  [key: string]: unknown;
+}
+
+interface ManifestDescriptor {
+  namespaces: NamespaceDescriptor[];
+  [key: string]: unknown;
+}
+
+interface NamespaceDescriptor {
+  namespace: string;
+  [key: string]: unknown;
+}
+
 export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller = (): void => {
   const HOST_KEY = '__pageContextBridgeHost__';
   const BRIDGE_KEY = '__pageContextBridge__';
@@ -27,7 +66,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       string,
       {
         sourceId: string;
-        bridge: any;
+        bridge: PageContextBridge;
         priority: number;
         tags: string[];
         registeredAt: string;
@@ -54,7 +93,12 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     }
   };
 
-  const registerSource = (sourceId: string, bridge: any, priority = 100, tags: string[] = []) => {
+  const registerSource = (
+    sourceId: string,
+    bridge: PageContextBridge,
+    priority = 100,
+    tags: string[] = [],
+  ) => {
     state.sourcesById.set(sourceId, {
       sourceId,
       bridge,
@@ -79,18 +123,18 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     };
   };
 
-  const isBridgeLike = (candidate: any): boolean =>
+  const isBridgeLike = (candidate: unknown): candidate is PageContextBridge =>
     Boolean(
       candidate &&
-      typeof candidate.version === 'string' &&
-      typeof candidate.listNamespaces === 'function' &&
-      typeof candidate.getNamespace === 'function' &&
-      typeof candidate.getScene === 'function' &&
-      typeof candidate.listResources === 'function' &&
-      typeof candidate.readResource === 'function' &&
-      typeof candidate.listSkills === 'function' &&
-      typeof candidate.getSkill === 'function' &&
-      typeof candidate.getManifest === 'function',
+      typeof (candidate as PageContextBridge).version === 'string' &&
+      typeof (candidate as PageContextBridge).listNamespaces === 'function' &&
+      typeof (candidate as PageContextBridge).getNamespace === 'function' &&
+      typeof (candidate as PageContextBridge).getScene === 'function' &&
+      typeof (candidate as PageContextBridge).listResources === 'function' &&
+      typeof (candidate as PageContextBridge).readResource === 'function' &&
+      typeof (candidate as PageContextBridge).listSkills === 'function' &&
+      typeof (candidate as PageContextBridge).getSkill === 'function' &&
+      typeof (candidate as PageContextBridge).getManifest === 'function',
     );
 
   const bridgeSourceIdByRef = new WeakMap<object, string>();
@@ -161,7 +205,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     readResource: (id: string) => {
       for (const source of orderedSources()) {
         const resources = safe(() => source.bridge.listResources(), []);
-        const hasResource = resources.some((resource: any) => resource?.id === id);
+        const hasResource = resources.some((resource: ResourceDescriptor) => resource?.id === id);
         if (hasResource) {
           return safe(() => source.bridge.readResource(id), {
             id,
@@ -191,7 +235,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     getSkill: (id: string, input?: Record<string, unknown>) => {
       for (const source of orderedSources()) {
         const skills = safe(() => source.bridge.listSkills(), []);
-        const hasSkill = skills.some((skill: any) => skill?.id === id);
+        const hasSkill = skills.some((skill: SkillDescriptor) => skill?.id === id);
         if (hasSkill) {
           return safe(() => source.bridge.getSkill(id, input), undefined);
         }
@@ -201,7 +245,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     getManifest: () => {
       const namespaces = new Map<string, unknown>();
       for (const source of orderedSources()) {
-        const manifest = safe(() => source.bridge.getManifest(), null as any);
+        const manifest = safe(() => source.bridge.getManifest(), null);
         const descriptors = Array.isArray(manifest?.namespaces) ? manifest.namespaces : [];
         for (const descriptor of descriptors) {
           if (
@@ -217,16 +261,16 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
         version: 'page-context-bridge-host/1.0.0',
         app: 'page-context-bridge-host',
         route: `${window.location.pathname}${window.location.search}`,
-        scene: (hostBridge as any).getScene(),
+        scene: hostBridge.getScene(),
         namespaces: Array.from(namespaces.values()),
-        resources: (hostBridge as any).listResources(),
-        skills: (hostBridge as any).listSkills(),
+        resources: hostBridge.listResources(),
+        skills: hostBridge.listSkills(),
         generatedAt: new Date().toISOString(),
       };
     },
   };
 
-  const existingBridge = (win[BRIDGE_KEY] ?? win[TOOLS_KEY]) as any;
+  const existingBridge = (win[BRIDGE_KEY] ?? win[TOOLS_KEY]) as unknown;
 
   if (isBridgeLike(existingBridge)) {
     registerSource(HOST_ADOPTED_SOURCE_ID, existingBridge, 10, ['adopted']);
@@ -237,7 +281,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     bridge: hostBridge,
     registerSource: (input: {
       sourceId: string;
-      bridge: any;
+      bridge: PageContextBridge;
       priority?: number;
       tags?: string[];
     }) => registerSource(input.sourceId, input.bridge, input.priority, input.tags),

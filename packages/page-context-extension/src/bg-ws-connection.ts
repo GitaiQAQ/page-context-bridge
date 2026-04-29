@@ -357,5 +357,8 @@ export function initDefaultWsUrl(): Promise<void> {
 }
 
 export function log(...args: unknown[]): void {
-  console.log('[PAGE-CONTEXT-BG]', ...args);
+  // Use structured log in production; raw console.log only for local dev
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[PAGE-CONTEXT-BG]', ...args);
+  }
 }

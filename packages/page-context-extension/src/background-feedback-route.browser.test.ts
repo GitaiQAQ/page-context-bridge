@@ -39,6 +39,7 @@ vi.mock('@page-context/agentation', () => ({
 
 vi.mock('./bg-page-context', () => ({
   discoverPageToolsInTab: vi.fn(async () => []),
+  executePageToolInTab: vi.fn(async () => ({ ok: true, result: {} })),
   getRawPageContextManifest: vi.fn(async () => null),
   getPageContextSkill: vi.fn(async () => null),
   readPageContextResource: vi.fn(async () => ({
@@ -49,25 +50,17 @@ vi.mock('./bg-page-context', () => ({
   sleep: vi.fn(async () => undefined),
 }));
 
-vi.mock(
-  './bg-tool-executor',
-  () => ({
-    executeToolCall: vi.fn(async () => ({ ok: true })),
-    getBuiltinToolDefinitions: vi.fn(() => []),
-  }),
-  { virtual: true },
-);
+vi.mock('./bg-tool-executor', () => ({
+  executeToolCall: vi.fn(async () => ({ ok: true })),
+  getBuiltinToolDefinitions: vi.fn(() => []),
+}));
 
-vi.mock(
-  '@page-context/tool-executor',
-  () => ({
-    executeToolCall: vi.fn(async () => ({ ok: true })),
-    getBuiltinToolDefinitions: vi.fn(() => []),
-    getExtensionToolProviders: vi.fn(() => []),
-    getServiceWorkerContext: vi.fn(() => ({})),
-  }),
-  { virtual: true },
-);
+vi.mock('@page-context/tool-executor', () => ({
+  executeToolCall: vi.fn(async () => ({ ok: true })),
+  getBuiltinToolDefinitions: vi.fn(() => []),
+  getExtensionToolProviders: vi.fn(() => []),
+  getServiceWorkerContext: vi.fn(() => ({})),
+}));
 
 vi.mock('./context-manifest-filter-debug', () => ({
   buildContextManifestFilterDebug: vi.fn(() => ({ filtered: true })),

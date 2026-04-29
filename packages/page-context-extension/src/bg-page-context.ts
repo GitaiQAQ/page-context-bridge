@@ -15,6 +15,11 @@ import { normalizePageToolEntries } from '@page-context/tool-visibility';
 
 type JsonRecord = Record<string, unknown>;
 
+/** Minimal shape of the page context bridge object injected into MAIN world.
+ *  All properties are accessed only after runtime typeof/guard checks,
+ *  so we keep them loose here to avoid excessive casts in every call site. */
+type PageContextBridgeLike = Record<string, unknown>;
+
 export interface BuiltinToolResult {
   [key: string]: unknown;
 }
@@ -33,8 +38,8 @@ export async function getRawPageContextManifest(
     world: 'MAIN',
     func: () => {
       const contextWindow = window as Window & {
-        __pageContextBridge__?: any;
-        __pageContextTools__?: any;
+        __pageContextBridge__?: PageContextBridgeLike;
+        __pageContextTools__?: PageContextBridgeLike;
       };
       const pageTools = contextWindow.__pageContextBridge__ ?? contextWindow.__pageContextTools__;
       if (!pageTools || typeof pageTools.getManifest !== 'function') {
@@ -56,8 +61,8 @@ export async function readPageContextResource(
     world: 'MAIN',
     func: (id) => {
       const contextWindow = window as Window & {
-        __pageContextBridge__?: any;
-        __pageContextTools__?: any;
+        __pageContextBridge__?: PageContextBridgeLike;
+        __pageContextTools__?: PageContextBridgeLike;
       };
       const pageTools = contextWindow.__pageContextBridge__ ?? contextWindow.__pageContextTools__;
       if (!pageTools || typeof pageTools.readResource !== 'function') {
@@ -81,8 +86,8 @@ export async function getPageContextSkill(
     world: 'MAIN',
     func: (id, args) => {
       const contextWindow = window as Window & {
-        __pageContextBridge__?: any;
-        __pageContextTools__?: any;
+        __pageContextBridge__?: PageContextBridgeLike;
+        __pageContextTools__?: PageContextBridgeLike;
       };
       const pageTools = contextWindow.__pageContextBridge__ ?? contextWindow.__pageContextTools__;
       if (!pageTools || typeof pageTools.getSkill !== 'function') {
@@ -104,8 +109,8 @@ export async function discoverPageToolsInTab(
     world: 'MAIN',
     func: () => {
       const contextWindow = window as Window & {
-        __pageContextBridge__?: any;
-        __pageContextTools__?: any;
+        __pageContextBridge__?: PageContextBridgeLike;
+        __pageContextTools__?: PageContextBridgeLike;
       };
       const pageTools = contextWindow.__pageContextBridge__ ?? contextWindow.__pageContextTools__;
       if (!pageTools || typeof pageTools !== 'object') {
@@ -120,20 +125,29 @@ export async function discoverPageToolsInTab(
 
       if (typeof pageTools.listNamespaces === 'function' && typeof pageTools.version === 'string') {
         for (const namespace of pageTools.listNamespaces()) {
-          const namespaceObject = pageTools.getNamespace(namespace);
-          if (!namespaceObject) {
+          const namespaceObject =
+            (
+              pageTools.getNamespace as unknown as (
+                ns: string,
+              ) => Record<string, unknown> | undefined
+            )(namespace) ?? {};
+          if (!namespaceObject || typeof namespaceObject !== 'object') {
             continue;
           }
-          const instanceIds = namespaceObject.listInstances?.() ?? [];
+          const instanceIds =
+            (namespaceObject.listInstances as (() => string[]) | undefined)?.() ?? [];
           for (const instanceId of instanceIds) {
-            const instance = namespaceObject.getInstance(instanceId);
-            const tools = instance?.listTools?.() ?? [];
+            const instance = (
+              namespaceObject.getInstance as (id: string) => Record<string, unknown> | undefined
+            )?.(instanceId);
+            const tools =
+              (instance?.listTools as (() => Array<Record<string, unknown>>) | undefined)?.() ?? [];
             if (Array.isArray(tools) && tools.length > 0) {
               entries.push({ namespace, instanceId, tools });
             }
           }
           if (instanceIds.length === 0 && typeof namespaceObject.listTools === 'function') {
-            const tools = namespaceObject.listTools();
+            const tools = (namespaceObject.listTools as () => Array<Record<string, unknown>>)();
             if (Array.isArray(tools) && tools.length > 0) {
               entries.push({ namespace, instanceId: 'default', tools });
             }
@@ -146,8 +160,8 @@ export async function discoverPageToolsInTab(
         const tools = pageTools.listTools();
         if (Array.isArray(tools) && tools.length > 0) {
           entries.push({
-            namespace: pageTools.namespace || 'page',
-            instanceId: pageTools.instanceId || 'default',
+            namespace: String(pageTools.namespace || 'page'),
+            instanceId: String(pageTools.instanceId || 'default'),
             tools,
           });
         }
@@ -174,10 +188,10 @@ export async function executePageToolInTab(
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
-    func: async (name, input, ns, instId) => {
+    func: async (name: string, input: JsonRecord, ns: string, instId: string | undefined) => {
       const contextWindow = window as Window & {
-        __pageContextBridge__?: any;
-        __pageContextTools__?: any;
+        __pageContextBridge__?: PageContextBridgeLike;
+        __pageContextTools__?: PageContextBridgeLike;
       };
       const pageTools = contextWindow.__pageContextBridge__ ?? contextWindow.__pageContextTools__;
       if (!pageTools || typeof pageTools !== 'object') {
@@ -185,21 +199,35 @@ export async function executePageToolInTab(
       }
 
       if (typeof pageTools.listNamespaces === 'function' && typeof pageTools.version === 'string') {
-        const namespaceObject = pageTools.getNamespace(ns);
-        if (!namespaceObject) {
+        const namespaceObject =
+          (
+            pageTools.getNamespace as unknown as (ns: string) => Record<string, unknown> | undefined
+          )(ns) ?? {};
+        if (!namespaceObject || typeof namespaceObject !== 'object') {
           return { ok: false, error: `Namespace not found: ${ns}` };
         }
 
+        const listInstances = namespaceObject.listInstances as unknown as
+          | (() => string[])
+          | undefined;
+        const getInstance = namespaceObject.getInstance as unknown as
+          | ((id: string) => Record<string, unknown> | undefined)
+          | undefined;
+
         const actualInstance = instId
-          ? namespaceObject.getInstance(instId)
-          : namespaceObject.getInstance(namespaceObject.listInstances()[0]);
+          ? getInstance?.(instId)
+          : getInstance?.(String(listInstances?.()?.[0] ?? ''));
 
         if (!actualInstance || typeof actualInstance.callTool !== 'function') {
           return { ok: false, error: `Instance not found: ${instId ?? 'default'}` };
         }
 
         try {
-          const result = await Promise.resolve(actualInstance.callTool(name, input));
+          const callFn = actualInstance.callTool as unknown as (
+            name: string,
+            args: JsonRecord,
+          ) => unknown;
+          const result = await Promise.resolve(callFn(name, input));
           return { ok: true, result };
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };

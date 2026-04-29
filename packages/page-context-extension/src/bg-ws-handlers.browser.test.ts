@@ -1,6 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BRIDGE_METHODS, RpcProtocolError, RPC_ERROR_CODES } from '@page-context/shared-protocol';
+import { BRIDGE_METHODS } from '@page-context/shared-protocol';
+
+const executeToolCallMock = vi.fn(async () => ({ ok: true }));
+const executePageToolInTabMock = vi.fn(async () => ({ ok: true, result: {} }));
+const sendTabRequestMock = vi.fn(async () => ({ ok: true }));
+
+vi.mock('@page-context/tool-executor', () => ({
+  executeToolCall: executeToolCallMock,
+}));
+
+vi.mock('./bg-page-context', () => ({
+  discoverPageToolsInTab: vi.fn(async () => []),
+  executePageToolInTab: executePageToolInTabMock,
+  getRawPageContextManifest: vi.fn(async () => null),
+  getPageContextSkill: vi.fn(async () => null),
+  readPageContextResource: vi.fn(async () => ({
+    id: 'r',
+    mimeType: 'application/json',
+    text: '{}',
+  })),
+  sleep: vi.fn(async () => undefined),
+}));
+
+vi.mock('./runtime-rpc', () => ({
+  sendTabRequest: sendTabRequestMock,
+}));
 
 function makePageToolState(overrides?: Record<string, unknown>) {
   return {
@@ -42,6 +67,7 @@ describe('createWsHandlers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetModules();
+    vi.clearAllMocks();
     installChromeMock();
   });
 
@@ -66,7 +92,7 @@ describe('createWsHandlers', () => {
       ...overrides,
     };
     const { createWsHandlers } = await import('./bg-ws-handlers.js');
-    return createWsHandlers(deps as Parameters<typeof createWsHandlers>[0]);
+    return createWsHandlers(deps as unknown as Parameters<typeof createWsHandlers>[0]);
   }
 
   describe('buildExtensionStatusResponse()', () => {
@@ -94,10 +120,6 @@ describe('createWsHandlers', () => {
         },
       };
       const handlers = await createHandlers(deps);
-      // Access inFlightToolCalls through closure
-      const state = handlers as unknown as {
-        buildExtensionStatusResponse(): { pendingToolCalls: number };
-      };
       // We can't directly access inFlightToolCalls from outside, test via status shape
       const status1 = handlers.buildExtensionStatusResponse();
       expect(status1.pendingToolCalls).toBe(0);
@@ -209,6 +231,95 @@ describe('createWsHandlers', () => {
     it('throws when no toolName provided', async () => {
       const handlers = await createHandlers();
       await expect(handlers.handleExtensionToolDebugCall({})).rejects.toThrow();
+    });
+
+    it('passes page-tool execution deps into executeToolCall', async () => {
+      const handlers = await createHandlers();
+
+      await handlers.handleExtensionToolDebugCall({
+        toolName: 'workspace.page.summarizeWorkspace',
+        args: { sample: true },
+        tabId: 7,
+      });
+
+      expect(executeToolCallMock).toHaveBeenCalledWith(
+        'workspace.page.summarizeWorkspace',
+        { sample: true },
+        7,
+        expect.objectContaining({
+          executePageToolInTab: expect.any(Function),
+          sendTabRequest: sendTabRequestMock,
+        }),
+      );
+
+      const lastCall = executeToolCallMock.mock.calls[
+        executeToolCallMock.mock.calls.length - 1
+      ] as unknown as unknown[] | undefined;
+      const executeDeps = lastCall?.[3] as unknown as {
+        executePageToolInTab: (
+          tabId: number,
+          name: string,
+          args: Record<string, unknown>,
+          namespace?: string,
+          instanceId?: string,
+        ) => Promise<unknown>;
+      };
+      expect(executeDeps).toBeDefined();
+      await executeDeps.executePageToolInTab(7, 'summarizeWorkspace', { sample: true });
+      expect(executePageToolInTabMock).toHaveBeenCalledWith(
+        7,
+        'summarizeWorkspace',
+        { sample: true },
+        'page',
+        undefined,
+      );
+    });
+  });
+
+  describe('onToolCall()', () => {
+    it('passes page-tool execution deps into executeToolCall', async () => {
+      const handlers = await createHandlers();
+
+      await handlers.onToolCall(
+        {
+          tool: 'workspace.page.summarizeWorkspace',
+          args: { sample: true },
+          tabId: 9,
+        },
+        'req-1',
+      );
+
+      expect(executeToolCallMock).toHaveBeenCalledWith(
+        'workspace.page.summarizeWorkspace',
+        { sample: true },
+        9,
+        expect.objectContaining({
+          executePageToolInTab: expect.any(Function),
+          sendTabRequest: sendTabRequestMock,
+        }),
+      );
+
+      const lastCall = executeToolCallMock.mock.calls[
+        executeToolCallMock.mock.calls.length - 1
+      ] as unknown as unknown[] | undefined;
+      const executeDeps = lastCall?.[3] as unknown as {
+        executePageToolInTab: (
+          tabId: number,
+          name: string,
+          args: Record<string, unknown>,
+          namespace?: string,
+          instanceId?: string,
+        ) => Promise<unknown>;
+      };
+      expect(executeDeps).toBeDefined();
+      await executeDeps.executePageToolInTab(9, 'summarizeWorkspace', { sample: true });
+      expect(executePageToolInTabMock).toHaveBeenCalledWith(
+        9,
+        'summarizeWorkspace',
+        { sample: true },
+        'page',
+        undefined,
+      );
     });
   });
 

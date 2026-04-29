@@ -7,6 +7,15 @@
 
 import type { ServiceWorkerToolContext } from '@page-context/shared-protocol';
 
+function isValidUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function toTargetTabId(
   args: Record<string, unknown>,
   ctx: ServiceWorkerToolContext,
@@ -218,6 +227,9 @@ export async function executeServiceWorkerTool(
     case 'builtin.page.navigate': {
       const targetTabId = await toTargetTabId(args, ctx);
       const url = String(args.url ?? '');
+      if (!isValidUrl(url)) {
+        return { ok: false, error: `Invalid or invalid URL: ${url}`, type: 'validation_error' };
+      }
       await ctx.navigateTab(targetTabId, url);
       const waitUntil = normalizeWaitUntil(args.waitUntil);
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 15_000)));

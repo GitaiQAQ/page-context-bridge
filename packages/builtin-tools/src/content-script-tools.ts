@@ -10,6 +10,23 @@ import type { ContentScriptToolEnv } from '@page-context/shared-protocol';
 export { createConsoleCapture } from './console-capture.js';
 
 /**
+ * Sanitize a CSS selector to prevent selector injection attacks.
+ * Allows tag, id, class, attribute, pseudo-class and combinators.
+ * Rejects strings containing dangerous patterns.
+ */
+function sanitizeSelector(selector: string): string {
+  const trimmed = (selector ?? '').trim();
+  if (!trimmed) return trimmed;
+  // Block obviously dangerous patterns
+  if (/[\x00-\x1f]/.test(trimmed)) return '';
+  // Only allow safe CSS selector characters (tags, ids, classes, attributes, pseudo-classes, combinators)
+  if (!/^[\w#.\-[\]()=+*'"':,>~\s]+$/.test(trimmed)) return '';
+  // Limit length to prevent DoS via complex selectors
+  if (trimmed.length > 500) return '';
+  return trimmed;
+}
+
+/**
  * Execute a builtin tool in the content script context.
  * Only handles tools with executionContext === "content-script".
  */
@@ -40,7 +57,10 @@ export function executeContentScriptTool(
       return { text: selection ? selection.toString() : '' };
     }
     case 'builtin.dom.click_element': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
+      if (!selector) {
+        throw new Error(`Invalid or empty CSS selector`);
+      }
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
         throw new Error(`Element not found: ${selector}`);
@@ -49,7 +69,7 @@ export function executeContentScriptTool(
       return { clicked: true, selector };
     }
     case 'builtin.dom.scroll_into_view': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
       const behavior = String(args.behavior ?? 'auto');
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
@@ -63,7 +83,7 @@ export function executeContentScriptTool(
       return { scrolled: true, selector };
     }
     case 'builtin.dom.get_element_text': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
         throw new Error(`Element not found: ${selector}`);
@@ -71,7 +91,7 @@ export function executeContentScriptTool(
       return { text: element.textContent, selector };
     }
     case 'builtin.dom.get_element_html': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
       const element = doc.querySelector<HTMLElement>(selector);
       if (!element) {
         throw new Error(`Element not found: ${selector}`);
@@ -87,7 +107,7 @@ export function executeContentScriptTool(
       return { html, selector };
     }
     case 'builtin.dom.query_elements': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
       const limit = Number(args.limit ?? 20);
       const matches = Array.from(doc.querySelectorAll<HTMLElement>(selector));
       return {
@@ -107,7 +127,7 @@ export function executeContentScriptTool(
       };
     }
     case 'builtin.dom.fill_input': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
       const value = String(args.value ?? '');
       const element = doc.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
       if (!element) {
@@ -127,12 +147,27 @@ export function executeContentScriptTool(
       return { filled: true, selector, value };
     }
     case 'builtin.dom.execute_js': {
-      // SECURITY: This eval executes arbitrary JavaScript in the page context.
+      // SECURITY: Executes arbitrary JavaScript in the page context.
       // This is intentional — the execute_js MCP tool allows deep page inspection.
       // The MCP bridge server runs locally and relies on local network isolation.
       // See README.md "Security Considerations" for details.
+      //
+      // Uses Function constructor (not eval) to avoid scope leakage.
+      // Expression length is limited to prevent abuse via excessively long inputs.
+      const expression = String(args.expression ?? '');
+      const MAX_EXPR_LENGTH = 10_000;
+      if (expression.length > MAX_EXPR_LENGTH) {
+        return {
+          ok: false,
+          error: `Expression too long: ${expression.length} chars (max ${MAX_EXPR_LENGTH})`,
+          type: 'validation_error',
+        };
+      }
       try {
-        const result = eval(String(args.expression ?? ''));
+        const body =
+          'with(win) { with(doc) { with(consoleEntries) { return (' + expression + '); } }';
+        const fn = new Function('win', 'doc', 'consoleEntries', body);
+        const result = fn(win, doc, consoleEntries);
         return {
           ok: true,
           result: typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result),
@@ -159,7 +194,7 @@ export function executeContentScriptTool(
       };
     }
     case 'builtin.dom.wait_for_selector': {
-      const selector = String(args.selector ?? '');
+      const selector = sanitizeSelector(String(args.selector ?? ''));
       const state = String(args.state ?? 'attached');
       const timeoutMs = Math.max(0, Math.floor(Number(args.timeoutMs ?? 10_000)));
 

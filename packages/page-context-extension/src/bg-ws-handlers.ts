@@ -24,6 +24,7 @@ import {
   type PageToolState,
 } from './bg-page-tools';
 import {
+  executePageToolInTab,
   getRawPageContextManifest,
   getPageContextSkill,
   readPageContextResource,
@@ -36,6 +37,7 @@ import {
   getEnabledToolsForTab,
   setScopeEnabled,
 } from '@page-context/tool-visibility';
+import { sendTabRequest } from './runtime-rpc';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -93,11 +95,24 @@ interface CreateWsHandlersDeps {
 }
 
 export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
+  const executePageToolInTabForExecutor = async (
+    tabId: number,
+    name: string,
+    args: Record<string, unknown>,
+    namespace?: string,
+    instanceId?: string,
+  ) => {
+    return await executePageToolInTab(tabId, name, args, namespace ?? 'page', instanceId);
+  };
+
   async function onToolCall(params: unknown, requestId: string): Promise<unknown> {
     const call = params as { tool: string; args?: JsonRecord; tabId?: number };
     deps.inFlightToolCalls.set(requestId, call.tool);
     try {
-      return await executeToolCall(call.tool, call.args ?? {}, call.tabId);
+      return await executeToolCall(call.tool, call.args ?? {}, call.tabId, {
+        executePageToolInTab: executePageToolInTabForExecutor,
+        sendTabRequest,
+      });
     } finally {
       deps.inFlightToolCalls.delete(requestId);
     }
@@ -257,7 +272,10 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
 
     try {
       // Preserve original debug capability; permission scoping is still controlled by the bridge-side policy.
-      const result = await executeToolCall(payload.toolName, payload.args ?? {}, payload.tabId);
+      const result = await executeToolCall(payload.toolName, payload.args ?? {}, payload.tabId, {
+        executePageToolInTab: executePageToolInTabForExecutor,
+        sendTabRequest,
+      });
       return { ok: true, result };
     } catch (error) {
       return {
