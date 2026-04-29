@@ -280,7 +280,29 @@ If you want to inject capabilities for standard frameworks (e.g., React, Redux, 
 - **Terminal does not pop up**
   Check your terminal preferences (iTerm/Warp needs permission to allow AppleScript control).
 
-### 8. Uninstall
+### 7. AI Integration Guide (For LLMs)
+
+**Goal**: Let LLM quickly produce business-domain abstractions and source bridge implementations under the current **Host merge** architecture.
+
+Use the single canonical guide:
+
+1. [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
+
+**Copy this prompt to any LLM:**
+
+```text
+Read ./docs/page-context-bridge-all-in-one-guidance.md.
+Then implement page integration for the current business project as a source bridge registered to window.__pageContextBridgeHost__.
+
+Requirements:
+1. Namespace design must follow business domains (not misc/common/utils).
+2. tools/resources/skills must all be present and task-oriented.
+3. Support multi-instance routing in namespace.
+4. Do NOT directly overwrite window.__pageContextBridge__; registerSource to host and handle host-ready late binding.
+5. Output ready-to-paste TypeScript code and a concrete getManifest() example.
+```
+
+### 9. Uninstall
 
 ```bash
 npx @page-context/opencode-handler uninstall
@@ -345,28 +367,6 @@ npx @page-context/mcp-bridge config
 
 # Show help
 npx @page-context/mcp-bridge --help
-```
-
-## Quick Start (For AI Integration)
-
-**Goal**: Let LLM quickly produce business-domain abstractions and source bridge implementations under the current **Host merge** architecture.
-
-Use the single canonical guide:
-
-1. [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md)
-
-**Copy this prompt to any LLM:**
-
-```text
-Read ./docs/page-context-bridge-all-in-one-guidance.md.
-Then implement page integration for the current business project as a source bridge registered to window.__pageContextBridgeHost__.
-
-Requirements:
-1. Namespace design must follow business domains (not misc/common/utils).
-2. tools/resources/skills must all be present and task-oriented.
-3. Support multi-instance routing in namespace.
-4. Do NOT directly overwrite window.__pageContextBridge__; registerSource to host and handle host-ready late binding.
-5. Output ready-to-paste TypeScript code and a concrete getManifest() example.
 ```
 
 ## Page Integration
