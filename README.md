@@ -183,22 +183,124 @@ Pages can expose custom tools, resources, and skills via `window.__pageContextBr
 
 See [Page Context Bridge Integration Guide](./docs/page-context-bridge-all-in-one-guidance.md) for the full specification.
 
-## Getting Started
+## Quick Start
+
+### 1. Prerequisites
+
+- Node.js >= 18
+- Browser: Chrome / Edge (Manifest V3 supported)
+
+### 2. Install Browser Extension
+
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable **Developer mode** in the top right corner
+3. Click **Load unpacked** and select the extension package directory (or install from the Web Store by searching "Page Context Bridge")
+4. Confirm the extension icon appears in the browser toolbar
+
+### 3. Start & Configure Backend Service
+
+#### Port Overview
+
+The Page Context Bridge ecosystem uses the following ports in a typical setup:
+
+- **22334**: Bridge Server HTTP/SSE Port (used by MCP clients like OpenCode/Claude to connect to the Bridge)
+- **22335**: Bridge Server WebSocket Port (used by the browser extension to connect to the Bridge)
+- **22336**: Built-in Example Page / Side Panel Web UI Port (local dev server for `page-context-example` and side panel debugging)
+- **22337**: Userscripts Local Server Port (for serving local Tampermonkey adapters during development)
+- **22338**: Local OpenCode Web UI Port (used when running `opencode web --port=22338`)
+
+#### Starting the Bridge Server (SSE Mode)
+
+To run the service remotely or locally with SSE support, start the bridge server:
+
+```bash
+# Starts the server on default ports (HTTP/SSE: 22334, WebSocket: 22335)
+npx @page-context/mcp-bridge sse 22334
+```
+
+#### Connecting the Extension
+
+By default, the extension connects to local `ws://127.0.0.1:22335/default`. To connect to a remote service:
+
+1. Click the Page Context Bridge icon in the browser toolbar
+2. In the WebSocket URL input, enter:
+   ```text
+   ws://<your-remote-server-ip>:22335/{your_identifier}
+   # Example: ws://remote-host:22335/user.name
+   ```
+3. Click **Save & Reconnect**
+4. A green status light indicates a successful connection
+5. Open the browser side panel
+
+### 4. Verify Installation
+
+1. Click the extension icon and verify the status is "Connected" with a green light
+2. Open the test page: `https://unpkg.com/@page-context/example/dist/example.html`
+3. On supported pages, you should see the page context information in the Side Panel. For unsupported pages, you can still use built-in injected tools.
+
+### 5. (Optional) Install Framework Adapters via Userscripts
+
+If you want to inject capabilities for standard frameworks (e.g., React, Redux, Apollo) into third-party sites without modifying their source code, you can install the standalone Tampermonkey/Violentmonkey userscripts.
+
+1. Install a userscript manager like **Tampermonkey** or **Violentmonkey**.
+2. Load the desired adapters into your script manager:
+   - `packages/page-context-userscripts/dist/react-inspector.user.js`
+   - `packages/page-context-userscripts/dist/redux-devtools.user.js`
+   - `packages/page-context-userscripts/dist/apollo-client.user.js`
+   - `packages/page-context-userscripts/dist/tanstack-query.user.js`
+   - `packages/page-context-userscripts/dist/jotai-devtools.user.js`
+3. When you visit a site matching the `@match` rules of the script (or if you manually configure the match rules), the adapter will dynamically build the `__pageContextBridge__` API from the page's React/Redux instances.
+
+### 6. Usage (with OpenCode)
+
+1. Configure OpenCode by editing `~/.config/opencode/opencode.jsonc`:
+   ```json
+   {
+     "mcp": {
+       "page-context": {
+         "type": "remote",
+         "url": "http://<your-remote-server-ip>:22334/{your_identifier}/sse"
+       }
+     },
+     "autoupdate": true
+   }
+   ```
+2. Start local OpenCode:
+   ```bash
+   opencode web --port=22338
+   ```
+3. Select your project and start chatting.
+
+### 7. FAQ
+
+- **"No application knows how to open URL opencode://..."**
+  Run `npx @page-context/opencode-handler install` to register the protocol handler.
+- **Extension status indicator is red**
+  Check if the Bridge Server is running and ensure the WebSocket address is correct.
+- **Terminal does not pop up**
+  Check your terminal preferences (iTerm/Warp needs permission to allow AppleScript control).
+
+### 8. Uninstall
+
+```bash
+npx @page-context/opencode-handler uninstall
+```
+
+Then remove the Page Context Bridge extension from `chrome://extensions/`.
+
+## Development
 
 ### Prerequisites
 
+- macOS (Sonoma and above)
 - Node.js >= 18
 - pnpm >= 8
+- Browser: Chrome / Edge (Manifest V3 supported)
 
-### Install
+### Install & Build
 
 ```bash
 pnpm install
-```
-
-### Build
-
-```bash
 pnpm build
 ```
 
@@ -208,31 +310,14 @@ Build userscript bundle only:
 pnpm userscripts:build
 ```
 
-### Type Check
+### Type Check & Test
 
 ```bash
 pnpm typecheck
-```
-
-Typecheck userscripts only:
-
-```bash
-pnpm userscripts:typecheck
-```
-
-### Test
-
-```bash
 pnpm test
 ```
 
-Run userscript tests only:
-
-```bash
-pnpm userscripts:test
-```
-
-### Development
+### Local Development
 
 Start the MCP bridge server in dev mode:
 
@@ -244,6 +329,22 @@ Start the extension dev preview (Playwright-based):
 
 ```bash
 pnpm dev
+```
+
+### CLI Commands
+
+```bash
+# Run in stdio mode (default, for MCP clients)
+npx @page-context/mcp-bridge
+
+# Run in SSE mode
+npx @page-context/mcp-bridge sse 22334
+
+# Show configuration examples
+npx @page-context/mcp-bridge config
+
+# Show help
+npx @page-context/mcp-bridge --help
 ```
 
 ## Quick Start (For AI Integration)
@@ -266,108 +367,6 @@ Requirements:
 3. Support multi-instance routing in namespace.
 4. Do NOT directly overwrite window.__pageContextBridge__; registerSource to host and handle host-ready late binding.
 5. Output ready-to-paste TypeScript code and a concrete getManifest() example.
-```
-
-## Load Extension in Chrome
-
-1. Run `pnpm build`
-2. Open `chrome://extensions`
-3. Enable **Developer mode** in the top right
-4. Click **Load unpacked**
-5. Select the `packages/page-context-extension/dist/` directory
-
-After loading, the extension will:
-
-- Inject the content script into all pages
-- Start the service worker (background.ts)
-- Provide a popup for connection status
-- Provide a side panel for tool/context management
-
-## Configure MCP Client
-
-### Using npx (Recommended)
-
-The simplest way to use Page Context Bridge is via npx:
-
-```bash
-npx @page-context/mcp-bridge
-```
-
-For OpenCode, add to `~/.config/opencode/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "page-context-bridge": {
-      "command": "npx",
-      "args": ["-y", "@page-context/mcp-bridge"]
-    }
-  }
-}
-```
-
-For Claude Desktop, add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "page-context-bridge": {
-      "command": "npx",
-      "args": ["-y", "@page-context/mcp-bridge"]
-    }
-  }
-}
-```
-
-### CLI Commands
-
-```bash
-# Run in stdio mode (default, for MCP clients)
-npx @page-context/mcp-bridge
-
-# Run in SSE mode
-npx @page-context/mcp-bridge sse 22334
-
-# Show configuration examples
-npx @page-context/mcp-bridge config
-
-# Show help
-npx @page-context/mcp-bridge --help
-```
-
-### SSE Transport
-
-For SSE transport, start the server first:
-
-```bash
-npx @page-context/mcp-bridge sse 22334
-```
-
-Then configure your MCP client:
-
-```json
-{
-  "mcpServers": {
-    "page-context-bridge": {
-      "url": "http://127.0.0.1:22334/sse"
-    }
-  }
-}
-```
-
-### stdio Transport (Local Development)
-
-For local development with stdio transport:
-
-```json
-{
-  "mcpServers": {
-    "page-context-bridge": {
-      "command": "node",
-      "args": ["/path/to/packages/page-context-bridge-server/dist/index.js"]
-    }
-  }
-}
 ```
 
 ## Page Integration
