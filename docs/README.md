@@ -10,8 +10,3 @@ This directory contains project documentation intended for repository users and 
   Canonical integration guide for exposing page capabilities through the bridge.
 - `page-context-capability-pipeline.md`
   Describes the capability compilation and filtering pipeline.
-
-## Archived Docs
-
-- `archive/`
-  Historical notes and case-study material that are not part of the main public documentation path.
