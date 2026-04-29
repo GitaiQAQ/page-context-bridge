@@ -291,8 +291,11 @@ Use the single canonical guide:
 **Copy this prompt to any LLM:**
 
 ```text
-Read ./docs/page-context-bridge-all-in-one-guidance.md.
-Then implement page integration for the current business project as a source bridge registered to window.__pageContextBridgeHost__.
+Read the canonical integration guide from:
+https://raw.githubusercontent.com/GitaiQAQ/page-context-bridge/main/docs/page-context-bridge-all-in-one-guidance.md
+
+Then implement page integration for my business project.
+Business context / Page description: {Describe your page, features, and the API/states you want to expose}
 
 Requirements:
 1. Namespace design must follow business domains (not misc/common/utils).
