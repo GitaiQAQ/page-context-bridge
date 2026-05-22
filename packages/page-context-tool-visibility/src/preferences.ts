@@ -60,6 +60,8 @@ export interface ToolTreeNamespace {
   kind: 'namespace';
   tabId: number;
   namespace: string;
+  title?: string;
+  description?: string;
   totalTools: number;
   enabledTools: number;
   instances: ToolTreeInstance[];
@@ -602,15 +604,30 @@ function buildNamespaceNode(
   const instances = entries
     .map((entry) => buildInstanceNode(tabId, entry, preferences))
     .sort((left, right) => left.instanceId.localeCompare(right.instanceId));
+  const title = firstNonEmptyString(entries.map((entry) => entry.namespaceTitle));
+  const description = firstNonEmptyString(entries.map((entry) => entry.namespaceDescription));
 
   return {
     kind: 'namespace',
     tabId,
     namespace,
+    title,
+    description,
     totalTools: instances.reduce((sum, instance) => sum + instance.totalTools, 0),
     enabledTools: instances.reduce((sum, instance) => sum + instance.enabledTools, 0),
     instances,
   };
+}
+
+function firstNonEmptyString(values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    const trimmedValue = value?.trim();
+    if (trimmedValue) {
+      return trimmedValue;
+    }
+  }
+
+  return undefined;
 }
 
 function buildInstanceNode(

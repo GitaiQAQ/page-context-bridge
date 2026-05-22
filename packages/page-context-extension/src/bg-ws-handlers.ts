@@ -10,6 +10,7 @@ import {
   getMainWorldInjectionTarget,
   type MainWorldBridgeHostInstaller,
 } from '@page-context/agentation';
+import { resolveBuiltinToolNameAlias } from '@page-context/builtin-tools';
 import {
   buildPageToolsTreeResponse,
   discoverPageToolsForTab,
@@ -95,6 +96,66 @@ interface CreateWsHandlersDeps {
 }
 
 export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
+  function assertToolEnabledForExecution(toolName: string, tabId?: number): string {
+    const effectiveBuiltinToolName = resolveBuiltinToolNameAlias(toolName);
+    if (effectiveBuiltinToolName) {
+      const enabledBuiltinTools = getEnabledBuiltinTools(
+        getBuiltinTools(),
+        deps.pageToolState.pageToolPreferences,
+      );
+      if (!enabledBuiltinTools.some((tool) => tool.name === effectiveBuiltinToolName)) {
+        throw new Error(`Tool is disabled by preferences: ${effectiveBuiltinToolName}`);
+      }
+      return effectiveBuiltinToolName;
+    }
+
+    if (tabId != null && toolName.includes('.')) {
+      const enabledPageTools = getEnabledToolsForTab(
+        deps.pageToolState.pageToolsByTab.get(tabId),
+        deps.pageToolState.pageToolPreferences,
+        tabId,
+      );
+      if (!enabledPageTools.some((tool) => tool.name === toolName)) {
+        throw new Error(`Tool is disabled by preferences: ${toolName}`);
+      }
+    }
+
+    return toolName;
+  }
+
+  async function ensurePageToolReadyForExecution(
+    toolName: string,
+    tabId?: number,
+  ): Promise<string> {
+    const effectiveBuiltinToolName = resolveBuiltinToolNameAlias(toolName);
+    if (effectiveBuiltinToolName) {
+      return assertToolEnabledForExecution(toolName, tabId);
+    }
+
+    if (tabId == null || !toolName.includes('.')) {
+      return assertToolEnabledForExecution(toolName, tabId);
+    }
+
+    const existingEntries = deps.pageToolState.pageToolsByTab.get(tabId) ?? [];
+    const toolExistsInCurrentState = existingEntries.some((entry) =>
+      entry.tools.some((tool) => tool.name === toolName),
+    );
+
+    // Firefox 真实链路里，后台内存态偶尔会晚于内容脚本注册。
+    // 这里只有“本地根本没有该工具”时才做一次强制重发现，避免把明确禁用的工具误当成可执行。
+    if (!toolExistsInCurrentState) {
+      await discoverPageToolsForTab(
+        deps.pageToolState,
+        tabId,
+        deps.installPageContextBridgeHostInMainWorld,
+        true,
+        false,
+      ).catch(() => undefined);
+    }
+
+    return assertToolEnabledForExecution(toolName, tabId);
+  }
+
   const executePageToolInTabForExecutor = async (
     tabId: number,
     name: string,
@@ -109,7 +170,8 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     const call = params as { tool: string; args?: JsonRecord; tabId?: number };
     deps.inFlightToolCalls.set(requestId, call.tool);
     try {
-      return await executeToolCall(call.tool, call.args ?? {}, call.tabId, {
+      const effectiveToolName = await ensurePageToolReadyForExecution(call.tool, call.tabId);
+      return await executeToolCall(effectiveToolName, call.args ?? {}, call.tabId, {
         executePageToolInTab: executePageToolInTabForExecutor,
         sendTabRequest,
       });
@@ -167,6 +229,7 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
       deps.pageToolState,
       tabId,
       deps.installPageContextBridgeHostInMainWorld,
+      true,
       true,
     );
     return { tools: getFlattenedPageToolsForTab(deps.pageToolState, tabId) };
@@ -270,9 +333,20 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
       throw new Error('No toolName provided');
     }
 
+    if (
+      payload.toolName.startsWith('builtin.') &&
+      !getBuiltinTools().some((tool) => tool.name === payload.toolName)
+    ) {
+      return {
+        ok: false,
+        error: `Builtin tool is unavailable in this browser runtime: ${payload.toolName}`,
+      };
+    }
+
     try {
+      const effectiveToolName = assertToolEnabledForExecution(payload.toolName, payload.tabId);
       // Preserve original debug capability; permission scoping is still controlled by the bridge-side policy.
-      const result = await executeToolCall(payload.toolName, payload.args ?? {}, payload.tabId, {
+      const result = await executeToolCall(effectiveToolName, payload.args ?? {}, payload.tabId, {
         executePageToolInTab: executePageToolInTabForExecutor,
         sendTabRequest,
       });

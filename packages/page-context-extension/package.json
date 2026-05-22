@@ -9,9 +9,20 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-preview.mjs",
-    "build": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build && vite build",
-    "typecheck": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build && pnpm --dir ../.. exec vitest run --project browser",
+    "build": "pnpm run build:targets",
+    "build:deps": "pnpm --filter @page-context/shared-protocol build && pnpm --filter @page-context/builtin-tools build && pnpm --filter @page-context/tool-visibility build && pnpm --filter @page-context/tool-executor build",
+    "build:bundle": "vite build",
+    "build:chromium": "pnpm run build:deps && PAGE_CONTEXT_EXTENSION_BROWSER_TARGET=chromium pnpm run build:bundle && PAGE_CONTEXT_EXTENSION_BROWSER_TARGET=chromium pnpm run patch:manifest-target && pnpm run patch:sidepanel-build-time",
+    "build:firefox": "pnpm run build:deps && PAGE_CONTEXT_EXTENSION_BROWSER_TARGET=firefox pnpm run build:bundle && PAGE_CONTEXT_EXTENSION_BROWSER_TARGET=firefox pnpm run patch:manifest-target && pnpm run patch:sidepanel-build-time",
+    "build:targets": "pnpm run build:chromium && node scripts/copy-dist-target.mjs chromium && pnpm run build:firefox && node scripts/copy-dist-target.mjs firefox && pnpm run smoke:targets",
+    "smoke:firefox": "node scripts/firefox-smoke.mjs",
+    "test:firefox": "pnpm run build:targets && node scripts/firefox-e2e.mjs",
+    "test:firefox:mcp": "pnpm --dir ../page-context-bridge-server run test:firefox:e2e",
+    "smoke:targets": "node scripts/target-artifacts-smoke.mjs",
+    "patch:manifest-target": "node scripts/patch-manifest-target.mjs",
+    "patch:sidepanel-build-time": "node --input-type=module -e \"import { readFileSync, writeFileSync } from 'node:fs'; import { resolve } from 'node:path'; const buildTime = new Date().toISOString(); const htmlPath = resolve('dist/sidepanel.html'); const html = readFileSync(htmlPath, 'utf8'); const patchedHtml = html.replaceAll('%VITE_PAGE_CONTEXT_EXTENSION_BUILD_TIME%', buildTime).replaceAll('__PAGE_CONTEXT_EXTENSION_BUILD_TIME__', buildTime); if (patchedHtml === html) { throw new Error('Side-panel build time placeholder not found in dist/sidepanel.html'); } writeFileSync(htmlPath, patchedHtml); console.log('Patched side-panel build time html:', buildTime);\"",
+    "typecheck": "pnpm run build:deps && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build:deps && pnpm --dir ../.. exec vitest run --project browser",
     "watch": "web-ext run --source-dir=dist --target=chromium"
   },
   "dependencies": {

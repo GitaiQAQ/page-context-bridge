@@ -107,44 +107,61 @@ Definition of done:
 
 2. Answers must be reproducible from resources/tool outputs, not guesswork.
 
-## 5. Proven Blueprint From A Complex Business Page
+## 5. Proven Namespace Pattern
 
-A proven namespace layout is:
+Use a **scoped namespace family** instead of bare generic IDs.
 
-- `workspace`: page-level targeting and multi-instance discovery
-- `entry`: route split and deeplink reasoning
-- `availability`: why an option is visible, hidden, disabled, forbidden, or absent
-- `selection`: why one branch won, including default selection reasoning
-- `structure`: graph, search, subtree inspection, diff, snapshot
-- `runtime`: bounded runtime state and rendered surface evidence
+Recommended pattern:
 
-A proven resource layout is:
+- `<surface>-workspace`: page-level targeting and multi-instance discovery
+- `<surface>-entry`: route split and deeplink reasoning
+- `<surface>-availability`: why an option is visible, hidden, disabled, forbidden, or absent
+- `<surface>-selection`: why one branch won, including default selection reasoning
+- `<surface>-structure`: graph, search, subtree inspection, diff, snapshot
+- `<surface>-runtime`: bounded runtime state and rendered surface evidence
 
-- page-level resource: `workspace.page-summary`
+Where `<surface>` means a stable integration-level owner prefix such as:
+
+- product surface
+- app shell
+- page family
+- runtime domain
+
+Examples of acceptable prefixes:
+
+- `ads-manager`
+- `creation-flow`
+- `editor-page`
+- `search-console`
+
+Recommended resource pattern:
+
+- page-level resource: `<surface>-workspace.page-summary`
 - per-instance resources:
-  - `entry.<instanceId>.routing-context`
-  - `availability.<instanceId>.option-catalog`
-  - `availability.<instanceId>.investigation-sop`
-  - `selection.<instanceId>.selection-state`
-  - `structure.<instanceId>.graph-summary`
-  - `runtime.<instanceId>.state`
-  - `runtime.<instanceId>.surface`
+  - `<surface>-entry.<instanceId>.routing-context`
+  - `<surface>-availability.<instanceId>.option-catalog`
+  - `<surface>-availability.<instanceId>.investigation-sop`
+  - `<surface>-selection.<instanceId>.selection-state`
+  - `<surface>-structure.<instanceId>.graph-summary`
+  - `<surface>-runtime.<instanceId>.state`
+  - `<surface>-runtime.<instanceId>.surface`
 
-A proven skill layout is:
+Recommended skill pattern:
 
-- `workspace.pick-instance`
-- `entry.<instanceId>.explain-scene-and-deeplink`
-- `availability.<instanceId>.diagnose-option-availability`
-- `availability.<instanceId>.follow-investigation-sop`
-- `selection.<instanceId>.explain-selection-decision`
-- `structure.<instanceId>.inspect-runtime-structure`
-- `runtime.<instanceId>.inspect-runtime-surface`
+- `<surface>-workspace.pick-instance`
+- `<surface>-entry.<instanceId>.explain-scene-and-deeplink`
+- `<surface>-availability.<instanceId>.diagnose-option-availability`
+- `<surface>-availability.<instanceId>.follow-investigation-sop`
+- `<surface>-selection.<instanceId>.explain-selection-decision`
+- `<surface>-structure.<instanceId>.inspect-runtime-structure`
+- `<surface>-runtime.<instanceId>.inspect-runtime-surface`
 
-Why this layout works:
+Why this pattern works:
 
-1. `workspace` solves multi-instance targeting before deeper analysis.
-2. Per-instance namespaces keep tool scope small and explicit.
-3. `investigation-sop` turns debugging procedure into runtime-readable guidance instead of hidden tribal knowledge.
+1. `<surface>-workspace` solves multi-instance targeting before deeper analysis.
+2. The owner prefix makes the namespace self-identifying across multiple integrated pages.
+3. Per-instance namespaces keep tool scope small and explicit.
+4. `investigation-sop` turns debugging procedure into runtime-readable guidance instead of hidden tribal knowledge.
 
 ## 6. Recommended File Layout
 
@@ -211,12 +228,12 @@ export function ensurePageContextBridge(): MutablePageContextBridge {
     internalInstances: {},
     unbindFromHost: undefined,
     listNamespaces: () => [
-      'workspace',
-      'entry',
-      'availability',
-      'selection',
-      'structure',
-      'runtime',
+      '<surface>-workspace',
+      '<surface>-entry',
+      '<surface>-availability',
+      '<surface>-selection',
+      '<surface>-structure',
+      '<surface>-runtime',
     ],
     getNamespace: (namespace) => buildNamespace(namespace, bridge),
     getScene: () => detectScene(bridge),
@@ -374,18 +391,40 @@ Lifecycle rules:
 
 Good namespaces describe the problem space:
 
-- `workspace`
-- `entry`
-- `availability`
-- `selection`
-- `structure`
-- `runtime`
+- `<surface>-workspace`
+- `<surface>-entry`
+- `<surface>-availability`
+- `<surface>-selection`
+- `<surface>-structure`
+- `<surface>-runtime`
+
+Good namespace IDs also describe ownership:
+
+- include one stable owner prefix
+- keep the problem-space suffix stable across pages
+- prefer `kebab-case`
+- make namespace IDs readable without extra page context
+
+Good examples:
+
+- `editor-page-workspace`
+- `editor-page-runtime`
+- `creation-flow-availability`
+- `creation-flow-structure`
 
 Bad namespaces hide meaning:
 
 - `misc`
 - `common`
 - `utils`
+- `workspace`
+- `runtime`
+
+Bad namespace IDs also create ambiguity when multiple sources coexist:
+
+- `shared-workspace`
+- `page-tools`
+- `debug`
 
 ### 10.2 Tool rules
 

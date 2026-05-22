@@ -25,6 +25,7 @@
     "default_title": "Page Context Bridge",
     "default_popup": "popup.html"
   },
+  "devtools_page": "devtools.html",
   "side_panel": {
     "default_path": "sidepanel.html"
   },

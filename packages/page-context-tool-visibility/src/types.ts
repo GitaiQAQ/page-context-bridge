@@ -14,6 +14,8 @@ export interface PageToolSpec extends Record<string, unknown> {
 
 export interface PageToolEntry {
   namespace: string;
+  namespaceTitle?: string;
+  namespaceDescription?: string;
   instanceId: string;
   tools: PageToolSpec[];
 }

@@ -168,11 +168,12 @@ describe('registry-utils', () => {
 
   describe('expandBuiltinToolNameAliases()', () => {
     it('expands canonical name', () => {
-      // Historical aliases are intentionally NOT supported; names are preserved as-is.
-      const result = expandBuiltinToolNameAliases(['screenshot']);
+      const result = expandBuiltinToolNameAliases(['builtin.tabs.list_tabs']);
 
       expect(result).toBeInstanceOf(Set);
-      expect(result.has('screenshot')).toBe(true);
+      expect(result.has('builtin.tabs.list_tabs')).toBe(true);
+      expect(result.has('builtin.list_tabs')).toBe(true);
+      expect(result.has('list_tabs')).toBe(true);
     });
 
     it('keeps non-canonical name unchanged', () => {
@@ -191,11 +192,18 @@ describe('registry-utils', () => {
     });
 
     it('handles multiple names', () => {
-      const result = expandBuiltinToolNameAliases(['screenshot', 'navigate']);
+      const result = expandBuiltinToolNameAliases([
+        'builtin.page.navigate',
+        'builtin.dom.execute_js',
+      ]);
 
       expect(result).toBeInstanceOf(Set);
-      expect(result.has('screenshot')).toBe(true);
+      expect(result.has('builtin.page.navigate')).toBe(true);
+      expect(result.has('builtin.navigate')).toBe(true);
       expect(result.has('navigate')).toBe(true);
+      expect(result.has('builtin.dom.execute_js')).toBe(true);
+      expect(result.has('builtin.execute_js')).toBe(true);
+      expect(result.has('execute_js')).toBe(true);
     });
   });
 

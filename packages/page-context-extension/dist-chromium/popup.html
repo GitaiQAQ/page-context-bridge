@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page Context Bridge</title>
+    <style>
+      body {
+        width: 340px;
+      }
+    </style>
+    <link rel="stylesheet" href="./agentation-main-entry.KHtQS7Qj.css" />
+    <link rel="stylesheet" href="./sidepanel.DVDqThPY.css" />
+  </head>
+  <body class="bg-base-100 text-base-content text-xs p-4">
+    <!-- Header -->
+    <div class="flex items-center gap-2 mb-3">
+      <span class="w-2.5 h-2.5 rounded-full shrink-0 bg-error" id="statusDot"></span>
+      <span class="font-bold text-sm flex-1">Page Context Bridge</span>
+    </div>
+
+    <!-- Status -->
+    <div class="mb-2.5">
+      <div class="label text-[10px] font-bold uppercase tracking-wide opacity-50 mb-0.5">
+        Status
+      </div>
+      <div class="text-sm" id="statusText">Disconnected</div>
+    </div>
+
+    <!-- WebSocket URL -->
+    <div class="mb-2.5">
+      <label
+        class="label text-[10px] font-bold uppercase tracking-wide opacity-50 mb-0.5"
+        for="wsUrlInput"
+        >WebSocket URL</label
+      >
+      <input
+        type="text"
+        id="wsUrlInput"
+        placeholder="ws://127.0.0.1:22335/default"
+        class="input input-sm input-bordered w-full font-mono"
+      />
+    </div>
+
+    <!-- Pending Tool Calls -->
+    <div class="mb-3">
+      <div class="label text-[10px] font-bold uppercase tracking-wide opacity-50 mb-0.5">
+        Pending Tool Calls
+      </div>
+      <div class="text-sm" id="pendingCalls">0</div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex gap-2">
+      <button class="btn btn-sm btn-primary flex-1" id="saveBtn">Save &amp; Reconnect</button>
+      <button class="btn btn-sm btn-ghost flex-1" id="reconnectBtn">Reconnect</button>
+    </div>
+    <div class="flex gap-2 mt-2">
+      <button class="btn btn-sm btn-ghost flex-1" id="openExampleBtn">Context Test Page</button>
+      <button class="btn btn-sm btn-ghost flex-1" id="openSidePanelBtn">Side Panel</button>
+    </div>
+
+    <!-- Toast -->
+    <div class="mt-2 hidden" id="toast"></div>
+
+    <script type="module" src="src/popup-main.js"></script>
+  </body>
+</html>

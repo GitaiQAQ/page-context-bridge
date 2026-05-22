@@ -42,6 +42,8 @@ export interface ToolTreeNamespace {
   kind: 'namespace';
   tabId: number;
   namespace: string;
+  title?: string;
+  description?: string;
   totalTools: number;
   enabledTools: number;
   instances: ToolTreeInstance[];
@@ -131,7 +133,38 @@ export interface ContextSkillResponse {
   prompt: { skill: ContextSkillDescriptor; text: string } | null;
 }
 
-export interface SidepanelFeedbackDraft {
+/**
+ * Sidepanel URL query binding.
+ * 只用于 launcher/fallback URL，和 runtime RPC payload 分离，避免语义混淆。
+ */
+export interface SidepanelUrlTabBinding {
+  /**
+   * 兼容字段：已有 fallback URL 使用 boundTabId。
+   * query 层继续保留该名字，避免旧链接失效。
+   */
+  boundTabId?: number;
+  windowId?: number;
+}
+
+/**
+ * Runtime/feedback 显式 tab 绑定。
+ * RPC 层统一使用 tabId/windowId，不和 URL query 字段名耦合。
+ */
+export interface RuntimeExplicitTabBinding {
+  tabId?: number;
+  windowId?: number;
+}
+
+/**
+ * runtime 入口兼容输入：
+ * - 新字段 tabId
+ * - 兼容字段 boundTabId（例如从 URL 绑定透传过来的场景）
+ */
+export type RuntimeExplicitTabBindingInput = RuntimeExplicitTabBinding & {
+  boundTabId?: number;
+};
+
+export interface SidepanelFeedbackDraft extends RuntimeExplicitTabBinding {
   body: string;
   priority: FeedbackPriority;
 }

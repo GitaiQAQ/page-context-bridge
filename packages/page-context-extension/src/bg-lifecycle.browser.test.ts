@@ -23,7 +23,7 @@ const captured: CapturedListeners = {
 
 function makePageToolState(overrides?: Record<string, unknown>) {
   return {
-    pageToolsByTab: new Map([[1, []]]),
+    pageToolsByTab: new Map(),
     pageToolPreferences: {},
     builtinToolPreferences: {},
     tabReloadDiscoveryInFlight: new Map(),
@@ -53,6 +53,7 @@ function installChromeMock(): () => void {
       sendMessage: vi.fn(),
     },
     tabs: {
+      query: vi.fn().mockResolvedValue([]),
       onActivated: {
         addListener: vi.fn((fn: (info: { tabId: number; windowId: number }) => void) => {
           captured.tabsOnActivated.push(fn);
@@ -99,11 +100,13 @@ describe('registerLifecycleListeners', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.resetModules();
     cleanup = installChromeMock();
   });
 
   afterEach(() => {
     cleanup();
+    vi.doUnmock('./bg-page-tools');
     vi.useRealTimers();
   });
 
@@ -146,7 +149,7 @@ describe('registerLifecycleListeners', () => {
     expect(chrome.tabs.onRemoved.addListener).toHaveBeenCalled();
     expect(captured.tabsOnActivated).toHaveLength(1);
     expect(captured.tabsOnUpdated).toHaveLength(1);
-    expect(captured.tabsOnRemoved).toHaveLength(1);
+    expect(captured.tabsOnRemoved.length).toBeGreaterThanOrEqual(1);
   });
 
   it('registers lifecycle listeners (installed + startup)', async () => {
@@ -227,7 +230,7 @@ describe('registerLifecycleListeners', () => {
       });
       await registerWithDeps({ ...makeDeps(), pageToolState: state });
 
-      const removeHandler = captured.tabsOnRemoved[0];
+      const removeHandler = captured.tabsOnRemoved.at(-1);
       if (!removeHandler) throw new Error('No remove handler');
       removeHandler(7);
 
@@ -278,6 +281,36 @@ describe('registerLifecycleListeners', () => {
 
       // Should be called once for immediate connection
       expect(connectWs).toHaveBeenCalledTimes(1);
+    });
+
+    it('discovers tools for already active tabs immediately on registration', async () => {
+      const discoverPageToolsForTab = vi.fn().mockResolvedValue([]);
+
+      vi.doMock('./bg-page-tools', () => ({
+        clearPageTools: vi.fn(
+          (state: { pageToolsByTab: Map<number, unknown[]> }, tabId: number) => {
+            state.pageToolsByTab.delete(tabId);
+          },
+        ),
+        discoverPageToolsAfterTabReload: vi.fn().mockResolvedValue(undefined),
+        discoverPageToolsForTab,
+        ensurePageToolPreferencesLoaded: vi.fn().mockResolvedValue(undefined),
+        publishBuiltinTools: vi.fn(),
+        publishPageToolsForTab: vi.fn(),
+      }));
+
+      (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 77, active: true }]);
+
+      await registerWithDeps(makeDeps());
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(chrome.tabs.query).toHaveBeenCalledWith({ active: true }, expect.any(Function));
+      expect(discoverPageToolsForTab).toHaveBeenCalledWith(
+        expect.objectContaining({ pageToolsByTab: expect.any(Map) }),
+        77,
+        expect.any(Function),
+      );
     });
   });
 

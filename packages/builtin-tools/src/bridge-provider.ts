@@ -7,7 +7,12 @@
 
 import type { BridgeToolProvider, BridgeToolCallFn, ToolSpec } from '@page-context/shared-protocol';
 import { z } from 'zod';
-import { builtinToolName, BUILTIN_CATEGORY } from './runtime-tool-names.js';
+import {
+  builtinToolName,
+  BUILTIN_CATEGORY,
+  getBuiltinToolNameAliases,
+  parseBuiltinToolName,
+} from './runtime-tool-names.js';
 
 const MAX_TEXT_CHARS = 50_000;
 
@@ -258,6 +263,28 @@ const TOOL_SPECS: ToolSpec[] = [
   },
 ];
 
+const BUILTIN_SUFFIX_ALIAS_COUNTS = TOOL_SPECS.reduce<Map<string, number>>((counts, tool) => {
+  const parsed = parseBuiltinToolName(tool.name);
+  if (!parsed) {
+    return counts;
+  }
+  counts.set(parsed.suffix, (counts.get(parsed.suffix) ?? 0) + 1);
+  return counts;
+}, new Map());
+
+function getBridgeRegistrationNames(canonicalName: string): string[] {
+  const parsed = parseBuiltinToolName(canonicalName);
+  if (!parsed) {
+    return [canonicalName];
+  }
+  return getBuiltinToolNameAliases(canonicalName).filter((name) => {
+    if (name === parsed.suffix) {
+      return (BUILTIN_SUFFIX_ALIAS_COUNTS.get(parsed.suffix) ?? 0) === 1;
+    }
+    return true;
+  });
+}
+
 export class BuiltinBridgeProvider implements BridgeToolProvider {
   readonly id = 'builtin';
 
@@ -287,7 +314,12 @@ export class BuiltinBridgeProvider implements BridgeToolProvider {
       },
       handler: (args: Record<string, unknown>) => Promise<unknown>,
     ) => {
-      handles.set(canonicalName, registerTool(canonicalName, schema, handler));
+      for (const name of getBridgeRegistrationNames(canonicalName)) {
+        if (handles.has(name)) {
+          continue;
+        }
+        handles.set(name, registerTool(name, schema, handler));
+      }
       return canonicalName;
     };
 

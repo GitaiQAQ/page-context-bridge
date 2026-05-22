@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { TenantManager } from './tenant-manager.js';
-import { log } from './mcp-registry.js';
+import { McpRegistry, log } from './mcp-registry.js';
 import {
   getContextManifestDebugFromExtension,
   getContextManifestFromExtension,
@@ -37,9 +37,7 @@ const STDIO_TENANT_ID = runtimeEnv.TENANT_ID || 'default';
 // ── Tenant Manager: creates isolated registries per tenant ──
 
 const tenantManager: TenantManager = new TenantManager({
-  createRegistry: (tenantId: string): import('./mcp-registry.js').McpRegistry => {
-    // Import here to avoid circular dependency at module level
-    const { McpRegistry } = require('./mcp-registry.js') as typeof import('./mcp-registry.js');
+  createRegistry: (tenantId: string): McpRegistry => {
     return new McpRegistry(
       {
         sendToolCall: (tool, args, tabId) =>
@@ -88,7 +86,6 @@ async function main(): Promise<void> {
     const stdioTenant = tenantManager.getOrCreate(STDIO_TENANT_ID);
     const baseServer = new McpServer({ name: 'page-context-bridge', version: '0.2.0' });
     stdioTenant.registry.addServer(baseServer);
-    stdioTenant.registry.syncBuiltinToolsOnServer(baseServer);
 
     log('WARNING: MCP_HTTP_PORT is not set (default: 0). Running in stdio mode.');
     log(`  Tenant: ${STDIO_TENANT_ID}`);

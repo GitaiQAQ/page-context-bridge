@@ -4,6 +4,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 
 import { buildRegisteredPageToolName } from './page-tool-routing.js';
 import { buildZodSchema, type JsonSchemaLike } from './schema.js';
@@ -46,7 +47,11 @@ export function registerPageToolsOnServer(input: {
         registeredToolName,
         {
           description: tool.description || `Page tool from tab ${tabId}`,
-          inputSchema: buildZodSchema(tool.inputSchema as JsonSchemaLike | undefined),
+          // 页面工具没有声明 inputSchema 时，MCP 侧仍然应该保留原始入参。
+          // 否则 SDK 会把它当成空对象 schema，未知字段会被静默剥掉，真实调用拿到的 args 只剩 {}。
+          inputSchema: tool.inputSchema
+            ? buildZodSchema(tool.inputSchema as JsonSchemaLike | undefined)
+            : z.object({}).catchall(z.any()),
           annotations: {
             readOnlyHint:
               actualToolName.includes('get_') ||

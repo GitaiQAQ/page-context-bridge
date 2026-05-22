@@ -46,10 +46,22 @@ interface NamespaceDescriptor {
   [key: string]: unknown;
 }
 
+interface LegacyPageContextBridge {
+  version?: unknown;
+  namespace?: unknown;
+  instanceId?: unknown;
+  getManifest?: () => ManifestDescriptor | null;
+  listTools?: () => unknown[];
+  callTool?: (name: string, args?: Record<string, unknown>) => unknown;
+  readResource?: (id: string) => ResourcePayload;
+  getSkill?: (id: string, input?: Record<string, unknown>) => unknown;
+}
+
 export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller = (): void => {
   const HOST_KEY = '__pageContextBridgeHost__';
   const BRIDGE_KEY = '__pageContextBridge__';
   const TOOLS_KEY = '__pageContextTools__';
+  const RAW_BRIDGE_KEY = '__pageContextBridgeRaw__';
   const HOST_READY_EVENT = 'page-context-bridge-host:ready';
   const HOST_DEFAULT_SCENE = 'page-context-host-idle';
   const HOST_ADOPTED_SOURCE_ID = 'adopted-window-bridge';
@@ -137,12 +149,130 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       typeof (candidate as PageContextBridge).getManifest === 'function',
     );
 
+  const isLegacyBridgeLike = (candidate: unknown): candidate is LegacyPageContextBridge =>
+    Boolean(
+      candidate &&
+      typeof candidate === 'object' &&
+      typeof (candidate as LegacyPageContextBridge).getManifest === 'function' &&
+      (typeof (candidate as LegacyPageContextBridge).listTools === 'function' ||
+        typeof (candidate as LegacyPageContextBridge).callTool === 'function'),
+    );
+
+  const adaptLegacyBridge = (candidate: LegacyPageContextBridge): PageContextBridge => {
+    const resolveNamespace = (): string => {
+      if (typeof candidate.namespace === 'string' && candidate.namespace.trim()) {
+        return candidate.namespace.trim();
+      }
+      const manifest = safe(() => candidate.getManifest?.(), null);
+      const manifestNamespace = Array.isArray(manifest?.namespaces)
+        ? manifest.namespaces.find((entry) => entry && typeof entry.namespace === 'string')
+        : null;
+      return typeof manifestNamespace?.namespace === 'string'
+        ? manifestNamespace.namespace
+        : 'page';
+    };
+
+    const resolveInstanceId = (): string => {
+      if (typeof candidate.instanceId === 'string' && candidate.instanceId.trim()) {
+        return candidate.instanceId.trim();
+      }
+      return 'default';
+    };
+
+    const listTools = () => {
+      const tools = safe(() => candidate.listTools?.(), []);
+      return Array.isArray(tools) ? tools : [];
+    };
+
+    const callTool = (name: string, args?: Record<string, unknown>) => {
+      // Firefox MAIN world 调 legacy bridge 时，直接透传内容脚本对象容易触发
+      // “Permission denied to access object”。先做一次 JSON 克隆，把参数变成页面自己的 plain object。
+      const clonedArgs = safe(
+        () => JSON.parse(JSON.stringify(args ?? {})) as Record<string, unknown>,
+        args ?? {},
+      );
+      return safe(() => candidate.callTool?.(name, clonedArgs), undefined);
+    };
+
+    const namespace = resolveNamespace();
+    const instanceId = resolveInstanceId();
+
+    return {
+      version:
+        typeof candidate.version === 'string' && candidate.version.trim()
+          ? candidate.version
+          : 'page-context-legacy-bridge/1.0.0',
+      listNamespaces: () => [namespace],
+      getNamespace: (requestedNamespace: string) => {
+        if (requestedNamespace !== namespace) {
+          return undefined;
+        }
+
+        if (instanceId === 'default') {
+          return {
+            listTools,
+            callTool,
+          };
+        }
+
+        return {
+          listInstances: () => [instanceId],
+          getInstance: (requestedInstanceId: string) => {
+            if (requestedInstanceId !== instanceId) {
+              return undefined;
+            }
+            return {
+              listTools,
+              callTool,
+            };
+          },
+        };
+      },
+      getScene: () => {
+        const manifest = safe(() => candidate.getManifest?.(), null);
+        return typeof manifest?.scene === 'string' && manifest.scene ? manifest.scene : namespace;
+      },
+      listResources: () => {
+        const manifest = safe(() => candidate.getManifest?.(), null);
+        return Array.isArray(manifest?.resources) ? manifest.resources : [];
+      },
+      readResource: (id: string) =>
+        safe(() => candidate.readResource?.(id), {
+          id,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: `Unknown resource id: ${id}` }, null, 2),
+        }),
+      listSkills: () => {
+        const manifest = safe(() => candidate.getManifest?.(), null);
+        return Array.isArray(manifest?.skills) ? manifest.skills : [];
+      },
+      getSkill: (id: string, input?: Record<string, unknown>) =>
+        safe(() => candidate.getSkill?.(id, input), undefined),
+      getManifest: () => safe(() => candidate.getManifest?.(), null),
+    };
+  };
+
+  const normalizeBridgeCandidate = (candidate: unknown): PageContextBridge | null => {
+    if (isBridgeLike(candidate)) {
+      return candidate;
+    }
+    if (isLegacyBridgeLike(candidate)) {
+      return adaptLegacyBridge(candidate);
+    }
+    return null;
+  };
+
   const bridgeSourceIdByRef = new WeakMap<object, string>();
   let legacySourceCursor = 0;
   const adoptLegacyAssignedBridge = (candidate: unknown, key: string): void => {
-    if (!isBridgeLike(candidate) || candidate === hostBridge) {
+    const normalizedBridge = normalizeBridgeCandidate(candidate);
+    if (!normalizedBridge || candidate === hostBridge) {
       return;
     }
+    // Firefox readonly broker 不适合经 getter 读 host merge 后的 bridge。
+    // 这里额外保留一份原始 bridge 裸引用，供 content script 直接读取，
+    // 避免 wrappedJSObject + getter 组合再次触发 Xray 权限错误。
+    win[RAW_BRIDGE_KEY] = candidate;
     const bridge = candidate as object;
     let sourceId = bridgeSourceIdByRef.get(bridge);
     if (!sourceId) {
@@ -150,7 +280,7 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
       sourceId = `${HOST_LEGACY_SOURCE_PREFIX}:${legacySourceCursor}`;
       bridgeSourceIdByRef.set(bridge, sourceId);
     }
-    registerSource(sourceId, candidate, 70, ['legacy-assignment', key]);
+    registerSource(sourceId, normalizedBridge, 70, ['legacy-assignment', key]);
   };
 
   const hostBridge = {
@@ -271,9 +401,10 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
   };
 
   const existingBridge = (win[BRIDGE_KEY] ?? win[TOOLS_KEY]) as unknown;
-
-  if (isBridgeLike(existingBridge)) {
-    registerSource(HOST_ADOPTED_SOURCE_ID, existingBridge, 10, ['adopted']);
+  const normalizedExistingBridge = normalizeBridgeCandidate(existingBridge);
+  if (normalizedExistingBridge) {
+    win[RAW_BRIDGE_KEY] = existingBridge;
+    registerSource(HOST_ADOPTED_SOURCE_ID, normalizedExistingBridge, 10, ['adopted']);
   }
 
   const host = {

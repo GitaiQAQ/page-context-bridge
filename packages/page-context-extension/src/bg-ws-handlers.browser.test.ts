@@ -5,22 +5,36 @@ import { BRIDGE_METHODS } from '@page-context/shared-protocol';
 const executeToolCallMock = vi.fn(async () => ({ ok: true }));
 const executePageToolInTabMock = vi.fn(async () => ({ ok: true, result: {} }));
 const sendTabRequestMock = vi.fn(async () => ({ ok: true }));
+const discoverPageToolsInTabMock = vi.fn(async () => []);
+const getRawPageContextManifestMock = vi.fn(async () => null);
+const getPageContextSkillMock = vi.fn(async () => null);
+const readPageContextResourceMock = vi.fn(async () => ({
+  id: 'r',
+  mimeType: 'application/json',
+  text: '{}',
+}));
+const sleepMock = vi.fn(async () => undefined);
 
 vi.mock('@page-context/tool-executor', () => ({
   executeToolCall: executeToolCallMock,
+  getBuiltinToolDefinitions: () => [
+    {
+      name: 'builtin.tabs.list_tabs',
+      description: 'List tabs',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: { readOnlyHint: true },
+    },
+  ],
 }));
 
 vi.mock('./bg-page-context', () => ({
-  discoverPageToolsInTab: vi.fn(async () => []),
+  discoverPageToolsInTab: discoverPageToolsInTabMock,
   executePageToolInTab: executePageToolInTabMock,
-  getRawPageContextManifest: vi.fn(async () => null),
-  getPageContextSkill: vi.fn(async () => null),
-  readPageContextResource: vi.fn(async () => ({
-    id: 'r',
-    mimeType: 'application/json',
-    text: '{}',
-  })),
-  sleep: vi.fn(async () => undefined),
+  getRawPageContextManifest: getRawPageContextManifestMock,
+  getPageContextSkill: getPageContextSkillMock,
+  pageAccessBackendKind: 'chromium-native-main-world',
+  readPageContextResource: readPageContextResourceMock,
+  sleep: sleepMock,
 }));
 
 vi.mock('./runtime-rpc', () => ({
@@ -32,6 +46,7 @@ function makePageToolState(overrides?: Record<string, unknown>) {
     pageToolsByTab: new Map(),
     pageToolPreferences: {},
     builtinToolPreferences: {},
+    discoveryInFlight: new Map(),
     tabReloadDiscoveryInFlight: new Map(),
     ...overrides,
   };
@@ -68,6 +83,15 @@ describe('createWsHandlers', () => {
     vi.useFakeTimers();
     vi.resetModules();
     vi.clearAllMocks();
+    discoverPageToolsInTabMock.mockResolvedValue([]);
+    getRawPageContextManifestMock.mockResolvedValue(null);
+    getPageContextSkillMock.mockResolvedValue(null);
+    readPageContextResourceMock.mockResolvedValue({
+      id: 'r',
+      mimeType: 'application/json',
+      text: '{}',
+    });
+    sleepMock.mockResolvedValue(undefined);
     installChromeMock();
   });
 
@@ -184,6 +208,22 @@ describe('createWsHandlers', () => {
         'No tabId provided',
       );
     });
+
+    it('rethrows structured backend failure when discover path is unsupported', async () => {
+      const { PageAccessBackendError } = await import('./bg-page-access-backend.js');
+      discoverPageToolsInTabMock.mockRejectedValueOnce(
+        new PageAccessBackendError({
+          backendKind: 'firefox-probe',
+          operation: 'discoverTools',
+          reason: 'Firefox page access backend is not implemented yet',
+        }),
+      );
+
+      const handlers = await createHandlers();
+      await expect(handlers.handleExtensionPageToolsRefresh({ tabId: 1 })).rejects.toThrow(
+        '[page-access-backend:firefox-probe] discoverTools',
+      );
+    });
   });
 
   describe('handleExtensionContextManifestGet()', () => {
@@ -191,6 +231,22 @@ describe('createWsHandlers', () => {
       const handlers = await createHandlers();
       await expect(handlers.handleExtensionContextManifestGet({})).rejects.toThrow(
         'No tabId provided',
+      );
+    });
+
+    it('surfaces backend failure from getRawManifest()', async () => {
+      const { PageAccessBackendError } = await import('./bg-page-access-backend.js');
+      getRawPageContextManifestMock.mockRejectedValueOnce(
+        new PageAccessBackendError({
+          backendKind: 'firefox-probe',
+          operation: 'getRawManifest',
+          reason: 'Firefox page access backend is not implemented yet',
+        }),
+      );
+
+      const handlers = await createHandlers();
+      await expect(handlers.handleExtensionContextManifestGet({ tabId: 1 })).rejects.toThrow(
+        '[page-access-backend:firefox-probe] getRawManifest',
       );
     });
   });
@@ -209,6 +265,22 @@ describe('createWsHandlers', () => {
         'tabId and resourceId are required',
       );
     });
+
+    it('surfaces backend failure from readResource()', async () => {
+      const { PageAccessBackendError } = await import('./bg-page-access-backend.js');
+      readPageContextResourceMock.mockRejectedValueOnce(
+        new PageAccessBackendError({
+          backendKind: 'firefox-probe',
+          operation: 'readResource',
+          reason: 'Firefox page access backend is not implemented yet',
+        }),
+      );
+
+      const handlers = await createHandlers();
+      await expect(
+        handlers.handleExtensionContextResourceRead({ tabId: 1, resourceId: 'res-1' }),
+      ).rejects.toThrow('[page-access-backend:firefox-probe] readResource');
+    });
   });
 
   describe('handleExtensionContextSkillGet()', () => {
@@ -225,6 +297,22 @@ describe('createWsHandlers', () => {
         'tabId and skillId are required',
       );
     });
+
+    it('surfaces backend failure from getSkill()', async () => {
+      const { PageAccessBackendError } = await import('./bg-page-access-backend.js');
+      getPageContextSkillMock.mockRejectedValueOnce(
+        new PageAccessBackendError({
+          backendKind: 'firefox-probe',
+          operation: 'getSkill',
+          reason: 'Firefox page access backend is not implemented yet',
+        }),
+      );
+
+      const handlers = await createHandlers();
+      await expect(
+        handlers.handleExtensionContextSkillGet({ tabId: 1, skillId: 'skill-1', input: {} }),
+      ).rejects.toThrow('[page-access-backend:firefox-probe] getSkill');
+    });
   });
 
   describe('handleExtensionToolDebugCall()', () => {
@@ -233,8 +321,42 @@ describe('createWsHandlers', () => {
       await expect(handlers.handleExtensionToolDebugCall({})).rejects.toThrow();
     });
 
-    it('passes page-tool execution deps into executeToolCall', async () => {
+    it('rejects unavailable CDP/debugger builtin tools before execution', async () => {
       const handlers = await createHandlers();
+
+      const result = await handlers.handleExtensionToolDebugCall({
+        toolName: 'builtin.page.screenshot_page',
+        args: {},
+        tabId: 7,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('Builtin tool is unavailable in this browser runtime');
+      expect(executeToolCallMock).not.toHaveBeenCalled();
+    });
+
+    it('passes page-tool execution deps into executeToolCall', async () => {
+      const handlers = await createHandlers({
+        pageToolState: makePageToolState({
+          pageToolsByTab: new Map([
+            [
+              7,
+              [
+                {
+                  namespace: 'workspace',
+                  instanceId: 'page',
+                  tools: [
+                    {
+                      name: 'workspace.page.summarizeWorkspace',
+                      description: 'Summarize workspace',
+                    },
+                  ],
+                },
+              ],
+            ],
+          ]),
+        }),
+      });
 
       await handlers.handleExtensionToolDebugCall({
         toolName: 'workspace.page.summarizeWorkspace',
@@ -274,11 +396,98 @@ describe('createWsHandlers', () => {
         undefined,
       );
     });
+
+    it('returns a disabled-by-preferences error for debug calls to disabled builtins', async () => {
+      vi.doMock('@page-context/tool-executor', () => ({
+        executeToolCall: executeToolCallMock,
+        getBuiltinToolDefinitions: () => [
+          {
+            name: 'builtin.page.navigate',
+            description: 'Navigate',
+            inputSchema: { type: 'object', properties: { url: { type: 'string' } } },
+          },
+        ],
+      }));
+
+      const handlers = await createHandlers({
+        pageToolState: makePageToolState({
+          pageToolPreferences: {
+            builtins: {
+              tools: {
+                'builtin.page.navigate': false,
+              },
+            },
+          },
+        }),
+      });
+
+      const result = await handlers.handleExtensionToolDebugCall({
+        toolName: 'builtin.page.navigate',
+        args: { url: 'https://example.com' },
+        tabId: 7,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('Tool is disabled by preferences: builtin.page.navigate');
+      expect(executeToolCallMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('onToolCall()', () => {
-    it('passes page-tool execution deps into executeToolCall', async () => {
+    it('lazy-discovers missing page tools before execution when runtime state is temporarily empty', async () => {
+      discoverPageToolsInTabMock.mockResolvedValueOnce([
+        {
+          namespace: 'crm',
+          instanceId: 'default',
+          tools: [{ name: 'inspect', description: 'Inspect lead' }],
+        },
+      ]);
+
       const handlers = await createHandlers();
+
+      await handlers.onToolCall(
+        {
+          tool: 'crm.inspect',
+          args: { entityId: 88 },
+          tabId: 9,
+        },
+        'req-lazy-discover',
+      );
+
+      expect(discoverPageToolsInTabMock).toHaveBeenCalledWith(9);
+      expect(executeToolCallMock).toHaveBeenCalledWith(
+        'crm.inspect',
+        { entityId: 88 },
+        9,
+        expect.objectContaining({
+          executePageToolInTab: expect.any(Function),
+          sendTabRequest: sendTabRequestMock,
+        }),
+      );
+    });
+
+    it('passes page-tool execution deps into executeToolCall', async () => {
+      const handlers = await createHandlers({
+        pageToolState: makePageToolState({
+          pageToolsByTab: new Map([
+            [
+              9,
+              [
+                {
+                  namespace: 'workspace',
+                  instanceId: 'page',
+                  tools: [
+                    {
+                      name: 'workspace.page.summarizeWorkspace',
+                      description: 'Summarize workspace',
+                    },
+                  ],
+                },
+              ],
+            ],
+          ]),
+        }),
+      });
 
       await handlers.onToolCall(
         {
@@ -321,6 +530,97 @@ describe('createWsHandlers', () => {
         undefined,
       );
     });
+
+    it('rejects disabled builtin tools before execution even when they are listed', async () => {
+      vi.doMock('@page-context/tool-executor', () => ({
+        executeToolCall: executeToolCallMock,
+        getBuiltinToolDefinitions: () => [
+          {
+            name: 'builtin.tabs.list_tabs',
+            description: 'List tabs',
+            inputSchema: { type: 'object', properties: {} },
+            annotations: { readOnlyHint: true },
+          },
+          {
+            name: 'builtin.page.navigate',
+            description: 'Navigate',
+            inputSchema: { type: 'object', properties: { url: { type: 'string' } } },
+          },
+        ],
+      }));
+
+      const handlers = await createHandlers({
+        pageToolState: makePageToolState({
+          pageToolPreferences: {
+            builtins: {
+              tools: {
+                'builtin.page.navigate': false,
+              },
+            },
+          },
+        }),
+      });
+
+      await expect(
+        handlers.onToolCall(
+          {
+            tool: 'builtin.page.navigate',
+            args: { url: 'https://example.com' },
+            tabId: 9,
+          },
+          'req-disabled-builtin',
+        ),
+      ).rejects.toThrow('Tool is disabled by preferences: builtin.page.navigate');
+      expect(executeToolCallMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects disabled page tools before execution even when they are registered', async () => {
+      const handlers = await createHandlers({
+        pageToolState: makePageToolState({
+          pageToolsByTab: new Map([
+            [
+              9,
+              [
+                {
+                  namespace: 'crm',
+                  instanceId: 'default',
+                  tools: [{ name: 'crm.inspect', description: 'Inspect lead' }],
+                },
+              ],
+            ],
+          ]),
+          pageToolPreferences: {
+            tabs: {
+              '9': {
+                namespaces: {
+                  crm: {
+                    instances: {
+                      default: {
+                        tools: {
+                          'crm.inspect': false,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      });
+
+      await expect(
+        handlers.onToolCall(
+          {
+            tool: 'crm.inspect',
+            args: { entityId: 88 },
+            tabId: 9,
+          },
+          'req-disabled-page',
+        ),
+      ).rejects.toThrow('Tool is disabled by preferences: crm.inspect');
+      expect(executeToolCallMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('onBridgeWsExtensionRequest() - routing', () => {
@@ -353,12 +653,11 @@ describe('createWsHandlers', () => {
 
     it('routes extensionPageToolsDiscover/Refresh correctly', async () => {
       const handlers = await createHandlers();
-      // With valid tabId, validation passes but discovery fails due to incomplete chrome mock
-      await expect(
-        handlers.onBridgeWsExtensionRequest(BRIDGE_METHODS.extensionPageToolsDiscover, {
-          tabId: 1,
-        }),
-      ).rejects.toThrow();
+      const result = await handlers.onBridgeWsExtensionRequest(
+        BRIDGE_METHODS.extensionPageToolsDiscover,
+        { tabId: 1 },
+      );
+      expect(result).toEqual({ tools: [] });
     });
 
     it('routes extensionContextManifestGet correctly', async () => {

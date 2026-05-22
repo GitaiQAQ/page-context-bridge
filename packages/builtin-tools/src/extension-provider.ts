@@ -15,7 +15,11 @@ import type {
 
 import { executeContentScriptTool } from './content-script-tools.js';
 import { executeServiceWorkerTool } from './service-worker-tools.js';
-import { builtinToolName, BUILTIN_CATEGORY } from './runtime-tool-names.js';
+import {
+  builtinToolName,
+  BUILTIN_CATEGORY,
+  filterBuiltinToolsByRuntimeCapabilities,
+} from './runtime-tool-names.js';
 
 const TOOL_DEFINITIONS: ToolDefinition[] = [
   // --- tabs ---
@@ -313,7 +317,7 @@ export class BuiltinExtensionProvider implements ExtensionToolProvider {
   readonly id = 'builtin';
 
   getToolDefinitions(): ToolDefinition[] {
-    return TOOL_DEFINITIONS;
+    return filterBuiltinToolsByRuntimeCapabilities(TOOL_DEFINITIONS);
   }
 
   executeInContentScript(

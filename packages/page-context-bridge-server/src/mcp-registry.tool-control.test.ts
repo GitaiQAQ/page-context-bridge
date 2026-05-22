@@ -185,6 +185,26 @@ function createRegistry() {
 }
 
 describe('mcp-registry extension tool control tools', () => {
+  it('addServer immediately registers builtin tools alongside extension control tools', () => {
+    const { registry } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    expect(fakeServer.tools.has('builtin.tabs.list_tabs')).toBe(true);
+    expect(fakeServer.tools.has('builtin.page.get_page_info')).toBe(true);
+    expect(fakeServer.tools.has(TOOL_NAMES.getToolTree)).toBe(true);
+  });
+
+  it('addServer replays cached page tools onto newly added servers', () => {
+    const { registry } = createRegistry();
+    const fakeServer = new FakeMcpServer();
+    registry.setPageTools(88, [{ name: 'crm.inspect', description: 'Inspect CRM entity' }]);
+
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    expect(fakeServer.tools.has('tab.88.crm.inspect')).toBe(true);
+  });
+
   it('registers namespaced tools', () => {
     const { registry } = createRegistry();
     const fakeServer = new FakeMcpServer();

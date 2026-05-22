@@ -5,8 +5,10 @@ import {
   ensureMainWorldBridgeHostOnTab,
   type MainWorldBridgeHostInstaller,
 } from '@page-context/agentation';
-import { discoverPageToolsInTab, sleep } from './bg-page-context';
+import { discoverPageToolsInTab, pageAccessBackendKind, sleep } from './bg-page-context';
+import { isPageAccessBackendError } from './bg-page-access-backend';
 import { log, queueNotification } from './bg-ws-connection';
+import { storageLocalGet, storageLocalSet, tabsQuery } from './extension-api';
 import { getBuiltinToolDefinitions } from '@page-context/tool-executor';
 import {
   flattenPageTools,
@@ -67,35 +69,39 @@ export function getBuiltinTools(): PageToolSpec[] {
   return Array.from(deduped.values());
 }
 
+export function getAllBuiltinTools(): PageToolSpec[] {
+  return getBuiltinTools();
+}
+
 export function getAllTools(state: PageToolState): PageToolSpec[] {
-  const builtin = getEnabledBuiltinTools(getBuiltinTools(), state.pageToolPreferences);
+  const builtin = getAllBuiltinTools();
   for (const [tabId, entries] of state.pageToolsByTab.entries()) {
-    builtin.push(...getEnabledToolsForTab(entries, state.pageToolPreferences, tabId));
+    builtin.push(...flattenPageTools(entries));
   }
   return builtin;
 }
 
 export function ensurePageToolPreferencesLoaded(state: PageToolState): Promise<void> {
   if (!state.pageToolPreferencesReady) {
-    state.pageToolPreferencesReady = chrome.storage.local
-      .get({ [PAGE_TOOL_PREFERENCES_KEY]: {} })
-      .then((result) => {
+    state.pageToolPreferencesReady = storageLocalGet({ [PAGE_TOOL_PREFERENCES_KEY]: {} }).then(
+      (result) => {
         state.pageToolPreferences =
           (result[PAGE_TOOL_PREFERENCES_KEY] as PageToolPreferences | undefined) ?? {};
-      });
+      },
+    );
   }
 
   return state.pageToolPreferencesReady;
 }
 
 export async function persistPageToolPreferences(state: PageToolState): Promise<void> {
-  await chrome.storage.local.set({ [PAGE_TOOL_PREFERENCES_KEY]: state.pageToolPreferences });
+  await storageLocalSet({ [PAGE_TOOL_PREFERENCES_KEY]: state.pageToolPreferences });
 }
 
 export function publishBuiltinTools(state: PageToolState): void {
   void ensurePageToolPreferencesLoaded(state).then(() => {
     queueNotification(BRIDGE_METHODS.bridgeBuiltinToolsUpdated, {
-      tools: getEnabledBuiltinTools(getBuiltinTools(), state.pageToolPreferences),
+      tools: getAllBuiltinTools(),
     });
   });
 }
@@ -104,17 +110,13 @@ export function publishPageToolsForTab(state: PageToolState, tabId: number): voi
   void ensurePageToolPreferencesLoaded(state).then(() => {
     queueNotification(BRIDGE_METHODS.bridgePageToolsRegistered, {
       tabId,
-      tools: getEnabledToolsForTab(
-        state.pageToolsByTab.get(tabId),
-        state.pageToolPreferences,
-        tabId,
-      ),
+      tools: getFlattenedPageToolsForTab(state, tabId),
     });
   });
 }
 
 export async function buildPageToolsTreeResponse(state: PageToolState) {
-  const tabs = await chrome.tabs.query({});
+  const tabs = await tabsQuery({});
   return buildToolTree(tabs, state.pageToolsByTab, getBuiltinTools(), state.pageToolPreferences);
 }
 
@@ -176,6 +178,7 @@ export async function discoverPageToolsForTab(
   tabId: number,
   installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller,
   force = false,
+  failOnBackendError = false,
 ): Promise<PageToolEntry[]> {
   if (!force) {
     const existing = state.discoveryInFlight.get(tabId);
@@ -185,6 +188,8 @@ export async function discoverPageToolsForTab(
   }
 
   const discoveryPromise = (async () => {
+    const existingEntries = state.pageToolsByTab.get(tabId) ?? [];
+
     await ensureMainWorldBridgeHostOnTab(tabId, installPageContextBridgeHostInMainWorld).catch(
       (error: unknown) => {
         log('Ensure MAIN world host failed before discovery', tabId, error);
@@ -208,9 +213,25 @@ export async function discoverPageToolsForTab(
         publishPageToolsForTab(state, tabId);
         return normalized;
       } catch (error) {
+        // 主动刷新需要把 backend 不可用抛给上层；生命周期自动探测则只记录，
+        // 避免测试/受限运行时因 unsupported backend 产生未处理 rejection。
+        if (failOnBackendError && isPageAccessBackendError(error)) {
+          throw error;
+        }
         log('Page tool discovery failed', tabId, error);
         break;
       }
+    }
+
+    const latestEntries = state.pageToolsByTab.get(tabId) ?? [];
+    if (
+      pageAccessBackendKind === 'firefox-probe' &&
+      latestEntries.some((entry) => Array.isArray(entry.tools) && entry.tools.length > 0)
+    ) {
+      // Firefox 只读注册可能晚于这轮后台轮询开始时间。
+      // 这里必须看“当前状态”而不是函数开头的快照，否则会把轮询过程中刚注册好的工具错误清掉。
+      log('Preserving current Firefox page tools after empty rediscovery', tabId);
+      return latestEntries;
     }
 
     state.pageToolsByTab.delete(tabId);
@@ -240,7 +261,7 @@ export async function discoverPageToolsAfterTabReload(
     return await existing;
   }
 
-  const discoveryTask = (async () => {
+  const rawDiscoveryTask = (async () => {
     const reloadDelays = [0, 2_000];
     for (const delay of reloadDelays) {
       if (delay > 0) {
@@ -251,12 +272,16 @@ export async function discoverPageToolsAfterTabReload(
         tabId,
         installPageContextBridgeHostInMainWorld,
         true,
+        false,
       );
       if (entries.length > 0) {
         return;
       }
     }
   })();
+  const discoveryTask = rawDiscoveryTask.catch((error: unknown) => {
+    throw error;
+  });
 
   state.tabReloadDiscoveryInFlight.set(tabId, discoveryTask);
   try {

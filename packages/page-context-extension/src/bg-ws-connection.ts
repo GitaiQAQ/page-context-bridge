@@ -9,6 +9,7 @@ import {
   RpcPeer,
   RpcProtocolError,
 } from '@page-context/shared-protocol';
+import { storageLocalGet, storageLocalSet } from './extension-api';
 
 const DEFAULT_MCP_WS_URL = 'ws://127.0.0.1:22335/default';
 const RECONNECT_BASE_MS = 1000;
@@ -156,7 +157,7 @@ async function flushQueuedNotifications(): Promise<void> {
 }
 
 async function getWsUrl(): Promise<string> {
-  const result = await chrome.storage.local.get({
+  const result = await storageLocalGet({
     [MCP_WS_URL_KEY]: DEFAULT_MCP_WS_URL,
   });
   return result[MCP_WS_URL_KEY] as string;
@@ -214,6 +215,8 @@ export async function connectWebSocket(
 
   connectPromise = (async () => {
     const url = await getWsUrl();
+    log('Connecting to WebSocket:', url);
+
     const socket = new WebSocket(url);
     const epoch = ++wsEpoch;
     ws = socket;
@@ -276,10 +279,10 @@ export async function connectWebSocket(
         if (ws !== socket || epoch !== wsEpoch) {
           return;
         }
-        log('WebSocket error', error);
+        log('WebSocket error', error, 'readyState=', socket.readyState, 'url=', socket.url);
         // End the handshake proactively if it's not completed to avoid hanging connectPromise.
         if (!opened) {
-          rejectOnce(new Error('WebSocket errored before open'));
+          rejectOnce(new Error(`WebSocket errored before open (readyState=${socket.readyState})`));
           // Re-use onclose cleanup and reconnection logic to avoid duplicate handling.
           socket.close();
         }
@@ -348,16 +351,15 @@ export function forceReconnect(
 }
 
 export function initDefaultWsUrl(): Promise<void> {
-  return chrome.storage.local.get(MCP_WS_URL_KEY).then((data) => {
+  return storageLocalGet<Record<string, unknown>>(MCP_WS_URL_KEY).then((data) => {
     if (!data[MCP_WS_URL_KEY]) {
-      return chrome.storage.local.set({ [MCP_WS_URL_KEY]: DEFAULT_MCP_WS_URL });
+      return storageLocalSet({ [MCP_WS_URL_KEY]: DEFAULT_MCP_WS_URL });
     }
     return undefined;
   });
 }
 
 export function log(...args: unknown[]): void {
-  // Use structured log in production; raw console.log only for local dev
   if (process.env.NODE_ENV === 'development') {
     console.log('[PAGE-CONTEXT-BG]', ...args);
   }

@@ -5,6 +5,9 @@ import {
   BUILTIN_CATEGORY,
   builtinToolName,
   builtinRuntimeToolName,
+  getBuiltinToolNameAliases,
+  parseBuiltinToolName,
+  resolveBuiltinToolNameAlias,
 } from './runtime-tool-names.js';
 
 describe('BUILTIN_RUNTIME_NAMESPACE', () => {
@@ -91,5 +94,57 @@ describe('builtinRuntimeToolName (legacy)', () => {
     expect(builtinRuntimeToolName('custom')).toBe('builtin.custom');
     expect(builtinRuntimeToolName('')).toBe('builtin.');
     expect(builtinRuntimeToolName('tool.name')).toBe('builtin.tool.name');
+  });
+});
+
+describe('parseBuiltinToolName()', () => {
+  it('parses canonical builtin tool names', () => {
+    expect(parseBuiltinToolName('builtin.tabs.list_tabs')).toEqual({
+      namespace: 'builtin',
+      category: 'tabs',
+      suffix: 'list_tabs',
+    });
+  });
+
+  it('returns null for non-canonical names', () => {
+    expect(parseBuiltinToolName('builtin.list_tabs')).toBeNull();
+    expect(parseBuiltinToolName('list_tabs')).toBeNull();
+  });
+});
+
+describe('getBuiltinToolNameAliases()', () => {
+  it('returns canonical, builtin flat, and bare suffix aliases', () => {
+    expect(getBuiltinToolNameAliases('builtin.tabs.list_tabs')).toEqual([
+      'builtin.tabs.list_tabs',
+      'builtin.list_tabs',
+      'list_tabs',
+    ]);
+  });
+
+  it('leaves non-canonical names unchanged', () => {
+    expect(getBuiltinToolNameAliases('crm.inspect')).toEqual(['crm.inspect']);
+  });
+});
+
+describe('resolveBuiltinToolNameAlias()', () => {
+  it('keeps canonical builtin names unchanged', () => {
+    expect(resolveBuiltinToolNameAlias('builtin.dom.execute_js')).toBe('builtin.dom.execute_js');
+  });
+
+  it('resolves flat builtin aliases', () => {
+    expect(resolveBuiltinToolNameAlias('builtin.list_tabs')).toBe('builtin.tabs.list_tabs');
+  });
+
+  it('resolves bare suffix aliases', () => {
+    expect(resolveBuiltinToolNameAlias('get_page_info')).toBe('builtin.page.get_page_info');
+  });
+
+  it('resolves page-context-prefixed aliases', () => {
+    expect(resolveBuiltinToolNameAlias('page-context_execute_js')).toBe('builtin.dom.execute_js');
+  });
+
+  it('returns null for non-builtin names', () => {
+    expect(resolveBuiltinToolNameAlias('crm.inspect')).toBeNull();
+    expect(resolveBuiltinToolNameAlias('page.crm.inspect')).toBeNull();
   });
 });

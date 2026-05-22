@@ -25,8 +25,18 @@ export { collectBridgeControlToolSpecs, type BridgeControlToolSpec } from './con
 export {
   BUILTIN_RUNTIME_NAMESPACE,
   BUILTIN_CATEGORY,
+  CDP_DEBUGGER_BUILTIN_TOOL_NAMES,
   builtinToolName,
   builtinRuntimeToolName,
+  getBuiltinToolNameAliases,
+  parseBuiltinToolName,
+  resolveBuiltinToolNameAlias,
+  detectBuiltinRuntimeCapabilities,
+  filterBuiltinToolsByRuntimeCapabilities,
+  isCdpDebuggerBuiltinToolName,
+  type BuiltinBrowserRuntimeTarget,
+  type BuiltinRuntimeCapabilities,
+  type BuiltinRuntimeCapabilityProbe,
 } from './runtime-tool-names.js';
 export { executeContentScriptTool } from './content-script-tools.js';
 export { executeServiceWorkerTool } from './service-worker-tools.js';

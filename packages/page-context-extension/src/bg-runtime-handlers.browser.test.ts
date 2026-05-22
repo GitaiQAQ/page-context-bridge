@@ -23,9 +23,21 @@ function makeSender(overrides?: Record<string, unknown>): chrome.runtime.Message
 function installChromeMock(): void {
   (globalThis as Record<string, unknown>).chrome = {
     tabs: {
+      query: vi
+        .fn()
+        .mockResolvedValue([{ id: 5, url: 'https://active.example', title: 'active tab' }]),
+      get: vi
+        .fn()
+        .mockImplementation(async (tabId: number) => ({
+          id: tabId,
+          url: `https://tab-${tabId}.example`,
+        })),
       onRemoved: { addListener: vi.fn() },
       onUpdated: { addListener: vi.fn() },
       debugger: { detach: vi.fn(), attach: vi.fn() },
+    },
+    scripting: {
+      executeScript: vi.fn().mockResolvedValue([{ result: '' }]),
     },
     debugger: {
       onDetach: { addListener: vi.fn() },
@@ -273,6 +285,47 @@ describe('createRuntimeMessageHandler', () => {
         expect.objectContaining({ tabId: 5 }),
       );
     });
+
+    it('uses explicit tabId first when sender tab is missing', async () => {
+      const requestBridge = vi.fn().mockResolvedValue({});
+      const tabsQuery = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>;
+      const h = await createHandler({ requestBridgeMethod: requestBridge });
+
+      await h(
+        {
+          method: BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+          params: { tabId: 33, windowId: 9 },
+        },
+        makeSender({ tab: undefined }),
+      );
+
+      expect(tabsQuery).not.toHaveBeenCalled();
+      expect(requestBridge).toHaveBeenCalledWith(
+        BRIDGE_METHODS.feedbackStateSnapshot,
+        expect.objectContaining({ tabId: 33 }),
+      );
+    });
+
+    it('resolves fallback snapshot tab from explicit windowId when sender tab is missing', async () => {
+      const requestBridge = vi.fn().mockResolvedValue({});
+      const tabsQuery = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>;
+      tabsQuery.mockResolvedValue([{ id: 17, url: 'https://window.example', title: 'window tab' }]);
+      const h = await createHandler({ requestBridgeMethod: requestBridge });
+
+      await h(
+        {
+          method: BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+          params: { windowId: 9 },
+        },
+        makeSender({ tab: undefined }),
+      );
+
+      expect(tabsQuery).toHaveBeenCalledWith({ active: true, windowId: 9 }, expect.any(Function));
+      expect(requestBridge).toHaveBeenCalledWith(
+        BRIDGE_METHODS.feedbackStateSnapshot,
+        expect.objectContaining({ tabId: 17 }),
+      );
+    });
   });
 
   describe('feedback delta validation', () => {
@@ -323,6 +376,29 @@ describe('createRuntimeMessageHandler', () => {
           sender,
         ),
       ).rejects.toThrow('priority is required');
+    });
+
+    it('uses explicit tabId for sidepanel create requests without sender tab', async () => {
+      const requestBridge = vi.fn().mockResolvedValue({});
+      const tabsGet = chrome.tabs.get as unknown as ReturnType<typeof vi.fn>;
+      const tabsQuery = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>;
+      tabsGet.mockResolvedValue({ id: 23, url: 'https://bound.example', title: 'bound tab' });
+      const h = await createHandler({ requestBridgeMethod: requestBridge });
+
+      await h(
+        {
+          method: BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
+          params: { body: 'test', priority: 'normal', tabId: 23 },
+        },
+        makeSender({ tab: undefined }),
+      );
+
+      expect(tabsGet).toHaveBeenCalledWith(23, expect.any(Function));
+      expect(tabsQuery).not.toHaveBeenCalled();
+      expect(requestBridge).toHaveBeenCalledWith(
+        BRIDGE_METHODS.feedbackAnnotationCreate,
+        expect.objectContaining({ tabId: 23, url: 'https://bound.example' }),
+      );
     });
   });
 

@@ -3,6 +3,8 @@
  * Wires together WS connection, page context, tool execution, and extension event listeners.
  */
 
+import './browser-polyfill';
+
 import {
   connectWebSocket,
   forceReconnect,
@@ -18,6 +20,7 @@ import { createWsHandlers } from './bg-ws-handlers';
 import { createRuntimeMessageHandler } from './bg-runtime-handlers';
 import { registerLifecycleListeners } from './bg-lifecycle';
 import { installPageContextBridgeHostInMainWorld } from './bg-main-world-bridge-host';
+import { tabsQuery } from './extension-api';
 
 const inFlightToolCalls = new Map<string, string>();
 const pageToolState = createPageToolState();
@@ -25,7 +28,7 @@ const pageToolState = createPageToolState();
 // ── Tab helpers ──
 
 async function listTabs() {
-  const tabs = await chrome.tabs.query({});
+  const tabs = await tabsQuery({});
   return tabs.map((tab) => ({
     id: tab.id,
     url: tab.url,

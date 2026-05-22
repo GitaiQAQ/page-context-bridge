@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   BRIDGE_METHODS,
   type ContextResourcePayload,
@@ -184,6 +184,7 @@ describe('side-panel-app tools tree interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = '';
+    window.history.replaceState({}, '', '/');
     installChromeMock();
     vi.spyOn(globalThis, 'setInterval').mockReturnValue(
       1 as unknown as ReturnType<typeof setInterval>,
@@ -204,13 +205,15 @@ describe('side-panel-app tools tree interactions', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = '';
+    window.history.replaceState({}, '', '/');
     restoreChromeGlobal(originalChrome);
   });
 
-  it('renders bridge control tools inside unified builtin tree', async () => {
+  test('renders bridge control tools inside unified builtin tree', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
+    element.setAttribute('data-build-time', '2026-04-28T10:11:12.000Z');
     document.body.appendChild(element);
 
     await vi.waitFor(() => {
@@ -218,6 +221,9 @@ describe('side-panel-app tools tree interactions', () => {
       expect(text).toContain('extension.get_runtime_status');
       expect(text).toContain('feedback.get_snapshot');
       expect(text).toContain('Built-in Tools');
+      expect(
+        element.shadowRoot?.querySelector('[data-testid="build-time-label"]')?.textContent ?? '',
+      ).toContain('构建时间：');
     });
 
     // Built-in structure should be rendered as a namespace/instance tree, not a flat list.
@@ -230,7 +236,21 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('unchecks all descendant tool checkboxes when a namespace is disabled', async () => {
+  test('renders a build time label in the side panel header', async () => {
+    await import('./side-panel-app');
+
+    const element = document.createElement('side-panel-app');
+    element.setAttribute('data-build-time', '2026-04-28T10:11:12.000Z');
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('[data-testid="build-time-label"]')?.textContent ?? '',
+      ).toContain('构建时间：2026-04-28T10:11:12Z');
+    });
+  });
+
+  test('unchecks all descendant tool checkboxes when a namespace is disabled', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -281,7 +301,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('re-checks all descendant tool checkboxes when a namespace is re-enabled', async () => {
+  test('re-checks all descendant tool checkboxes when a namespace is re-enabled', async () => {
     await import('./side-panel-app');
 
     const disabledPreferences = setScopeEnabled({}, { tabId: 11, namespace: 'beta' }, false, {
@@ -340,7 +360,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('unchecks all namespace and tool checkboxes when a tab is disabled', async () => {
+  test('unchecks all namespace and tool checkboxes when a tab is disabled', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -404,7 +424,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('unchecks all tool checkboxes when an instance is disabled', async () => {
+  test('unchecks all tool checkboxes when an instance is disabled', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -461,7 +481,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('unchecks all builtin tool checkboxes when builtins are disabled', async () => {
+  test('unchecks all builtin tool checkboxes when builtins are disabled', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -511,7 +531,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('routes builtin namespace toggle through builtin root semantics', async () => {
+  test('routes builtin namespace toggle through builtin root semantics', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -569,7 +589,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
   });
 
-  it('does not expose local test actions for bridge control builtins', async () => {
+  test('does not expose local test actions for bridge control builtins', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -592,7 +612,7 @@ describe('side-panel-app tools tree interactions', () => {
     expect(bridgeControlTestButton).toBeNull();
   });
 
-  it('renders the redesigned context tab and loads resource and skill previews', async () => {
+  test('renders the redesigned context tab and loads resource and skill previews', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -661,6 +681,140 @@ describe('side-panel-app tools tree interactions', () => {
       input: { goal: 'Explain how the agent should use this business skill safely.' },
     });
   });
+
+  test('prefers boundTabId from URL for context and feedback flows', async () => {
+    await import('./side-panel-app');
+
+    window.history.replaceState({}, '', '/sidepanel.html?boundTabId=22&windowId=9');
+    const tabsQueryMock = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>;
+    tabsQueryMock.mockResolvedValue([{ id: 11 }]);
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionStatusGet);
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionPageToolsTreeGet);
+    });
+
+    expect(tabsQueryMock).not.toHaveBeenCalled();
+
+    const contextTabButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[role="tab"][title="Context"]',
+    );
+    contextTabButton!.click();
+
+    await vi.waitFor(() => {
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
+        BRIDGE_METHODS.extensionContextManifestGet,
+        {
+          tabId: 22,
+        },
+      );
+    });
+
+    const feedbackTabButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[role="tab"][title="Feedback"]',
+    );
+    feedbackTabButton!.click();
+
+    await vi.waitFor(() => {
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
+        BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+        {
+          tabId: 22,
+          windowId: 9,
+        },
+      );
+    });
+
+    const feedbackBody = element.shadowRoot?.querySelector<HTMLTextAreaElement>(
+      'textarea[placeholder="Describe the problem, expected behavior, reproduction steps"]',
+    );
+    expect(feedbackBody).not.toBeNull();
+    feedbackBody!.value = 'Bound tab feedback';
+    feedbackBody!.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+
+    const submitButton = [
+      ...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? []),
+    ].find((button) => button.textContent?.trim() === 'Submit');
+    expect(submitButton).not.toBeNull();
+    submitButton!.click();
+
+    await vi.waitFor(() => {
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
+        BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
+        {
+          body: 'Bound tab feedback',
+          priority: 'normal',
+          tabId: 22,
+          windowId: 9,
+        },
+      );
+    });
+
+    expect(tabsQueryMock).not.toHaveBeenCalled();
+  });
+
+  test('consumes launch URL from devtools surface-specific storage key', async () => {
+    await import('./side-panel-app');
+
+    window.history.replaceState({}, '', '/sidepanel.html?surface=devtools');
+    const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    const storageRemoveMock = chrome.storage.local.remove as unknown as ReturnType<typeof vi.fn>;
+    storageGetMock.mockImplementation(
+      async (keyOrDefaults: string | string[] | Record<string, unknown>) => {
+        if (Array.isArray(keyOrDefaults)) {
+          return {
+            'sidePanelUrl:devtools': 'http://127.0.0.1:22336/',
+          };
+        }
+        if (typeof keyOrDefaults === 'string') {
+          return {};
+        }
+        return keyOrDefaults;
+      },
+    );
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      const iframe = element.shadowRoot?.querySelector('iframe');
+      expect(iframe?.src).toContain('http://127.0.0.1:22336/');
+    });
+
+    expect(storageGetMock.mock.calls[0]?.[0]).toEqual(['sidePanelUrl:devtools', 'sidePanelUrl']);
+    expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('sidePanelUrl:devtools');
+  });
+
+  test('re-discovers page tools when current tab is missing from initial tree', async () => {
+    const latePageEntries = new Map<number, PageToolEntry[]>();
+    installRuntimeRequestMock({
+      builtinTools,
+      tabs,
+      pageEntries: latePageEntries,
+    });
+    await import('./side-panel-app');
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
+        BRIDGE_METHODS.extensionPageToolsDiscover,
+        {
+          tabId: 11,
+        },
+      );
+    });
+
+    expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionPageToolsTreeGet);
+    await vi.waitFor(() => {
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('late.inspect');
+    });
+  });
 });
 
 function installRuntimeRequestMock(input: {
@@ -682,6 +836,24 @@ function installRuntimeRequestMock(input: {
         return { connected: true };
       case BRIDGE_METHODS.extensionPageToolsTreeGet:
         return buildToolTree(input.tabs, input.pageEntries, input.builtinTools, preferences);
+      case BRIDGE_METHODS.extensionPageToolsDiscover: {
+        const payload = params as { tabId?: number } | undefined;
+        if (payload?.tabId != null && !input.pageEntries.has(payload.tabId)) {
+          input.pageEntries.set(payload.tabId, [
+            {
+              namespace: 'late',
+              instanceId: 'default',
+              tools: [{ name: 'late.inspect', description: 'Late discovered tool' }],
+            },
+          ]);
+        }
+        return {
+          tools:
+            payload?.tabId != null
+              ? (input.pageEntries.get(payload.tabId) ?? []).flatMap((entry) => entry.tools)
+              : [],
+        };
+      }
       case BRIDGE_METHODS.extensionPageToolsSetEnabled: {
         const payload = params as {
           root?: 'builtin' | 'page';

@@ -20,6 +20,7 @@ import {
 import { captureActiveTabFeedbackContext } from './bg-feedback-context';
 import {
   ensureAgentationMainOnSenderTab,
+  ensureAgentationMainOnTab,
   ensureMainWorldBridgeHostOnSenderTab,
   enrichUiAnchorReactMetaInMainWorld,
   type MainWorldBridgeHostInstaller,
@@ -39,8 +40,73 @@ import {
   type PageToolSpec,
 } from '@page-context/tool-visibility';
 import type { ExtensionControlHandlers } from './bg-ws-handlers';
+import type { RuntimeExplicitTabBinding, RuntimeExplicitTabBindingInput } from './sidepanel-types';
 
 type JsonRecord = Record<string, unknown>;
+const EXTENSION_E2E_REPORT_METHOD = 'extension.e2e.report';
+
+function withSenderTabId(params: unknown, sender: chrome.runtime.MessageSender): unknown {
+  const senderTabId = sender.tab?.id;
+  if (!senderTabId) {
+    return params;
+  }
+  if (params == null) {
+    return { tabId: senderTabId };
+  }
+  if (typeof params !== 'object') {
+    return params;
+  }
+  const record = params as Record<string, unknown>;
+  if (typeof record.tabId === 'number' && Number.isFinite(record.tabId)) {
+    return params;
+  }
+  return { ...record, tabId: senderTabId };
+}
+
+/**
+ * runtime 绑定字段归一化：
+ * - 新字段 tabId 优先
+ * - 兼容字段 boundTabId 次之
+ * - windowId 仅在存在时透传
+ */
+function normalizeRuntimeExplicitTabBinding(
+  input?: RuntimeExplicitTabBindingInput | null,
+): RuntimeExplicitTabBinding {
+  if (input == null) {
+    return {};
+  }
+
+  return {
+    ...(input.tabId != null
+      ? { tabId: input.tabId }
+      : input.boundTabId != null
+        ? { tabId: input.boundTabId }
+        : {}),
+    ...(input.windowId != null ? { windowId: input.windowId } : {}),
+  };
+}
+
+async function postFirefoxE2EReport(params: unknown): Promise<{ ok: true }> {
+  const payload = params as {
+    reportUrl?: unknown;
+    payload?: unknown;
+  };
+  const reportUrl =
+    typeof payload.reportUrl === 'string' && payload.reportUrl.trim()
+      ? payload.reportUrl.trim()
+      : '';
+  if (!reportUrl) {
+    throw new Error('E2E reportUrl is required');
+  }
+
+  // 让扩展后台代发诊断请求，避免真实 HTTPS 页面里直连本地 HTTP 端口时被 mixed content 拦截。
+  await fetch(reportUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload.payload ?? {}),
+  });
+  return { ok: true };
+}
 
 interface RuntimeRpcMessage {
   method: string;
@@ -64,6 +130,8 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
     await ensurePageToolPreferencesLoaded(deps.pageToolState);
 
     switch (message.method) {
+      case EXTENSION_E2E_REPORT_METHOD:
+        return await postFirefoxE2EReport(message.params);
       case BRIDGE_METHODS.extensionStatusGet:
         return deps.extensionControlHandlers.buildExtensionStatusResponse();
       case BRIDGE_METHODS.extensionReconnect:
@@ -74,7 +142,9 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
         return await deps.extensionControlHandlers.handleExtensionPageToolsTreeGet();
       case BRIDGE_METHODS.extensionPageToolsDiscover:
       case BRIDGE_METHODS.extensionPageToolsRefresh:
-        return await deps.extensionControlHandlers.handleExtensionPageToolsRefresh(message.params);
+        return await deps.extensionControlHandlers.handleExtensionPageToolsRefresh(
+          withSenderTabId(message.params, sender),
+        );
       case BRIDGE_METHODS.extensionContextManifestGet:
         return await deps.extensionControlHandlers.handleExtensionContextManifestGet(
           message.params,
@@ -86,11 +156,19 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
       case BRIDGE_METHODS.extensionContextSkillGet:
         return await deps.extensionControlHandlers.handleExtensionContextSkillGet(message.params);
       case BRIDGE_METHODS.extensionFeedbackStateSnapshot: {
-        const payload = (message.params ?? {}) as FeedbackStateSnapshotParams;
-        const params: FeedbackStateSnapshotParams = { ...payload };
+        const payload = (message.params ?? {}) as FeedbackStateSnapshotParams &
+          RuntimeExplicitTabBindingInput;
+        // 统一绑定语义：tabId > boundTabId；windowId 仅在 sender.tab 缺失时作为兜底条件。
+        const runtimeBinding = normalizeRuntimeExplicitTabBinding(payload);
+        const params: FeedbackStateSnapshotParams = {
+          tabId: runtimeBinding.tabId,
+          sessionId: payload.sessionId,
+        };
         if (params.tabId == null && !params.sessionId) {
           // Bind sender.tab first; fall back to active tab only when sidepanel has no sender.tab to avoid cross-tab leakage.
-          const context = await captureActiveTabFeedbackContext(sender).catch(() => null);
+          const context = await captureActiveTabFeedbackContext(sender, {
+            windowId: runtimeBinding.windowId,
+          }).catch(() => null);
           params.tabId = context?.tabId;
         }
         return await deps.requestBridgeMethod(BRIDGE_METHODS.feedbackStateSnapshot, params);
@@ -108,15 +186,17 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
         return await deps.requestBridgeMethod(BRIDGE_METHODS.feedbackStateDelta, params);
       }
       case BRIDGE_METHODS.extensionFeedbackAnnotationCreate: {
-        const payload = (message.params ?? {}) as FeedbackRuntimeCreatePayload;
+        const payload = (message.params ?? {}) as FeedbackRuntimeCreatePayload &
+          RuntimeExplicitTabBindingInput;
         if (!payload.body?.trim()) {
           throw new Error('Feedback body is required');
         }
         if (!payload.priority) {
           throw new Error('Feedback priority is required');
         }
+        const runtimeBinding = normalizeRuntimeExplicitTabBinding(payload);
         // UI annotations from content-script must bind sender tab; borrowing the current active tab is not allowed.
-        const context = await captureActiveTabFeedbackContext(sender);
+        const context = await captureActiveTabFeedbackContext(sender, runtimeBinding);
         // Only enrich MAIN world info on the uiAnchor path; keep original value on failure so the main flow is not slowed by extra probing.
         if (payload.uiAnchor) {
           payload.uiAnchor = await enrichUiAnchorReactMetaInMainWorld(
@@ -211,8 +291,17 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
           sender,
           deps.installPageContextBridgeHostInMainWorld,
         );
-      case BRIDGE_METHODS.extensionAgentationMainEnsure:
+      case BRIDGE_METHODS.extensionAgentationMainEnsure: {
+        const params = (message.params ?? {}) as { tabId?: number; frameId?: number };
+        if (
+          typeof params.tabId === 'number' &&
+          Number.isInteger(params.tabId) &&
+          params.tabId > 0
+        ) {
+          return await ensureAgentationMainOnTab(params.tabId, params.frameId);
+        }
         return await ensureAgentationMainOnSenderTab(sender);
+      }
       default:
         throw new RpcProtocolError(
           RPC_ERROR_CODES.methodNotFound,

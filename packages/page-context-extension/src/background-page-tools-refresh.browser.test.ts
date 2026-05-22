@@ -49,6 +49,7 @@ vi.mock('./bg-page-context', () => ({
   executePageToolInTab: vi.fn(async () => ({ ok: true, result: {} })),
   getRawPageContextManifest: vi.fn(async () => null),
   getPageContextSkill: vi.fn(async () => null),
+  pageAccessBackendKind: 'chromium-native-main-world',
   readPageContextResource: vi.fn(async () => ({
     id: 'r',
     mimeType: 'application/json',

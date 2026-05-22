@@ -14,8 +14,10 @@
     "build": "vite build --config vite.config.ts",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "test:firefox:e2e": "node scripts/firefox-mcp-e2e.mjs",
+    "test:firefox:e2e:realpage": "FIREFOX_E2E_START_URL='https://unpkg.com/@page-context/example@0.0.1/dist/example.html' FIREFOX_MCP_EXPECTED_TOOL_SUFFIX='.page.getPageInfo' FIREFOX_MCP_TOOL_ARGS_JSON='{}' FIREFOX_MCP_EXPECTED_RESULT_JSON='{\"title\":\"Page Context Bridge - Test Page\",\"url\":\"example.html\",\"itemCount\":2}' node scripts/firefox-mcp-e2e.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --project node",
+    "test": "pnpm --dir ../.. exec vitest run --project node",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

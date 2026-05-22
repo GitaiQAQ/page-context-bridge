@@ -26,6 +26,12 @@ export const BRIDGE_METHODS = {
   extensionContextManifestGet: 'extension.context.manifest.get',
   extensionContextResourceRead: 'extension.context.resource.read',
   extensionContextSkillGet: 'extension.context.skill.get',
+  // background -> content-script -> main-world broker 链路（Firefox fallback）
+  extensionContentContextManifestGet: 'extension.content.context.manifest.get',
+  extensionContentContextResourceRead: 'extension.content.context.resource.read',
+  extensionContentContextSkillGet: 'extension.content.context.skill.get',
+  extensionContentPageToolsDiscover: 'extension.content.pageTools.discover',
+  extensionContentPageToolExecute: 'extension.content.pageTool.execute',
   extensionToolDebugCall: 'extension.tool.debug.call',
   extensionToolExecute: 'extension.tool.execute',
   extensionMainWorldHostEnsure: 'extension.mainWorld.host.ensure',

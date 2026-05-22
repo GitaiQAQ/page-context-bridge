@@ -259,7 +259,11 @@ function filterNamespace(namespace: ToolTreeNamespace, query: string): ToolTreeN
     .map((instance) => filterInstance(instance, query))
     .filter((instance): instance is ToolTreeInstance => instance !== null);
 
-  const selfMatches = !query || namespace.namespace.toLowerCase().includes(query);
+  const selfMatches =
+    !query ||
+    [namespace.namespace, namespace.title ?? '', namespace.description ?? ''].some((value) =>
+      value.toLowerCase().includes(query),
+    );
   if (!selfMatches && instances.length === 0) {
     return null;
   }
@@ -292,7 +296,21 @@ function matchesTool(tool: ToolTreeTool, query: string): boolean {
   );
 }
 
+function getNamespaceDisplayContent(
+  namespace: Pick<ToolTreeNamespace, 'namespace' | 'title' | 'description'>,
+): {
+  label: string;
+  subtitle: string;
+} {
+  return {
+    label: namespace.title?.trim() || namespace.namespace,
+    subtitle: namespace.description?.trim() || 'Namespace',
+  };
+}
+
 function renderNamespaceNode(namespace: ToolTreeNamespace): TemplateResult {
+  const namespaceDisplayContent = getNamespaceDisplayContent(namespace);
+
   return html`
     <details open>
       <summary>
@@ -307,8 +325,8 @@ function renderNamespaceNode(namespace: ToolTreeNamespace): TemplateResult {
             tabId: String(namespace.tabId),
             namespace: namespace.namespace,
           },
-          label: namespace.namespace,
-          subtitle: 'Namespace',
+          label: namespaceDisplayContent.label,
+          subtitle: namespaceDisplayContent.subtitle,
           meta: `${namespace.enabledTools}/${namespace.totalTools} enabled`,
           badges: [html`<span class="badge badge-xs badge-secondary">namespace</span>`],
         })}

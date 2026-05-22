@@ -1,8 +1,24 @@
+import './browser-polyfill';
 import './popup.css';
 
 import { BRIDGE_METHODS } from '@page-context/shared-protocol';
 
+import {
+  getExtensionApi,
+  runtimeGetUrl,
+  storageLocalGet,
+  storageLocalSet,
+  tabsCreate,
+  tabsQuery,
+  windowsGetCurrent,
+} from './extension-api';
 import { sendRuntimeRequest } from './runtime-rpc';
+import {
+  DEFAULT_CONSOLE_URL,
+  SIDEPANEL_SURFACE,
+  setLaunchUrlForSurface,
+} from './sidepanel-launch-state';
+import type { RuntimeExplicitTabBinding, SidepanelUrlTabBinding } from './sidepanel-types';
 
 interface StatusResponse {
   connected: boolean;
@@ -11,7 +27,7 @@ interface StatusResponse {
 }
 
 const DEFAULT_WS_URL = 'ws://127.0.0.1:22335/default';
-const SIDE_PANEL_URL_KEY = 'sidePanelUrl';
+const FALLBACK_CONSOLE_UI_PATH = 'sidepanel.html';
 
 const statusDot = document.getElementById('statusDot') as HTMLSpanElement;
 const statusText = document.getElementById('statusText') as HTMLDivElement;
@@ -22,6 +38,19 @@ const reconnectBtn = document.getElementById('reconnectBtn') as HTMLButtonElemen
 const toast = document.getElementById('toast') as HTMLDivElement;
 const openExampleBtn = document.getElementById('openExampleBtn') as HTMLButtonElement;
 const openSidePanelBtn = document.getElementById('openSidePanelBtn') as HTMLButtonElement;
+
+type ChromeWithOptionalSidePanel = typeof chrome & {
+  sidePanel?: {
+    open(options: { windowId: number }): Promise<void>;
+  };
+};
+
+type BrowserWithOptionalSidebarAction = typeof chrome & {
+  sidebarAction?: {
+    open(): Promise<void>;
+    close(): Promise<void>;
+  };
+};
 
 function showToast(message: string, type: 'success' | 'error' = 'success'): void {
   toast.textContent = message;
@@ -44,14 +73,19 @@ async function refreshStatus(): Promise<void> {
 }
 
 async function loadCurrentUrl(): Promise<void> {
-  const result = await chrome.storage.local.get({ mcpWsUrl: DEFAULT_WS_URL });
+  const result = await storageLocalGet({ mcpWsUrl: DEFAULT_WS_URL });
   wsUrlInput.value = result.mcpWsUrl as string;
 }
 
 async function reconnect(): Promise<void> {
-  await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
-  showToast('Reconnecting...');
-  setTimeout(() => void refreshStatus(), 1_200);
+  try {
+    await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
+    showToast('Reconnecting...');
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), 'error');
+  } finally {
+    setTimeout(() => void refreshStatus(), 1_200);
+  }
 }
 
 async function saveAndReconnect(): Promise<void> {
@@ -68,21 +102,74 @@ async function saveAndReconnect(): Promise<void> {
     return;
   }
 
-  await chrome.storage.local.set({ mcpWsUrl: url });
+  await storageLocalSet({ mcpWsUrl: url });
   await reconnect();
+}
+
+/**
+ * 读取 launcher 的显式绑定。
+ * 边界上只返回“存在的字段”，避免把 null/undefined 混在同一条链路里。
+ */
+async function getLauncherRuntimeBinding(): Promise<RuntimeExplicitTabBinding> {
+  const [activeTab] = await tabsQuery({ active: true, currentWindow: true });
+  return {
+    ...(activeTab?.id != null ? { tabId: activeTab.id } : {}),
+    ...(activeTab?.windowId != null ? { windowId: activeTab.windowId } : {}),
+  };
+}
+
+/** runtime 绑定 -> launcher URL query 绑定（保留 boundTabId 兼容字段）。 */
+function toSidepanelUrlTabBinding(binding: RuntimeExplicitTabBinding): SidepanelUrlTabBinding {
+  return {
+    ...(binding.tabId != null ? { boundTabId: binding.tabId } : {}),
+    ...(binding.windowId != null ? { windowId: binding.windowId } : {}),
+  };
+}
+
+/** fallback 页面继续输出 boundTabId/windowId，保证旧 query 协议兼容。 */
+function buildFallbackConsoleUiUrl(binding: RuntimeExplicitTabBinding): string {
+  const url = new URL(runtimeGetUrl(FALLBACK_CONSOLE_UI_PATH));
+  const queryBinding = toSidepanelUrlTabBinding(binding);
+  if (queryBinding.boundTabId != null) {
+    url.searchParams.set('boundTabId', String(queryBinding.boundTabId));
+  }
+  if (queryBinding.windowId != null) {
+    url.searchParams.set('windowId', String(queryBinding.windowId));
+  }
+  return url.toString();
+}
+
+async function launchConsoleUi(): Promise<void> {
+  await setLaunchUrlForSurface(SIDEPANEL_SURFACE.default, DEFAULT_CONSOLE_URL);
+  const binding = await getLauncherRuntimeBinding();
+
+  // Firefox: use sidebarAction.open() (available since Firefox 121)
+  const sidebarApi = (getExtensionApi() as BrowserWithOptionalSidebarAction).sidebarAction;
+  if (sidebarApi?.open) {
+    await sidebarApi.open();
+    return;
+  }
+
+  // Chrome: use sidePanel.open()
+  const sidePanelApi = (getExtensionApi() as ChromeWithOptionalSidePanel).sidePanel;
+  if (sidePanelApi != null) {
+    const currentWindow = await windowsGetCurrent();
+    if (currentWindow.id != null) {
+      await sidePanelApi.open({ windowId: currentWindow.id });
+      return;
+    }
+  }
+
+  await tabsCreate({ url: buildFallbackConsoleUiUrl(binding) });
 }
 
 saveBtn.addEventListener('click', () => void saveAndReconnect());
 reconnectBtn.addEventListener('click', () => void reconnect());
 openExampleBtn.addEventListener('click', () => {
-  void chrome.tabs.create({ url: 'https://unpkg.com/@page-context/example/dist/example.html' });
+  void tabsCreate({ url: 'https://unpkg.com/@page-context/example/dist/example.html' });
 });
 openSidePanelBtn.addEventListener('click', async () => {
-  await chrome.storage.local.set({ [SIDE_PANEL_URL_KEY]: 'http://127.0.0.1:22336/' });
-  const currentWindow = await chrome.windows.getCurrent();
-  if (currentWindow.id != null) {
-    await chrome.sidePanel.open({ windowId: currentWindow.id });
-  }
+  await launchConsoleUi();
 });
 
 void loadCurrentUrl();

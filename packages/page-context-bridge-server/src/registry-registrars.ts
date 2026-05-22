@@ -107,12 +107,21 @@ export function syncBuiltinToolsOnServer(input: {
 
   for (const provider of toolProviders) {
     const providerHandles = provider.registerOnBridge(
-      (name, schema, handler) =>
-        mcpServer.registerTool(
+      (name, schema, handler) => {
+        // 这里必须在真正调用 registerTool 之前去重。
+        // 否则同名 builtin 会先触发 MCP server 的“重复注册”异常，
+        // 后面的 page tool / manifest 同步也会被中断。
+        if (handles.has(name) || !state.enabledBuiltinToolNames.has(name)) {
+          return {
+            remove: () => undefined,
+          };
+        }
+        return mcpServer.registerTool(
           name,
           schema as Parameters<typeof mcpServer.registerTool>[1],
           handler as Parameters<typeof mcpServer.registerTool>[2],
-        ),
+        );
+      },
       (tool, args, tabId) => rpcCaller.sendToolCall(tool, args, tabId),
     );
 

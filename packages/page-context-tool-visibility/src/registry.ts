@@ -4,13 +4,21 @@
 import type { PageToolEntry, PageToolSpec } from './types';
 
 export function normalizePageToolEntries(
-  rawEntries: Array<{ namespace: string; instanceId: string; tools: PageToolSpec[] }>,
+  rawEntries: Array<{
+    namespace: string;
+    namespaceTitle?: string;
+    namespaceDescription?: string;
+    instanceId: string;
+    tools: PageToolSpec[];
+  }>,
 ): PageToolEntry[] {
   return rawEntries.map((entry) => {
     const prefix =
       entry.instanceId !== 'default' ? `${entry.namespace}.${entry.instanceId}` : entry.namespace;
     return {
       namespace: entry.namespace,
+      namespaceTitle: entry.namespaceTitle,
+      namespaceDescription: entry.namespaceDescription,
       instanceId: entry.instanceId,
       tools: entry.tools.map((tool) => ({
         ...tool,

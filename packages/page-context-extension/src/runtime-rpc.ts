@@ -12,6 +12,8 @@ import {
   type RpcRequest,
 } from '@page-context/shared-protocol';
 
+import { runtimeSendMessage, tabsSendMessage } from './extension-api';
+
 type RuntimeHandler = (
   message: RpcRequest | RpcNotification,
   sender: chrome.runtime.MessageSender,
@@ -21,7 +23,7 @@ export async function sendRuntimeRequest<TResult>(
   method: string,
   params?: unknown,
 ): Promise<TResult> {
-  const response = await chrome.runtime.sendMessage(createRequest(method, params));
+  const response = await runtimeSendMessage(createRequest(method, params));
   return unwrapRpcResponse<TResult>(response);
 }
 
@@ -30,7 +32,7 @@ export async function sendRuntimeNotification(
   params?: unknown,
   meta?: RpcMeta,
 ): Promise<void> {
-  await chrome.runtime.sendMessage(createNotification(method, params, meta));
+  await runtimeSendMessage(createNotification(method, params, meta));
 }
 
 export async function sendTabRequest<TResult>(
@@ -38,7 +40,7 @@ export async function sendTabRequest<TResult>(
   method: string,
   params?: unknown,
 ): Promise<TResult> {
-  const response = await chrome.tabs.sendMessage(tabId, createRequest(method, params));
+  const response = await tabsSendMessage(tabId, createRequest(method, params));
   return unwrapRpcResponse<TResult>(response);
 }
 

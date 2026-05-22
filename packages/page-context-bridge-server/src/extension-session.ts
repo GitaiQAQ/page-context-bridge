@@ -261,6 +261,27 @@ export async function refreshPageToolsFromExtension(
   }
 }
 
+async function getPageToolsForTabFromExtension(
+  tenantId: string,
+  manager: TenantManager,
+  tabId: number,
+): Promise<PageToolSpec[]> {
+  const current = assertExtensionReady(tenantId, manager);
+  try {
+    const result = await current.peer.request<{ tools?: PageToolSpec[] }>(
+      BRIDGE_METHODS.extensionPageToolsGet,
+      { tabId },
+      { timeoutMs: TOOL_CALL_TIMEOUT_MS },
+    );
+    return result.tools ?? [];
+  } catch (error) {
+    if (!isRpcMethodNotFound(error)) {
+      throw error;
+    }
+    return [];
+  }
+}
+
 export async function getPageToolsTreeFromExtension(
   tenantId: string,
   manager: TenantManager,
@@ -297,6 +318,65 @@ export async function setPageToolsEnabledBatchOnExtension(
     );
   }
   return latestTree;
+}
+
+function extractTabIdsWithRegisteredTools(payload: unknown): number[] {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+  const tabs = (payload as { tabs?: unknown }).tabs;
+  if (!Array.isArray(tabs)) {
+    return [];
+  }
+  return tabs
+    .map((tab) => {
+      if (!tab || typeof tab !== 'object') {
+        return null;
+      }
+      const record = tab as { tabId?: unknown; totalTools?: unknown };
+      const tabId = Number(record.tabId ?? 0);
+      const totalTools = Number(record.totalTools ?? 0);
+      if (!Number.isInteger(tabId) || tabId <= 0 || totalTools <= 0) {
+        return null;
+      }
+      return tabId;
+    })
+    .filter((tabId): tabId is number => tabId != null);
+}
+
+async function syncRegistryStateFromConnectedExtension(
+  tenantId: string,
+  manager: TenantManager,
+  registry: McpRegistry,
+): Promise<void> {
+  const currentTree = await getPageToolsTreeFromExtension(tenantId, manager).catch((error) => {
+    throw new Error(
+      `Failed to read extension tool tree after register: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+
+  const activeTabIds = new Set(extractTabIdsWithRegisteredTools(currentTree));
+  const cachedTabIds = Array.from(registry.getPageToolsByTab().keys());
+
+  for (const tabId of cachedTabIds) {
+    if (activeTabIds.has(tabId)) {
+      continue;
+    }
+    registry.deletePageTools(tabId);
+    registry.unregisterPageToolsFromAllServers(tabId);
+    registry.syncContextManifestOnAllServers(tabId, null);
+  }
+
+  for (const tabId of activeTabIds) {
+    const tools = await getPageToolsForTabFromExtension(tenantId, manager, tabId);
+    registry.unregisterPageToolsFromAllServers(tabId);
+    registry.setPageTools(tabId, tools);
+    registry.registerPageToolsOnAllServers(tabId, tools);
+    const manifest = await getContextManifestFromExtension(tenantId, manager, tabId).catch(
+      () => null,
+    );
+    registry.syncContextManifestOnAllServers(tabId, manifest);
+  }
 }
 
 function isRpcMethodNotFound(error: unknown): boolean {
@@ -355,7 +435,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // ── Per-tenant extension state creation ──
 
-function createExtensionState(
+export function createExtensionState(
   ws: WebSocket,
   registry: McpRegistry,
   tenantId: string,
@@ -396,6 +476,13 @@ function createExtensionState(
     log(
       `[${tenantId}] Extension registered: ${payload.extensionId ?? 'unknown'} v${payload.version ?? 'unknown'} → session ${sessionId}`,
     );
+
+    await syncRegistryStateFromConnectedExtension(tenantId, manager, registry).catch((error) => {
+      log(
+        `[${tenantId}] Failed to replay extension tools after register: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+
     return { sessionId, heartbeatIntervalMs: 15_000 };
   });
 

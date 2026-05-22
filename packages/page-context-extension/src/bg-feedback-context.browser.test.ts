@@ -58,7 +58,10 @@ describe('captureActiveTabFeedbackContext', () => {
       title: 'active tab',
       selectedText: undefined,
     });
-    expect(tabsQuery).toHaveBeenCalledWith({ active: true, currentWindow: true });
+    expect(tabsQuery).toHaveBeenCalledWith(
+      { active: true, currentWindow: true },
+      expect.any(Function),
+    );
     expect(tabsGet).not.toHaveBeenCalled();
   });
 
@@ -82,8 +85,48 @@ describe('captureActiveTabFeedbackContext', () => {
       title: 'fetched tab',
       selectedText: 'from fetched tab',
     });
-    expect(tabsGet).toHaveBeenCalledWith(8);
+    expect(tabsGet).toHaveBeenCalledWith(8, expect.any(Function));
     expect(tabsQuery).not.toHaveBeenCalled();
+  });
+
+  it('uses explicit target tabId before falling back to active tab', async () => {
+    const tabsQuery = vi.fn();
+    const tabsGet = vi
+      .fn()
+      .mockResolvedValue({ id: 22, url: 'https://bound.example', title: 'bound tab' });
+    const executeScript = vi.fn().mockResolvedValue([{ result: 'bound selected text' }]);
+    installChromeMock({ tabsQuery, tabsGet, executeScript });
+
+    const context = await captureActiveTabFeedbackContext(undefined, { tabId: 22 });
+
+    expect(context).toEqual({
+      tabId: 22,
+      url: 'https://bound.example',
+      title: 'bound tab',
+      selectedText: 'bound selected text',
+    });
+    expect(tabsGet).toHaveBeenCalledWith(22, expect.any(Function));
+    expect(tabsQuery).not.toHaveBeenCalled();
+  });
+
+  it('uses explicit windowId when resolving fallback active tab', async () => {
+    const tabsQuery = vi
+      .fn()
+      .mockResolvedValue([{ id: 13, url: 'https://window.example', title: 'window tab' }]);
+    const tabsGet = vi.fn();
+    const executeScript = vi.fn().mockResolvedValue([{ result: '' }]);
+    installChromeMock({ tabsQuery, tabsGet, executeScript });
+
+    const context = await captureActiveTabFeedbackContext(undefined, { windowId: 9 });
+
+    expect(context).toEqual({
+      tabId: 13,
+      url: 'https://window.example',
+      title: 'window tab',
+      selectedText: undefined,
+    });
+    expect(tabsQuery).toHaveBeenCalledWith({ active: true, windowId: 9 }, expect.any(Function));
+    expect(tabsGet).not.toHaveBeenCalled();
   });
 });
 

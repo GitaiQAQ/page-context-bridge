@@ -36,7 +36,12 @@ export function renderToolsTab(input: RenderToolsTabInput): TemplateResult {
         class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 sticky top-0 z-10"
       >
         <span class="text-xs font-bold uppercase tracking-wide opacity-60">Context Tools</span>
-        <span class="text-xs opacity-50">${input.toolsCount}</span>
+        <span
+          data-testid="build-time-label"
+          class="text-xs opacity-50 truncate"
+          title=${input.toolsCount}
+          >${input.toolsCount}</span
+        >
         <button class="btn btn-xs btn-ghost ml-auto" @click=${input.onRefresh}>Refresh</button>
       </div>
       <div class="px-3 py-1.5 border-b border-base-300 bg-base-200 sticky top-[2.75rem] z-20">

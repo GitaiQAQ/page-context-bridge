@@ -3,6 +3,8 @@
  * Only reads stable and low-cost information to avoid introducing fragile DOM anchor logic.
  */
 
+import { tabsGet, tabsQuery } from './extension-api';
+
 export interface ActiveTabFeedbackContext {
   tabId: number;
   url: string;
@@ -10,10 +12,16 @@ export interface ActiveTabFeedbackContext {
   selectedText?: string;
 }
 
+export interface FeedbackContextTarget {
+  tabId?: number;
+  windowId?: number;
+}
+
 export async function captureActiveTabFeedbackContext(
   sender?: chrome.runtime.MessageSender,
+  target?: FeedbackContextTarget,
 ): Promise<ActiveTabFeedbackContext> {
-  const tab = await resolveFeedbackTab(sender);
+  const tab = await resolveFeedbackTab(sender, target);
   if (!tab?.id || !tab.url) {
     throw new Error('No tab available for feedback');
   }
@@ -28,7 +36,12 @@ export async function captureActiveTabFeedbackContext(
 
 async function resolveFeedbackTab(
   sender?: chrome.runtime.MessageSender,
+  target?: FeedbackContextTarget,
 ): Promise<chrome.tabs.Tab | undefined> {
+  if (typeof target?.tabId === 'number') {
+    return await tabsGet(target.tabId);
+  }
+
   const senderTab = sender?.tab;
   const senderTabId = senderTab?.id;
   if (typeof senderTabId === 'number') {
@@ -37,11 +50,15 @@ async function resolveFeedbackTab(
       return senderTab;
     }
     // Some scenarios sender only provides tabId, not url/title; supplement with tabs.get to maintain data integrity.
-    return await chrome.tabs.get(senderTabId);
+    return await tabsGet(senderTabId);
   }
 
   // Old call paths like sidepanel don't have sender.tab, maintain historical behavior by falling back to current active tab.
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [activeTab] = await tabsQuery(
+    typeof target?.windowId === 'number'
+      ? { active: true, windowId: target.windowId }
+      : { active: true, currentWindow: true },
+  );
   return activeTab;
 }
 

@@ -8,7 +8,7 @@ import {
   RpcProtocolError,
   RPC_ERROR_CODES,
 } from '@page-context/shared-protocol';
-import { BuiltinExtensionProvider } from '@page-context/builtin-tools';
+import { BuiltinExtensionProvider, resolveBuiltinToolNameAlias } from '@page-context/builtin-tools';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -250,10 +250,13 @@ export async function executeToolCall(
     ) => Promise<T>;
   },
 ): Promise<unknown> {
+  const resolvedBuiltinTool = resolveBuiltinToolNameAlias(tool);
+  const effectiveTool = resolvedBuiltinTool ?? tool;
+
   // Check extension tool providers first
   for (const provider of extensionToolProviders) {
     const definitions = provider.getToolDefinitions();
-    const def = definitions.find((d) => d.name === tool);
+    const def = definitions.find((d) => d.name === effectiveTool);
     if (!def) {
       continue;
     }
@@ -263,7 +266,7 @@ export async function executeToolCall(
       if (tabId != null && args.tabId == null) {
         mergedArgs.tabId = tabId;
       }
-      return await provider.executeInServiceWorker(tool, mergedArgs, serviceWorkerContext);
+      return await provider.executeInServiceWorker(effectiveTool, mergedArgs, serviceWorkerContext);
     }
 
     if (def.executionContext === 'content-script') {
@@ -277,19 +280,26 @@ export async function executeToolCall(
         throw new RpcProtocolError(RPC_ERROR_CODES.invalidRequest, 'No active tab available');
       }
       return await deps.sendTabRequest(targetTabId, 'extension.tool.execute', {
-        tool,
+        tool: effectiveTool,
         args,
         _providerId: provider.id,
       });
     }
   }
 
+  if (resolvedBuiltinTool || tool.startsWith('builtin.')) {
+    throw new RpcProtocolError(
+      RPC_ERROR_CODES.methodNotFound,
+      `Builtin tool is unavailable in this browser runtime: ${effectiveTool}`,
+    );
+  }
+
   // Page context tools (namespaced)
-  if (tool.includes('.')) {
+  if (effectiveTool.includes('.')) {
     if (!deps?.executePageToolInTab) {
       throw new Error('executeToolCall: executePageToolInTab dependency required for page tools');
     }
-    return await executePageTool(tool, args, tabId, deps.executePageToolInTab);
+    return await executePageTool(effectiveTool, args, tabId, deps.executePageToolInTab);
   }
 
   throw new RpcProtocolError(RPC_ERROR_CODES.methodNotFound, `Unknown tool: ${tool}`);

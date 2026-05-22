@@ -119,8 +119,7 @@ export class McpRegistry {
 
   addServer(server: McpServer): void {
     this.mcpServers.add(server);
-    this.registerFeedbackToolsOnServer(server);
-    this.registerExtensionToolControlToolsOnServer(server);
+    this.syncPageToolsToNewServer(server);
   }
 
   removeServer(server: McpServer): void {

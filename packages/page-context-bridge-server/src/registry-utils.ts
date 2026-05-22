@@ -3,6 +3,7 @@ import type {
   ContextSkillDescriptor,
   FeedbackActor,
 } from '@page-context/shared-protocol';
+import { getBuiltinToolNameAliases } from '@page-context/builtin-tools';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type {
@@ -70,8 +71,7 @@ export function createTextResponse(text: string) {
 }
 
 export function expandBuiltinToolNameAliases(toolNames: string[]): Set<string> {
-  // Historical aliases are intentionally NOT supported.
-  return new Set(toolNames);
+  return new Set(toolNames.flatMap((toolName) => getBuiltinToolNameAliases(toolName)));
 }
 
 export function isFeedbackAgentPushStatusReader(

@@ -7,6 +7,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, copyFi
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
+const extensionBuildTime = new Date().toISOString();
+process.env.VITE_PAGE_CONTEXT_EXTENSION_BUILD_TIME = extensionBuildTime;
 
 // Keep consistent with HOST_ID in src/agentation-main.tsx, used for CSS inline injection target
 const AGENTATION_MAIN_HOST_ID = '__pc_agentation_main__';
@@ -70,12 +72,39 @@ function injectCssLinks() {
   };
 }
 
+function patchSidepanelBuildTimeAttribute(distDir: string) {
+  const sidepanelHtmlPath = resolve(distDir, 'sidepanel.html');
+
+  try {
+    const html = readFileSync(sidepanelHtmlPath, 'utf8');
+    const patchedHtml = html
+      .replaceAll('%VITE_PAGE_CONTEXT_EXTENSION_BUILD_TIME%', extensionBuildTime)
+      .replaceAll('__PAGE_CONTEXT_EXTENSION_BUILD_TIME__', extensionBuildTime);
+
+    if (patchedHtml === html) {
+      console.warn('Side-panel build time placeholder not found in html');
+      return;
+    }
+
+    writeFileSync(sidepanelHtmlPath, patchedHtml);
+    console.log(`Patched side-panel build time html: ${extensionBuildTime}`);
+  } catch (error) {
+    console.warn('Failed to patch side-panel build time html:', error);
+  }
+}
+
 function renameUnderscoreFiles() {
   return {
     name: 'rename-underscore-files',
+    writeBundle() {
+      const distDir = resolve(__dirname, 'dist');
+      patchSidepanelBuildTimeAttribute(distDir);
+    },
     closeBundle() {
       const distDir = resolve(__dirname, 'dist');
       const files = readdirSync(distDir);
+
+      patchSidepanelBuildTimeAttribute(distDir);
 
       // Rename content-script.<hash>.css to a fixed name for easy dynamic injection by content-script.ts
       const cssFile = files.find((f) => /^content-script\.[a-zA-Z0-9]+\.css$/.test(f));

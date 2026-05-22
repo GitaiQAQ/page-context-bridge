@@ -1,3 +1,5 @@
+import './browser-polyfill';
+
 import {
   BRIDGE_METHODS,
   type ContextResourcePayload,
@@ -39,11 +41,80 @@ function createDebounce<T extends unknown[]>(
     }, ms);
   };
 }
+
+function formatBuildTimeLabel(buildTime: string): string {
+  if (buildTime === 'dev') {
+    return '开发环境 / 未注入构建时间';
+  }
+
+  const parsed = new Date(buildTime);
+  if (Number.isNaN(parsed.getTime())) {
+    return buildTime;
+  }
+
+  return parsed.toISOString().replace('.000Z', 'Z');
+}
+
+function parseOptionalQueryNumber(searchParams: URLSearchParams, name: string): number | undefined {
+  const value = searchParams.get(name);
+  if (value == null) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * 读取 sidepanel URL query 绑定。
+ * 这里只解析 launcher/fallback 约定的字段，避免把 runtime payload 语义掺进来。
+ */
+function readSidepanelUrlTabBinding(): SidepanelUrlTabBinding {
+  const searchParams = new URLSearchParams(window.location.search);
+  const boundTabId = parseOptionalQueryNumber(searchParams, 'boundTabId');
+  const windowId = parseOptionalQueryNumber(searchParams, 'windowId');
+  return {
+    ...(boundTabId != null ? { boundTabId } : {}),
+    ...(windowId != null ? { windowId } : {}),
+  };
+}
+
+function readCurrentSidepanelSurface(): SidepanelSurface {
+  return readSidepanelSurface(window.location.search);
+}
+
+/**
+ * 归一化 runtime 显式绑定。
+ * 规则固定为 tabId > boundTabId，windowId 仅在存在时透传。
+ */
+function normalizeRuntimeExplicitTabBinding(
+  input?: RuntimeExplicitTabBindingInput | null,
+): RuntimeExplicitTabBinding {
+  if (input == null) {
+    return {};
+  }
+
+  return {
+    ...(input.tabId != null
+      ? { tabId: input.tabId }
+      : input.boundTabId != null
+        ? { tabId: input.boundTabId }
+        : {}),
+    ...(input.windowId != null ? { windowId: input.windowId } : {}),
+  };
+}
+
 import { classMap } from 'lit/directives/class-map.js';
 import { when } from 'lit/directives/when.js';
 
 import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
+import { tabsCreate, tabsQuery } from './extension-api';
 import { sendRuntimeRequest } from './runtime-rpc';
+import {
+  type SidepanelSurface,
+  consumeLaunchUrlForSurface,
+  readSidepanelSurface,
+} from './sidepanel-launch-state';
 import {
   createArgsTemplate,
   filterBuiltins,
@@ -75,14 +146,17 @@ import { renderToolsTab } from './sidepanel-tools-view';
 import { renderContextTab, type RenderContextTabInput } from './sidepanel-context-controller';
 import { initializeToolTestState, resetToolTestArgsState } from './sidepanel-tool-test-controller';
 import { normalizeUrl, createBoundMessageHandler, buildLoaderUrl } from './sidepanel-navigation';
-import type {
-  ContextManifestResponse,
-  ContextSkillResponse,
-  RuntimeStatus,
-  SidepanelFeedbackDraft,
-  ToolDebugResponse,
-  ToolTestSelection,
-  ToolTreeResponse,
+import {
+  type ContextManifestResponse,
+  type ContextSkillResponse,
+  type RuntimeExplicitTabBinding,
+  type RuntimeExplicitTabBindingInput,
+  type RuntimeStatus,
+  type SidepanelFeedbackDraft,
+  type SidepanelUrlTabBinding,
+  type ToolDebugResponse,
+  type ToolTestSelection,
+  type ToolTreeResponse,
 } from './sidepanel-types';
 
 // Vite resolves this to the built CSS asset URL at runtime
@@ -200,6 +274,9 @@ export class SidePanelApp extends LitElement {
     string,
     FeedbackAnnotationActionState
   > = {};
+  @state() private _agentationInjecting = false;
+  @state() private _agentationInjectStatus = '';
+  @state() private _agentationInjectStatusClass = 'text-xs opacity-60';
 
   // ─── Query references (shadowRoot is guaranteed when using default createRenderRoot) ──
   @query('#iframeContainer') private _iframeContainer!: HTMLElement;
@@ -218,6 +295,15 @@ export class SidePanelApp extends LitElement {
   private _debouncedFilterInput = createDebounce((value: string) => {
     this._currentFilter = value;
   }, 150);
+  /**
+   * URL query 绑定和 runtime 显式绑定分开存，避免字段名（boundTabId/tabId）混用。
+   */
+  private readonly _urlTabBinding: SidepanelUrlTabBinding = readSidepanelUrlTabBinding();
+  private readonly _runtimeTabBinding: RuntimeExplicitTabBinding =
+    normalizeRuntimeExplicitTabBinding(this._urlTabBinding);
+  private readonly _surface: SidepanelSurface = readCurrentSidepanelSurface();
+  private readonly _boundTabId = this._runtimeTabBinding.tabId;
+  private readonly _boundWindowId = this._runtimeTabBinding.windowId;
 
   // ─── Lifecycle ─────────────────────────────────────────────────
   override connectedCallback(): void {
@@ -272,17 +358,16 @@ export class SidePanelApp extends LitElement {
     }, 10_000);
     await this._loadPageTools();
 
-    const result = await chrome.storage.local.get('sidePanelUrl');
-    const url = result.sidePanelUrl ? String(result.sidePanelUrl) : 'http://127.0.0.1:22338/';
+    const launchUrl = await consumeLaunchUrlForSurface(this._surface);
+    const url = launchUrl ? String(launchUrl) : 'http://127.0.0.1:22338/';
     this._navigateTo(url);
     this.updateComplete.then(() => this._manageIframe());
 
-    if (result.sidePanelUrl) {
-      await chrome.storage.local.remove('sidePanelUrl');
-    }
-
     // Register extension API listeners
     this._tabActivatedListener = (activeInfo: { tabId: number; windowId: number }) => {
+      if (this._boundTabId != null && activeInfo.tabId !== this._boundTabId) {
+        return;
+      }
       if (activeInfo.tabId !== this._currentTabId && this._activeTab === 'tools') {
         void this._loadPageTools();
       }
@@ -324,8 +409,31 @@ export class SidePanelApp extends LitElement {
   }
 
   private async _getCurrentTabId(): Promise<number | null> {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (this._boundTabId != null) {
+      return this._boundTabId;
+    }
+
+    const [tab] = await tabsQuery(
+      this._boundWindowId != null
+        ? { active: true, windowId: this._boundWindowId }
+        : { active: true, currentWindow: true },
+    );
     return tab?.id ?? null;
+  }
+
+  /**
+   * 构建 feedback/runtime 请求使用的显式绑定。
+   * 规则：
+   * - 能确定 tabId 时优先带 tabId；
+   * - 没有 tabId 但有 windowId 时只带 windowId；
+   * - 两者都没有则不传绑定字段。
+   */
+  private _buildRuntimeBindingPayload(tabId: number | null): RuntimeExplicitTabBinding | undefined {
+    const runtimeBinding = normalizeRuntimeExplicitTabBinding({
+      ...(tabId != null ? { tabId } : {}),
+      ...(this._boundWindowId != null ? { windowId: this._boundWindowId } : {}),
+    });
+    return Object.keys(runtimeBinding).length > 0 ? runtimeBinding : undefined;
   }
 
   // ─── Tools Tree Rendering ──────────────────────────────────────
@@ -343,14 +451,34 @@ export class SidePanelApp extends LitElement {
     this._currentTabId = await this._getCurrentTabId();
 
     try {
-      if (forceRediscover && this._currentTabId) {
+      const currentTabId = this._currentTabId;
+      const shouldForceDiscover = forceRediscover && currentTabId != null;
+      if (shouldForceDiscover) {
         await sendRuntimeRequest(BRIDGE_METHODS.extensionPageToolsDiscover, {
-          tabId: this._currentTabId,
+          tabId: currentTabId,
         });
       }
       this._toolTreeResponse = await sendRuntimeRequest<ToolTreeResponse>(
         BRIDGE_METHODS.extensionPageToolsTreeGet,
       );
+
+      const currentTabMissingFromTree =
+        currentTabId != null &&
+        !this._toolTreeResponse.tabs.some(
+          (tab) => tab.tabId === currentTabId && tab.totalTools > 0,
+        );
+      if (!shouldForceDiscover && currentTabMissingFromTree) {
+        try {
+          await sendRuntimeRequest(BRIDGE_METHODS.extensionPageToolsDiscover, {
+            tabId: currentTabId,
+          });
+          this._toolTreeResponse = await sendRuntimeRequest<ToolTreeResponse>(
+            BRIDGE_METHODS.extensionPageToolsTreeGet,
+          );
+        } catch {
+          // Keep the already loaded tree (typically builtins) if the Firefox backfill probe fails.
+        }
+      }
     } catch (error) {
       this._toolTreeResponse = null;
     }
@@ -659,13 +787,16 @@ export class SidePanelApp extends LitElement {
 
   // ─── Feedback ────────────────────────────────────────────────
   private async _loadFeedbackSnapshot(): Promise<void> {
+    this._currentTabId = await this._getCurrentTabId();
     this._feedbackLoading = true;
     this._feedbackError = '';
     this.requestUpdate();
 
     try {
+      const runtimeBinding = this._buildRuntimeBindingPayload(this._currentTabId);
       this._feedbackSnapshot = await sendRuntimeRequest<FeedbackStateSnapshotResult>(
         BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+        runtimeBinding,
       );
       // After polling, keep only annotation form states present in the current snapshot to avoid leaking stale local input into new snapshots.
       this._feedbackActionStateByAnnotationId = reconcileFeedbackActionStates(
@@ -696,9 +827,12 @@ export class SidePanelApp extends LitElement {
     this.requestUpdate();
 
     try {
+      this._currentTabId = await this._getCurrentTabId();
+      const runtimeBinding = this._buildRuntimeBindingPayload(this._currentTabId);
       await sendRuntimeRequest(BRIDGE_METHODS.extensionFeedbackAnnotationCreate, {
         body,
         priority: this._feedbackPriority,
+        ...(runtimeBinding ?? {}),
       } satisfies SidepanelFeedbackDraft);
       this._feedbackBody = '';
       this._feedbackCreateStatus = 'Created';
@@ -996,19 +1130,52 @@ export class SidePanelApp extends LitElement {
   }
 
   private async _handleReconnect(): Promise<void> {
+    if (this._refreshing) return;
     this._refreshing = true;
-    await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
-    setTimeout(() => {
-      this._refreshing = false;
-      void this._refreshStatus();
-    }, 800);
+    this.requestUpdate();
+    try {
+      await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
+    } catch (error) {
+      spLog(`Reconnect failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setTimeout(() => {
+        this._refreshing = false;
+        void this._refreshStatus();
+        this.requestUpdate();
+      }, 800);
+    }
+  }
+
+  private async _handleInjectAgentation(): Promise<void> {
+    if (this._agentationInjecting) return;
+    this._agentationInjecting = true;
+    this._agentationInjectStatus = 'Injecting...';
+    this._agentationInjectStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+    try {
+      const tabId = await this._getCurrentTabId();
+      if (tabId == null) {
+        throw new Error('No active tab');
+      }
+      await sendRuntimeRequest(BRIDGE_METHODS.extensionAgentationMainEnsure, { tabId });
+      this._agentationInjectStatus = 'Injected';
+      this._agentationInjectStatusClass = 'text-xs text-success';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._agentationInjectStatus = message;
+      this._agentationInjectStatusClass = 'text-xs text-error';
+      spLog(`Agentation inject failed: ${message}`, 'error');
+    } finally {
+      this._agentationInjecting = false;
+      this.requestUpdate();
+    }
   }
 
   private _handleOpenTab(): void {
     const input = this.shadowRoot!.querySelector<HTMLInputElement>('#urlInput');
     const url = input?.value.trim();
     if (url) {
-      void chrome.tabs.create({ url });
+      void tabsCreate({ url });
     }
   }
 
@@ -1140,9 +1307,13 @@ export class SidePanelApp extends LitElement {
 
   private _renderContent(): TemplateResult {
     spLog(`render() called, _activeTab = ${this._activeTab}`);
+    const buildTimeLabel = formatBuildTimeLabel(
+      this.getAttribute('data-build-time')?.trim() || 'dev',
+    );
+    const buildTimeText = `构建时间：${buildTimeLabel}`;
     const toolsCount = this._toolTreeResponse
-      ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled)`
-      : '';
+      ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled) · ${buildTimeText}`
+      : buildTimeText;
 
     return html`
       <!-- Header: status-dot (clickable refresh) / title / icon-nav (right) -->
@@ -1174,6 +1345,21 @@ export class SidePanelApp extends LitElement {
           </svg>
         </button>
         <span class="font-semibold text-sm truncate">Page Context Bridge</span>
+        <button
+          class="btn btn-xs btn-ghost ${this._agentationInjecting ? 'loading' : ''}"
+          @click=${() => void this._handleInjectAgentation()}
+          ?disabled=${this._agentationInjecting}
+          title=${this._agentationInjectStatus || 'Inject Agentation into the active tab'}
+        >
+          Inject Agentation
+        </button>
+        ${this._agentationInjectStatus
+          ? html`<span
+              class=${this._agentationInjectStatusClass}
+              title=${this._agentationInjectStatus}
+              >${this._agentationInjectStatus}</span
+            >`
+          : nothing}
         <div role="tablist" class="tabs tabs-boxed ml-auto bg-transparent border-none gap-0.5">
           <button
             role="tab"

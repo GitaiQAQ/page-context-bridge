@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildToolTree } from '@page-context/tool-visibility';
 
 import { filterBuiltins } from './sidepanel-tree-renderer';
 import type { ToolTreeBuiltins } from './sidepanel-types';
@@ -224,5 +225,46 @@ describe('sidepanel builtin filtering', () => {
       'extension.reconnect',
     ]);
     expect(filtered.namespaces).toHaveLength(2);
+  });
+
+  it('preserves namespace metadata when building the page tool tree', () => {
+    const tree = buildToolTree(
+      [
+        {
+          id: 1,
+          title: 'Campaign Creation',
+          url: 'https://example.com/campaign',
+          active: true,
+        },
+      ],
+      new Map([
+        [
+          1,
+          [
+            {
+              namespace: 'campaign-selector',
+              namespaceTitle: 'Campaign Selector',
+              namespaceDescription: 'campaign selector 调试能力集合',
+              instanceId: 'default',
+              tools: [
+                {
+                  name: 'campaign-selector.pick-instance',
+                  description: '选择调试实例',
+                  annotations: { readOnlyHint: true },
+                },
+              ],
+            },
+          ],
+        ],
+      ]),
+      [],
+      {},
+    );
+
+    expect(tree.tabs[0]?.namespaces[0]).toMatchObject({
+      namespace: 'campaign-selector',
+      title: 'Campaign Selector',
+      description: 'campaign selector 调试能力集合',
+    });
   });
 });
