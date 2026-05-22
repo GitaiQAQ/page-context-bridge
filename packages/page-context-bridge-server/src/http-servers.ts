@@ -1,6 +1,7 @@
 /**
  * HTTP servers: SSE MCP server.
- * Multi-tenant: routes /{tenantId}/sse and /{tenantId}/message to the correct tenant's registry.
+ * Multi-tenant: routes /{tenantId}/sse + /{tenantId}/message (legacy SSE)
+ * and /{tenantId}/mcp (modern Streamable HTTP) to the correct tenant's registry.
  */
 
 import { createServer, type Server as HttpServer } from 'http';
@@ -9,12 +10,17 @@ import { fileURLToPath } from 'url';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 import { log } from './mcp-registry.js';
 import type { TenantManager } from './tenant-manager.js';
 import { TenantManager as TM } from './tenant-manager.js';
 
 const __dirname = join(fileURLToPath(import.meta.url), '..');
+const MCP_BOOTSTRAP_TOOL = '__page_context.bootstrap.tool';
+const MCP_BOOTSTRAP_RESOURCE = '__page_context.bootstrap.resource';
+const MCP_BOOTSTRAP_RESOURCE_URI = 'context://bootstrap/resource';
+const MCP_BOOTSTRAP_PROMPT = '__page_context.bootstrap.prompt';
 
 export function startSseServer(mcpHttpPort: number, manager: TenantManager): Promise<boolean> {
   return startSseServerWithHandle(mcpHttpPort, manager).then((started) => started.ok);
@@ -72,12 +78,126 @@ export function startSseServerWithHandle(
   });
 }
 
+export function primeDynamicCapabilitiesForConnectedServer(mcpServer: McpServer): void {
+  // MCP SDK 会在第一次 registerTool/registerResource/registerPrompt 时懒初始化 capability。
+  // 如果这一步发生在 transport 已连接之后，SDK 会抛错，同时把半注册状态留在内部表里，
+  // 后续就会演变成 “already registered” 这类脏状态错误。
+  // 这里在 connect 之前预热三类 capability，后面真实的动态增删就只剩 list_changed 通知。
+  const bootstrapTool = mcpServer.registerTool(
+    MCP_BOOTSTRAP_TOOL,
+    {
+      description: 'Bootstrap tool used to eagerly enable dynamic tool capability.',
+      inputSchema: {},
+    },
+    async () => ({ content: [{ type: 'text' as const, text: 'ok' }] }),
+  );
+  bootstrapTool.remove();
+
+  const bootstrapResource = mcpServer.registerResource(
+    MCP_BOOTSTRAP_RESOURCE,
+    MCP_BOOTSTRAP_RESOURCE_URI,
+    {
+      title: 'Bootstrap Resource',
+      description: 'Bootstrap resource used to eagerly enable dynamic resource capability.',
+      mimeType: 'application/json',
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: '{}',
+        },
+      ],
+    }),
+  );
+  bootstrapResource.remove();
+
+  const bootstrapPrompt = mcpServer.registerPrompt(
+    MCP_BOOTSTRAP_PROMPT,
+    {
+      title: 'Bootstrap Prompt',
+      description: 'Bootstrap prompt used to eagerly enable dynamic prompt capability.',
+      argsSchema: {},
+    },
+    async () => ({
+      description: 'Bootstrap prompt',
+      messages: [
+        {
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: 'bootstrap',
+          },
+        },
+      ],
+    }),
+  );
+  bootstrapPrompt.remove();
+}
+
 function createSseHttpServer(manager: TenantManager): HttpServer {
   // Composite key: "tenantId::sessionId"
   const transports = new Map<
     string,
     { transport: SSEServerTransport; server: McpServer; tenantId: string }
   >();
+
+  // Streamable HTTP transports per (tenantId, mcp-session-id).
+  // SDK requires a fresh transport per stateless request, OR stateful mode where
+  // we keep the transport alive and route by Mcp-Session-Id header.
+  // We use stateful mode — each tenant can have multiple concurrent MCP clients;
+  // each gets its own mcp-session-id namespaced inside the tenant.
+  const streamablePerTenant = new Map<
+    string, // tenantId
+    Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }> // mcpSessionId -> entry
+  >();
+
+  async function handleStreamableRequest(
+    tenantId: string,
+    req: import('http').IncomingMessage,
+    res: import('http').ServerResponse,
+  ): Promise<void> {
+    const tenant = manager.getOrCreate(tenantId);
+    const sessionsForTenant = streamablePerTenant.get(tenantId) ?? new Map();
+    streamablePerTenant.set(tenantId, sessionsForTenant);
+
+    const mcpSessionId =
+      (req.headers['mcp-session-id'] as string | undefined) ??
+      (req.headers['Mcp-Session-Id'] as string | undefined);
+
+    let entry = mcpSessionId ? sessionsForTenant.get(mcpSessionId) : undefined;
+
+    if (!entry) {
+      // Either initialization request (no session id yet) or unknown session id.
+      // Create a new transport+server pair; SDK will assign session id on initialize.
+      const mcpServer = new McpServer({ name: 'page-context-bridge', version: '0.2.0' });
+      primeDynamicCapabilitiesForConnectedServer(mcpServer);
+      tenant.registry.addServer(mcpServer);
+
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => crypto.randomUUID(),
+        onsessioninitialized: (sid: string) => {
+          sessionsForTenant.set(sid, { transport, server: mcpServer });
+          log(`[${tenantId}] MCP Streamable HTTP session initialized: ${sid}`);
+        },
+      });
+
+      transport.onclose = () => {
+        const sid = transport.sessionId;
+        if (sid) sessionsForTenant.delete(sid);
+        if (sessionsForTenant.size === 0) streamablePerTenant.delete(tenantId);
+        tenant.registry.removeServer(mcpServer);
+        manager.touch(tenantId);
+      };
+
+      await mcpServer.connect(transport);
+      entry = { transport, server: mcpServer };
+    }
+
+    await entry.transport.handleRequest(req, res);
+    manager.touch(tenantId);
+  }
 
   return createServer(async (req, res) => {
     const rawUrl = req.url ?? '/';
@@ -123,6 +243,7 @@ function createSseHttpServer(manager: TenantManager): HttpServer {
     if ((req.method === 'GET' && endpoint === '/sse') || endpoint === 'sse') {
       const tenant = manager.getOrCreate(tenantId);
       const mcpServer = new McpServer({ name: 'page-context-bridge', version: '0.2.0' });
+      primeDynamicCapabilitiesForConnectedServer(mcpServer);
       tenant.registry.addServer(mcpServer);
 
       const transport = new SSEServerTransport('/message', res);
@@ -146,6 +267,27 @@ function createSseHttpServer(manager: TenantManager): HttpServer {
           `[${tenantId}] SSE connect error:`,
           error instanceof Error ? error.message : String(error),
         );
+      }
+      return;
+    }
+
+    // Modern Streamable HTTP transport: /{tenantId}/mcp
+    if (endpoint === '/mcp' || endpoint === 'mcp') {
+      if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'DELETE') {
+        res.writeHead(405).end('Method Not Allowed');
+        return;
+      }
+
+      try {
+        await handleStreamableRequest(tenantId, req, res);
+      } catch (error) {
+        log(
+          `[${tenantId}] Streamable HTTP error:`,
+          error instanceof Error ? error.message : String(error),
+        );
+        if (!res.headersSent) {
+          res.writeHead(500).end('Streamable HTTP handling failed');
+        }
       }
       return;
     }

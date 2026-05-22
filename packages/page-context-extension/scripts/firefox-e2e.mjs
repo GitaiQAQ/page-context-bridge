@@ -8,7 +8,7 @@
  * 3. 失败时尽量能落到具体层级：产物、装载、注入、只读桥接、工具调用。
  *
  * 前置条件：
- *   pnpm run build:targets
+ *   pnpm run build:firefox:target
  *
  * 用法：
  *   node scripts/firefox-e2e.mjs
@@ -116,7 +116,7 @@ function buildExternalFinalUrl(reportUrl) {
 }
 
 if (!existsSync(path.join(distDir, 'manifest.json'))) {
-  fail('dist-firefox/manifest.json not found. Run: pnpm run build:targets');
+  fail('dist-firefox/manifest.json not found. Run: pnpm run build:firefox:target');
 }
 
 /**

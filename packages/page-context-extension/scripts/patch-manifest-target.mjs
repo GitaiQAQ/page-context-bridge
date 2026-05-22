@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const outputDir = process.env.PAGE_CONTEXT_EXTENSION_OUT_DIR?.trim() || 'dist';
 const target =
   process.env.PAGE_CONTEXT_EXTENSION_BROWSER_TARGET === 'firefox' ? 'firefox' : 'chromium';
-const manifestPath = resolve(__dirname, '..', 'dist', 'manifest.json');
+const manifestPath = resolve(__dirname, '..', outputDir, 'manifest.json');
 
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const permissions = Array.isArray(manifest.permissions) ? [...manifest.permissions] : [];
@@ -61,4 +62,4 @@ if (target === 'firefox') {
 }
 
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-console.log('Patched manifest target:', target);
+console.log(`Patched manifest target: ${target} (${outputDir})`);

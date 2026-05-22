@@ -61,7 +61,7 @@ export function registerPageToolsOnServer(input: {
               actualToolName.includes('trace'),
           },
         },
-        async (args) => {
+        async (args: Record<string, unknown>) => {
           try {
             const result = await rpcCaller.sendToolCall(
               actualToolName,

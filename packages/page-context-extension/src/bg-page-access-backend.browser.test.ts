@@ -1,5 +1,5 @@
 import type { PageContextManifest } from '@page-context/shared-protocol';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { sendTabRequestMock } = vi.hoisted(() => ({
   sendTabRequestMock: vi.fn(),
@@ -18,6 +18,7 @@ vi.mock('./runtime-rpc', () => ({
 }));
 
 import {
+  chromiumPageAccessBackend,
   detectPageAccessBackend,
   selectPageAccessBackend,
   type PageAccessBackendDetection,
@@ -225,6 +226,60 @@ describe('bg-page-access-backend selectPageAccessBackend()', () => {
         namespace: 'page',
         instanceId: 'default',
       },
+    );
+  });
+});
+
+describe('bg-page-access-backend chromium executePageTool()', () => {
+  const originalChrome = globalThis.chrome;
+
+  beforeEach(() => {
+    sendTabRequestMock.mockReset();
+  });
+
+  afterEach(() => {
+    if (originalChrome) {
+      Object.defineProperty(globalThis, 'chrome', {
+        value: originalChrome,
+        configurable: true,
+      });
+      return;
+    }
+    Reflect.deleteProperty(globalThis, 'chrome');
+  });
+
+  it('serializes default instance as null for chrome.scripting.executeScript', async () => {
+    const executeScriptMock = vi.fn().mockResolvedValue([
+      {
+        result: {
+          ok: true,
+          result: { title: 'Page Context Bridge - Test Page' },
+        },
+      },
+    ]);
+
+    Object.defineProperty(globalThis, 'chrome', {
+      value: {
+        scripting: {
+          executeScript: executeScriptMock,
+        },
+      },
+      configurable: true,
+    });
+
+    await expect(
+      chromiumPageAccessBackend.executePageTool(7, 'getPageInfo', {}, 'page'),
+    ).resolves.toEqual({
+      ok: true,
+      result: { title: 'Page Context Bridge - Test Page' },
+    });
+
+    expect(executeScriptMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { tabId: 7 },
+        world: 'MAIN',
+        args: ['getPageInfo', {}, 'page', null],
+      }),
     );
   });
 });

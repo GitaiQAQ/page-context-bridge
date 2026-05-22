@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Firefox + bridge server + MCP client 真正端到端验证。
+ * Chromium + bridge server + MCP client 真正端到端验证。
  *
  * 目标：
- * 1. 启动真实 bridge server（SSE + WebSocket）。
- * 2. 启动真实 Firefox 扩展验证脚本，并让扩展连上 bridge server。
+ * 1. 启动 bridge server（SSE + WebSocket）。
+ * 2. 启动真实 Chromium 扩展验证脚本，并让扩展连上 bridge server。
  * 3. 使用真实 MCP SSE client 枚举并调用页面工具。
  * 4. 用明确的 PASS / FAIL 证明“页面数据已被 MCP 消费”。
  */
@@ -22,14 +22,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const bridgeServerRoot = path.resolve(__dirname, '..');
 const workspaceRoot = path.resolve(bridgeServerRoot, '..', '..');
 const extensionRoot = path.resolve(workspaceRoot, 'packages/page-context-extension');
-const firefoxE2EScript = path.join(extensionRoot, 'scripts/firefox-e2e.mjs');
-const prefix = '[firefox-mcp-e2e]';
-const EXTERNAL_START_URL = process.env.FIREFOX_E2E_START_URL?.trim() || '';
-const EXPECTED_TOOL_SUFFIX = process.env.FIREFOX_MCP_EXPECTED_TOOL_SUFFIX?.trim() || '.e2e-tool-1';
+const chromiumE2EScript = path.join(extensionRoot, 'scripts/chromium-e2e.mjs');
+const prefix = '[chromium-mcp-e2e]';
+const EXTERNAL_START_URL = process.env.CHROMIUM_E2E_START_URL?.trim() || '';
+const EXPECTED_TOOL_SUFFIX = process.env.CHROMIUM_MCP_EXPECTED_TOOL_SUFFIX?.trim() || '.e2e-tool-1';
 const TOOL_ARGS_JSON =
-  process.env.FIREFOX_MCP_TOOL_ARGS_JSON?.trim() || '{"probe":"firefox-mcp-e2e"}';
-const EXPECTED_RESULT_TEXT = process.env.FIREFOX_MCP_EXPECTED_RESULT_TEXT?.trim() || '';
-const EXPECTED_RESULT_JSON = process.env.FIREFOX_MCP_EXPECTED_RESULT_JSON?.trim() || '';
+  process.env.CHROMIUM_MCP_TOOL_ARGS_JSON?.trim() || '{"probe":"chromium-mcp-e2e"}';
+const EXPECTED_RESULT_TEXT = process.env.CHROMIUM_MCP_EXPECTED_RESULT_TEXT?.trim() || '';
+const EXPECTED_RESULT_JSON = process.env.CHROMIUM_MCP_EXPECTED_RESULT_JSON?.trim() || '';
 const REMOTE_EXT_WS_URL = process.env.PAGE_CONTEXT_EXT_WS_URL?.trim() || '';
 const REMOTE_MCP_SSE_URL = process.env.PAGE_CONTEXT_MCP_SSE_URL?.trim() || '';
 
@@ -59,9 +59,8 @@ function isPlainObject(value) {
 }
 
 function assertJsonContains(actual, expected, trace = 'result') {
-  // 这里做“子集断言”：
-  // 1. 只校验调用方关心的字段，避免把测试绑死在无关噪音上。
-  // 2. 字符串按“包含”匹配，更适合 URL、标题这类易追加细节的字段。
+  // 这里同样使用“子集断言”。
+  // 重点是验证页面数据确实进了 MCP，不把断言绑死在无关字段上。
   if (typeof expected === 'string') {
     if (typeof actual !== 'string' || !actual.includes(expected)) {
       throw new Error(`${trace} expected to include "${expected}", got ${JSON.stringify(actual)}`);
@@ -136,18 +135,14 @@ async function callJsonTool(client, name, args = {}) {
 }
 
 async function callPageToolUntilReady(client, name, args, timeoutMs = 20_000) {
-  // 远端 tenant 可能残留旧注册：
-  // 1. listTools 能先看到工具名；
-  // 2. 但第一次 callTool 仍可能命中旧会话或未就绪状态。
-  // 这里按“结果可用”重试，而不是盲信首次发现。
+  // 远端 tenant 可能残留旧注册。
+  // 这里和 Firefox 版本保持一致：只有拿到“可用结果”才算真正 ready。
   const deadline = Date.now() + timeoutMs;
-  let lastResult = null;
   let lastText = '';
 
   while (Date.now() < deadline) {
     const result = await client.callTool({ name, arguments: args });
     const text = extractTextContent(result);
-    lastResult = result;
     lastText = text;
 
     if (!result.isError && !text.startsWith('Error:')) {
@@ -163,6 +158,13 @@ async function callPageToolUntilReady(client, name, args, timeoutMs = 20_000) {
 
   throw new Error(
     `MCP page tool did not become ready in time: ${lastText || '(empty error payload)'}`,
+  );
+}
+
+function isToolNotFoundError(message) {
+  return (
+    /Tool .* not found/.test(message) ||
+    (message.includes(' tool ') && message.includes('not found'))
   );
 }
 
@@ -284,10 +286,6 @@ function inferReadonlyTargetFromToolSuffix(toolSuffix) {
     return null;
   }
 
-  // 规则很朴素：
-  // 1. `page.getPageInfo` 这种 2 段名视为 default instance。
-  // 2. `metrics.dashboard.getSummary` 这种 3 段及以上，最后一段是工具名，
-  //    第一段是 namespace，中间段拼成 instanceId。
   if (segments.length === 2) {
     return {
       namespace: segments[0],
@@ -405,15 +403,15 @@ async function collectExtensionDebugSnapshot(client, startUrl) {
 }
 
 async function main() {
-  if (!existsSync(firefoxE2EScript)) {
-    fail(`Missing Firefox E2E script: ${firefoxE2EScript}`);
+  if (!existsSync(chromiumE2EScript)) {
+    fail(`Missing Chromium E2E script: ${chromiumE2EScript}`);
   }
 
-  const toolArgs = parseJsonEnv('FIREFOX_MCP_TOOL_ARGS_JSON', TOOL_ARGS_JSON, {
-    probe: 'firefox-mcp-e2e',
+  const toolArgs = parseJsonEnv('CHROMIUM_MCP_TOOL_ARGS_JSON', TOOL_ARGS_JSON, {
+    probe: 'chromium-mcp-e2e',
   });
   const expectedResultJson = parseJsonEnv(
-    'FIREFOX_MCP_EXPECTED_RESULT_JSON',
+    'CHROMIUM_MCP_EXPECTED_RESULT_JSON',
     EXPECTED_RESULT_JSON,
     null,
   );
@@ -426,21 +424,21 @@ async function main() {
     fail('PAGE_CONTEXT_EXT_WS_URL and PAGE_CONTEXT_MCP_SSE_URL must be provided together.');
   }
 
-  const tenantId = `firefox-e2e-${Date.now().toString(36)}`;
+  const tenantId = `chromium-e2e-${Date.now().toString(36)}`;
   const mcpHttpPort = useRemoteBridge ? 0 : await getFreePort();
   const extWsPort = useRemoteBridge ? 0 : await getFreePort();
   const wsUrl = REMOTE_EXT_WS_URL || `ws://127.0.0.1:${extWsPort}/${tenantId}`;
   const sseUrl = REMOTE_MCP_SSE_URL || `http://127.0.0.1:${mcpHttpPort}/${tenantId}/sse`;
   const serverOutput = [];
-  const firefoxOutput = [];
+  const chromiumOutput = [];
   let bridgeServerChild = null;
-  let firefoxChild = null;
+  let chromiumChild = null;
   let transport = null;
   let client = null;
 
   try {
-    log('Building Firefox extension artifact before full MCP E2E...');
-    const buildChild = spawn('pnpm', ['run', 'build:firefox:target'], {
+    log('Building Chromium extension artifact before full MCP E2E...');
+    const buildChild = spawn('pnpm', ['run', 'build:chromium:target'], {
       cwd: extensionRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env },
@@ -473,37 +471,37 @@ async function main() {
       await waitForTcpPort(extWsPort, 'bridge WebSocket');
     }
 
-    log(`Starting Firefox extension E2E against ${wsUrl}`);
-    firefoxChild = spawn('node', ['scripts/firefox-e2e.mjs'], {
+    log(`Starting Chromium extension E2E against ${wsUrl}`);
+    chromiumChild = spawn('node', ['scripts/chromium-e2e.mjs'], {
       cwd: extensionRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
         WS_URL: wsUrl,
-        FIREFOX_E2E_START_URL: EXTERNAL_START_URL || process.env.FIREFOX_E2E_START_URL,
-        FIREFOX_E2E_EXPECTED_PAGE_TOOL_NAME:
-          process.env.FIREFOX_E2E_EXPECTED_PAGE_TOOL_NAME ??
+        CHROMIUM_E2E_START_URL: EXTERNAL_START_URL || process.env.CHROMIUM_E2E_START_URL,
+        CHROMIUM_E2E_EXPECTED_PAGE_TOOL_NAME:
+          process.env.CHROMIUM_E2E_EXPECTED_PAGE_TOOL_NAME ??
           inferredReadonlyTarget?.pageToolName ??
           '',
-        FIREFOX_E2E_EXPECTED_PAGE_TOOL_NAMESPACE:
-          process.env.FIREFOX_E2E_EXPECTED_PAGE_TOOL_NAMESPACE ??
+        CHROMIUM_E2E_EXPECTED_PAGE_TOOL_NAMESPACE:
+          process.env.CHROMIUM_E2E_EXPECTED_PAGE_TOOL_NAMESPACE ??
           inferredReadonlyTarget?.namespace ??
           '',
-        FIREFOX_E2E_EXPECTED_PAGE_TOOL_INSTANCE_ID:
-          process.env.FIREFOX_E2E_EXPECTED_PAGE_TOOL_INSTANCE_ID ??
+        CHROMIUM_E2E_EXPECTED_PAGE_TOOL_INSTANCE_ID:
+          process.env.CHROMIUM_E2E_EXPECTED_PAGE_TOOL_INSTANCE_ID ??
           inferredReadonlyTarget?.instanceId ??
           '',
-        FIREFOX_E2E_EXPECTED_PAGE_TOOL_ARGS_JSON:
-          process.env.FIREFOX_E2E_EXPECTED_PAGE_TOOL_ARGS_JSON ?? JSON.stringify(toolArgs),
+        CHROMIUM_E2E_EXPECTED_PAGE_TOOL_ARGS_JSON:
+          process.env.CHROMIUM_E2E_EXPECTED_PAGE_TOOL_ARGS_JSON ?? JSON.stringify(toolArgs),
         E2E_TIMEOUT_MS: process.env.E2E_TIMEOUT_MS ?? '45000',
-        FIREFOX_E2E_AFTER_REPORT_WAIT_MS: process.env.FIREFOX_E2E_AFTER_REPORT_WAIT_MS ?? '20000',
+        CHROMIUM_E2E_AFTER_REPORT_WAIT_MS: process.env.CHROMIUM_E2E_AFTER_REPORT_WAIT_MS ?? '20000',
       },
     });
-    firefoxChild.stdout.on('data', createLineForwarder('[firefox]', log, firefoxOutput));
-    firefoxChild.stderr.on('data', createLineForwarder('[firefox]', log, firefoxOutput));
+    chromiumChild.stdout.on('data', createLineForwarder('[chromium]', log, chromiumOutput));
+    chromiumChild.stderr.on('data', createLineForwarder('[chromium]', log, chromiumOutput));
 
     transport = new SSEClientTransport(new URL(sseUrl));
-    client = new Client({ name: 'firefox-mcp-e2e-client', version: '1.0.0' });
+    client = new Client({ name: 'chromium-mcp-e2e-client', version: '1.0.0' });
     await client.connect(transport);
     log(`Connected MCP client to ${sseUrl}`);
 
@@ -518,15 +516,37 @@ async function main() {
         }\nExtension debug snapshot:\n${JSON.stringify(debugSnapshot, null, 2)}`,
       );
     }
+
     const { toolName, toolNames } = toolDiscovery;
     log(`Discovered MCP page tool: ${toolName}`);
     log(`Current MCP tools: ${toolNames.join(', ')}`);
-    const routedPageTool = parseRegisteredPageToolName(toolName);
-    let { result: callResult, text: callText } = await callPageToolUntilReady(
-      client,
-      toolName,
-      toolArgs,
-    );
+    let activeToolName = toolName;
+    let routedPageTool = parseRegisteredPageToolName(activeToolName);
+    let callResult;
+    let callText;
+
+    while (true) {
+      try {
+        ({ result: callResult, text: callText } = await callPageToolUntilReady(
+          client,
+          activeToolName,
+          toolArgs,
+          8_000,
+        ));
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!isToolNotFoundError(message)) {
+          throw error;
+        }
+        const rediscovered = await waitForPageTool(client, EXPECTED_TOOL_SUFFIX, 10_000);
+        if (rediscovered.toolName !== activeToolName) {
+          log(`Refreshed stale MCP page tool: ${activeToolName} -> ${rediscovered.toolName}`);
+        }
+        activeToolName = rediscovered.toolName;
+        routedPageTool = parseRegisteredPageToolName(activeToolName);
+      }
+    }
 
     if (
       (callResult.isError || callText.startsWith('Error:')) &&
@@ -570,16 +590,36 @@ async function main() {
       });
       const { text: enableText } = parseTextResponse(enableResult);
       log(`Enabled page tool through extension.set_tools_enabled: ${enableText}`);
-      ({ result: callResult, text: callText } = await callPageToolUntilReady(
-        client,
-        toolName,
-        toolArgs,
-      ));
+      while (true) {
+        try {
+          ({ result: callResult, text: callText } = await callPageToolUntilReady(
+            client,
+            activeToolName,
+            toolArgs,
+            8_000,
+          ));
+          break;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!isToolNotFoundError(message)) {
+            throw error;
+          }
+          const rediscovered = await waitForPageTool(client, EXPECTED_TOOL_SUFFIX, 10_000);
+          if (rediscovered.toolName !== activeToolName) {
+            log(
+              `Refreshed stale MCP page tool after enabling: ${activeToolName} -> ${rediscovered.toolName}`,
+            );
+          }
+          activeToolName = rediscovered.toolName;
+          routedPageTool = parseRegisteredPageToolName(activeToolName);
+        }
+      }
     }
 
     if (callResult.isError) {
       throw new Error(`MCP call returned error payload: ${callText}`);
     }
+
     if (expectedResultJson != null) {
       const parsedResult = parseTextResponse(callResult).json;
       assertJsonContains(parsedResult, expectedResultJson);
@@ -598,22 +638,20 @@ async function main() {
       if (!callText.includes('e2e-tool-1')) {
         throw new Error(`MCP call result does not contain tool name: ${callText}`);
       }
-      if (!callText.includes('firefox-mcp-e2e')) {
+      if (!callText.includes('chromium-mcp-e2e')) {
         throw new Error(`MCP call result does not contain echoed probe args: ${callText}`);
       }
     }
-    log('PASS: real MCP client successfully consumed Firefox page tool data.');
+    log('PASS: real MCP client successfully consumed Chromium page tool data.');
 
-    const firefoxResult = await waitForChildExit(firefoxChild, 'firefox-e2e');
-    if (firefoxResult.code !== 0) {
-      // 这个子脚本在接入真实 bridge server 后，内部 runtime 断言可能仍然因为时序/偏好状态失败。
-      // 对完整 MCP 端到端来说，更强的证据是“真实 MCP 调用已成功拿到页面数据”。
+    const chromiumResult = await waitForChildExit(chromiumChild, 'chromium-e2e');
+    if (chromiumResult.code !== 0) {
       log(
-        `Firefox helper exited with code ${String(firefoxResult.code)}${firefoxResult.signal ? ` signal ${firefoxResult.signal}` : ''}; keeping MCP call success as source of truth.`,
+        `Chromium helper exited with code ${String(chromiumResult.code)}${chromiumResult.signal ? ` signal ${chromiumResult.signal}` : ''}; keeping MCP call success as source of truth.`,
       );
       return;
     }
-    log('PASS: Firefox extension E2E finished successfully with MCP chain enabled.');
+    log('PASS: Chromium extension E2E finished successfully with MCP chain enabled.');
   } finally {
     if (client && typeof client.close === 'function') {
       await client.close().catch(() => undefined);
@@ -621,7 +659,7 @@ async function main() {
     if (transport && typeof transport.close === 'function') {
       await transport.close().catch(() => undefined);
     }
-    await terminateChild(firefoxChild, 'firefox-e2e');
+    await terminateChild(chromiumChild, 'chromium-e2e');
     await terminateChild(bridgeServerChild, 'bridge-server');
   }
 }

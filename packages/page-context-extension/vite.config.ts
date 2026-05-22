@@ -9,6 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
 const extensionBuildTime = new Date().toISOString();
 process.env.VITE_PAGE_CONTEXT_EXTENSION_BUILD_TIME = extensionBuildTime;
+const extensionOutputDir = process.env.PAGE_CONTEXT_EXTENSION_OUT_DIR?.trim() || 'dist';
+const extensionOutputAbsDir = resolve(__dirname, extensionOutputDir);
 
 // Keep consistent with HOST_ID in src/agentation-main.tsx, used for CSS inline injection target
 const AGENTATION_MAIN_HOST_ID = '__pc_agentation_main__';
@@ -17,7 +19,9 @@ function copyStaticFiles() {
   return {
     name: 'copy-static-files',
     closeBundle() {
-      const distDir = resolve(__dirname, 'dist');
+      // 构建目录由环境变量控制。
+      // 这样 Chromium / Firefox 可以各写各的产物目录，避免并行 E2E 互相踩文件。
+      const distDir = extensionOutputAbsDir;
       const files: Array<{ src: string; dest: string }> = [];
 
       for (const { src, dest } of files) {
@@ -50,7 +54,7 @@ function injectCssLinks() {
   return {
     name: 'inject-css-links',
     closeBundle() {
-      const distDir = resolve(__dirname, 'dist');
+      const distDir = extensionOutputAbsDir;
       const htmlFiles = readdirSync(distDir).filter((f) => f.endsWith('.html'));
 
       for (const htmlFile of htmlFiles) {
@@ -82,7 +86,8 @@ function patchSidepanelBuildTimeAttribute(distDir: string) {
       .replaceAll('__PAGE_CONTEXT_EXTENSION_BUILD_TIME__', extensionBuildTime);
 
     if (patchedHtml === html) {
-      console.warn('Side-panel build time placeholder not found in html');
+      // writeBundle 和 closeBundle 都会走到这里。
+      // 如果第一次已经补过，占位符自然就不存在了；这种情况不是错误，也不该污染日志。
       return;
     }
 
@@ -97,11 +102,11 @@ function renameUnderscoreFiles() {
   return {
     name: 'rename-underscore-files',
     writeBundle() {
-      const distDir = resolve(__dirname, 'dist');
+      const distDir = extensionOutputAbsDir;
       patchSidepanelBuildTimeAttribute(distDir);
     },
     closeBundle() {
-      const distDir = resolve(__dirname, 'dist');
+      const distDir = extensionOutputAbsDir;
       const files = readdirSync(distDir);
 
       patchSidepanelBuildTimeAttribute(distDir);
@@ -259,7 +264,9 @@ export default defineConfig({
     // For easier debugging and avoiding behavioral differences in artifacts: disable minify for entire project
     minify: false,
     cssMinify: false,
-    outDir: 'dist',
+    // 这里允许外部显式指定目标目录。
+    // 默认仍然保留 dist，兼容 watch / dev-preview 等现有流程。
+    outDir: extensionOutputDir,
     emptyOutDir: true,
     rollupOptions: {
       input: {

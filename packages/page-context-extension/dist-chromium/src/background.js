@@ -7860,6 +7860,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         );
       },
       async executePageTool(tabId, pageToolName, args, namespace, instanceId) {
+        const serializedInstanceId = instanceId ?? null;
         return (
           (
             await chrome.scripting.executeScript({
@@ -7924,7 +7925,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                   };
                 }
               },
-              args: [pageToolName, args, namespace, instanceId],
+              args: [pageToolName, args, namespace, serializedInstanceId],
             })
           )[0]?.result ?? {
             ok: false,

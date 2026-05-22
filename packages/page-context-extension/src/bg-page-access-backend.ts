@@ -348,10 +348,14 @@ export function createChromiumPageAccessBackend(): PageAccessBackend {
       namespace: string,
       instanceId?: string,
     ): Promise<BackendPageToolExecutionResult> {
+      // Chrome 的 scripting.executeScript 不接受 `undefined` 作为注入参数。
+      // default instance 在上层常常表现为“未显式传 instanceId”，这里统一降成 null，
+      // 保证真实页面工具也能稳定走 MAIN world 执行。
+      const serializedInstanceId = instanceId ?? null;
       const results = await chrome.scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
-        func: async (name: string, input: JsonRecord, ns: string, instId: string | undefined) => {
+        func: async (name: string, input: JsonRecord, ns: string, instId: string | null) => {
           const contextWindow = window as Window & {
             __pageContextBridge__?: PageContextBridgeLike;
             __pageContextTools__?: PageContextBridgeLike;
@@ -414,7 +418,7 @@ export function createChromiumPageAccessBackend(): PageAccessBackend {
             return { ok: false, error: error instanceof Error ? error.message : String(error) };
           }
         },
-        args: [pageToolName, args, namespace, instanceId],
+        args: [pageToolName, args, namespace, serializedInstanceId],
       });
 
       return (

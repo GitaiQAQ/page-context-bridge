@@ -50,6 +50,16 @@ function parseTextResponse(payload: unknown) {
   return JSON.parse(text) as Record<string, unknown>;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('extension-session MCP chain', () => {
   it('bridges MCP tool calls to the connected extension through the real session RPC path', async () => {
     const tenantId = 'tenant-chain';
@@ -358,5 +368,127 @@ describe('extension-session MCP chain', () => {
     expect(registry.getPageToolsByTab().get(88)).toEqual([
       { name: 'crm.inspect', description: 'Inspect CRM entity', _namespace: 'crm' },
     ]);
+  });
+
+  it('does not let stale register replay overwrite newer page tool events for the same tab', async () => {
+    const tenantId = 'tenant-register-race';
+    const fakeServer = new FakeMcpServer();
+    const tenant = { extension: null as unknown, registry: null as unknown };
+    const manager = {
+      get: vi.fn((id: string) => (id === tenantId ? tenant : undefined)),
+      touch: vi.fn(),
+    } as unknown as TenantManager;
+
+    const registry = new McpRegistry(
+      {
+        sendToolCall: (tool, args, tabId) =>
+          sendToolCallToExtension(tenantId, manager, tool, args, tabId),
+        getRuntimeStatus: () => getRuntimeStatusFromExtension(tenantId, manager),
+        reconnectExtension: async () => ({ ok: true }),
+        debugToolCall: async () => ({ ok: true }),
+        ensureMainWorldHost: async () => ({ ok: true }),
+        ensureAgentationMain: async () => ({ ok: true }),
+        getContextManifest: async () => null,
+        getContextManifestDebug: async () => ({ manifest: null, rawManifest: null, debug: null }),
+        refreshPageTools: async () => [],
+        readContextResource: async () => ({ id: 'resource', text: '{}' }),
+        getContextSkillPrompt: async () => null,
+        getPageToolsTree: () => getPageToolsTreeFromExtension(tenantId, manager),
+        setPageToolsEnabledBatch: async () => ({ ok: true }),
+      },
+      tenantId,
+    );
+    tenant.registry = registry;
+    registry.addServer(fakeServer as unknown as McpServer);
+
+    let extensionPeer: RpcPeer;
+    const ws = {
+      readyState: WebSocket.OPEN,
+      send: (message: string) => extensionPeer.receive(message),
+      close: vi.fn(),
+    } as unknown as WebSocket;
+
+    const slot = createExtensionState(ws, registry, tenantId, manager);
+    tenant.extension = slot;
+
+    extensionPeer = new RpcPeer({
+      send: (message: string) => slot.peer.receive(message),
+      defaultTimeoutMs: 1_000,
+    });
+
+    const replayToolsDeferred =
+      createDeferred<Array<{ name: string; description: string; _namespace: string }>>();
+    const extensionPageToolsGet = vi.fn(async () => ({
+      tools: await replayToolsDeferred.promise,
+    }));
+
+    extensionPeer.register(BRIDGE_METHODS.extensionStatusGet, async () => ({
+      connected: true,
+      sessionId: 'extension-session-race',
+      pendingToolCalls: 0,
+    }));
+    extensionPeer.register(BRIDGE_METHODS.extensionContextManifestGet, async () => ({
+      manifest: null,
+      rawManifest: null,
+      debug: null,
+    }));
+    extensionPeer.register(BRIDGE_METHODS.extensionPageToolsTreeGet, async () => ({
+      builtins: { kind: 'builtins', totalTools: 0, enabledTools: 0, namespaces: [], tools: [] },
+      tabs: [
+        {
+          kind: 'tab',
+          tabId: 88,
+          title: 'CRM',
+          url: 'https://example.com/crm/88',
+          active: true,
+          totalTools: 1,
+          enabledTools: 1,
+          namespaces: [],
+        },
+      ],
+      totalTools: 1,
+      enabledTools: 1,
+    }));
+    extensionPeer.register(BRIDGE_METHODS.extensionPageToolsGet, extensionPageToolsGet);
+
+    const registerPromise = extensionPeer.request<{ sessionId: string }>(
+      BRIDGE_METHODS.sessionRegister,
+      {
+        extensionId: 'firefox-extension',
+        version: '0.0.1',
+      },
+    );
+
+    await vi.waitFor(() => {
+      expect(extensionPageToolsGet).toHaveBeenCalledTimes(1);
+    });
+
+    const freshTools = [
+      {
+        name: 'crm.fresh',
+        description: 'Fresh tool from live event',
+        _namespace: 'crm',
+      },
+    ];
+    const eventPromise = extensionPeer.request(BRIDGE_METHODS.bridgePageToolsRegistered, {
+      tabId: 88,
+      tools: freshTools,
+    });
+
+    replayToolsDeferred.resolve([
+      {
+        name: 'crm.stale',
+        description: 'Stale tool from register replay',
+        _namespace: 'crm',
+      },
+    ]);
+
+    const registerResult = await registerPromise;
+    expect(registerResult.sessionId).toBeTruthy();
+    await eventPromise;
+
+    expect(registry.getPageToolsByTab().get(88)).toEqual(freshTools);
+    expect(fakeServer.tools.has('tab.88.crm.fresh')).toBe(true);
+    expect(fakeServer.tools.has('tab.88.crm.stale')).toBe(false);
   });
 });

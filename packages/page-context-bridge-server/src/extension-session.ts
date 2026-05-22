@@ -348,6 +348,10 @@ async function syncRegistryStateFromConnectedExtension(
   tenantId: string,
   manager: TenantManager,
   registry: McpRegistry,
+  enqueueTabRegistryMutation: (
+    tabId: number,
+    mutation: () => Promise<void> | void,
+  ) => Promise<void>,
 ): Promise<void> {
   const currentTree = await getPageToolsTreeFromExtension(tenantId, manager).catch((error) => {
     throw new Error(
@@ -362,20 +366,24 @@ async function syncRegistryStateFromConnectedExtension(
     if (activeTabIds.has(tabId)) {
       continue;
     }
-    registry.deletePageTools(tabId);
-    registry.unregisterPageToolsFromAllServers(tabId);
-    registry.syncContextManifestOnAllServers(tabId, null);
+    await enqueueTabRegistryMutation(tabId, () => {
+      registry.deletePageTools(tabId);
+      registry.unregisterPageToolsFromAllServers(tabId);
+      registry.syncContextManifestOnAllServers(tabId, null);
+    });
   }
 
   for (const tabId of activeTabIds) {
-    const tools = await getPageToolsForTabFromExtension(tenantId, manager, tabId);
-    registry.unregisterPageToolsFromAllServers(tabId);
-    registry.setPageTools(tabId, tools);
-    registry.registerPageToolsOnAllServers(tabId, tools);
-    const manifest = await getContextManifestFromExtension(tenantId, manager, tabId).catch(
-      () => null,
-    );
-    registry.syncContextManifestOnAllServers(tabId, manifest);
+    await enqueueTabRegistryMutation(tabId, async () => {
+      const tools = await getPageToolsForTabFromExtension(tenantId, manager, tabId);
+      registry.unregisterPageToolsFromAllServers(tabId);
+      registry.setPageTools(tabId, tools);
+      registry.registerPageToolsOnAllServers(tabId, tools);
+      const manifest = await getContextManifestFromExtension(tenantId, manager, tabId).catch(
+        () => null,
+      );
+      registry.syncContextManifestOnAllServers(tabId, manifest);
+    });
   }
 }
 
@@ -442,6 +450,8 @@ export function createExtensionState(
   manager: TenantManager,
 ): ExtensionSlot {
   let sessionId: string | null = null;
+  const tabRegistryMutationQueues = new Map<number, Promise<void>>();
+  let registryReplayBarrier: Promise<void> = Promise.resolve();
 
   const slot: ExtensionSlot = {
     ws,
@@ -463,6 +473,31 @@ export function createExtensionState(
 
   const peer = slot.peer;
 
+  function enqueueTabRegistryMutation(
+    tabId: number,
+    mutation: () => Promise<void> | void,
+  ): Promise<void> {
+    const previous = tabRegistryMutationQueues.get(tabId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(async () => {
+        await mutation();
+      });
+    const tracked = next
+      .catch(() => undefined)
+      .finally(() => {
+        if (tabRegistryMutationQueues.get(tabId) === tracked) {
+          tabRegistryMutationQueues.delete(tabId);
+        }
+      });
+    tabRegistryMutationQueues.set(tabId, tracked);
+    return next;
+  }
+
+  async function waitForRegistryReplayBarrier(): Promise<void> {
+    await registryReplayBarrier;
+  }
+
   peer.register(BRIDGE_METHODS.sessionRegister, async (params: unknown) => {
     const payload = validateParams(
       sessionRegisterParamsSchema,
@@ -477,11 +512,19 @@ export function createExtensionState(
       `[${tenantId}] Extension registered: ${payload.extensionId ?? 'unknown'} v${payload.version ?? 'unknown'} → session ${sessionId}`,
     );
 
-    await syncRegistryStateFromConnectedExtension(tenantId, manager, registry).catch((error) => {
+    // 先把 barrier 换成这次 replay，再处理后续 tab 事件。
+    // 这样可以避免“session.register 的旧快照晚到，覆盖更新事件里的新状态”。
+    registryReplayBarrier = syncRegistryStateFromConnectedExtension(
+      tenantId,
+      manager,
+      registry,
+      enqueueTabRegistryMutation,
+    ).catch((error) => {
       log(
         `[${tenantId}] Failed to replay extension tools after register: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
+    await registryReplayBarrier;
 
     return { sessionId, heartbeatIntervalMs: 15_000 };
   });
@@ -512,15 +555,17 @@ export function createExtensionState(
       BRIDGE_METHODS.bridgePageToolsRegistered,
     );
     if (payload.tabId != null) {
-      registry.unregisterPageToolsFromAllServers(payload.tabId);
-      registry.setPageTools(payload.tabId, payload.tools ?? []);
-      registry.registerPageToolsOnAllServers(payload.tabId, payload.tools ?? []);
-      const manifest = await getContextManifestFromExtension(
-        tenantId,
-        manager,
-        payload.tabId,
-      ).catch(() => null);
-      registry.syncContextManifestOnAllServers(payload.tabId, manifest);
+      const tabId = payload.tabId;
+      await waitForRegistryReplayBarrier();
+      await enqueueTabRegistryMutation(tabId, async () => {
+        registry.unregisterPageToolsFromAllServers(tabId);
+        registry.setPageTools(tabId, payload.tools ?? []);
+        registry.registerPageToolsOnAllServers(tabId, payload.tools ?? []);
+        const manifest = await getContextManifestFromExtension(tenantId, manager, tabId).catch(
+          () => null,
+        );
+        registry.syncContextManifestOnAllServers(tabId, manifest);
+      });
     }
     return { ok: true };
   });
@@ -542,9 +587,13 @@ export function createExtensionState(
       BRIDGE_METHODS.bridgePageToolsUnregistered,
     );
     if (payload.tabId != null) {
-      registry.deletePageTools(payload.tabId);
-      registry.unregisterPageToolsFromAllServers(payload.tabId);
-      registry.syncContextManifestOnAllServers(payload.tabId, null);
+      const tabId = payload.tabId;
+      await waitForRegistryReplayBarrier();
+      await enqueueTabRegistryMutation(tabId, () => {
+        registry.deletePageTools(tabId);
+        registry.unregisterPageToolsFromAllServers(tabId);
+        registry.syncContextManifestOnAllServers(tabId, null);
+      });
     }
     return { ok: true };
   });
@@ -556,12 +605,14 @@ export function createExtensionState(
       BRIDGE_METHODS.bridgeTabActivated,
     );
     if (payload.tabId != null) {
-      const manifest = await getContextManifestFromExtension(
-        tenantId,
-        manager,
-        payload.tabId,
-      ).catch(() => null);
-      registry.syncContextManifestOnAllServers(payload.tabId, manifest);
+      const tabId = payload.tabId;
+      await waitForRegistryReplayBarrier();
+      await enqueueTabRegistryMutation(tabId, async () => {
+        const manifest = await getContextManifestFromExtension(tenantId, manager, tabId).catch(
+          () => null,
+        );
+        registry.syncContextManifestOnAllServers(tabId, manifest);
+      });
     }
     return { ok: true };
   });
@@ -572,12 +623,14 @@ export function createExtensionState(
       BRIDGE_METHODS.bridgeTabUpdated,
     );
     if (payload.tabId != null) {
-      const manifest = await getContextManifestFromExtension(
-        tenantId,
-        manager,
-        payload.tabId,
-      ).catch(() => null);
-      registry.syncContextManifestOnAllServers(payload.tabId, manifest);
+      const tabId = payload.tabId;
+      await waitForRegistryReplayBarrier();
+      await enqueueTabRegistryMutation(tabId, async () => {
+        const manifest = await getContextManifestFromExtension(tenantId, manager, tabId).catch(
+          () => null,
+        );
+        registry.syncContextManifestOnAllServers(tabId, manifest);
+      });
     }
     return { ok: true };
   });

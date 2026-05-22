@@ -3633,7 +3633,9 @@ var SidePanelApp = class SidePanelApp extends i$1 {
         </button>
         ${
           this._agentationInjectStatus
-            ? b`<span class=${this._agentationInjectStatusClass} title=${this._agentationInjectStatus}
+            ? b`<span
+              class=${this._agentationInjectStatusClass}
+              title=${this._agentationInjectStatus}
               >${this._agentationInjectStatus}</span
             >`
             : A
