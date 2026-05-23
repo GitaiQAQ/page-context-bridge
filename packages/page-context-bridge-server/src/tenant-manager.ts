@@ -26,8 +26,11 @@ export interface TenantManagerFactory {
   createRegistry(tenantId: string): McpRegistry;
 }
 
+export type TenantRemoveListener = (tenantId: string) => void;
+
 export class TenantManager {
   private readonly tenants = new Map<string, Tenant>();
+  private readonly removeListeners: TenantRemoveListener[] = [];
   private cleanupTimer?: ReturnType<typeof setInterval>;
 
   constructor(private readonly factory: TenantManagerFactory) {}
@@ -53,10 +56,27 @@ export class TenantManager {
     return this.tenants.get(tenantId);
   }
 
+  /**
+   * 注册 tenant 删除监听。
+   * 这里只暴露 tenantId，让资源释放逻辑留在调用方，各自处理各自持有的 transport。
+   */
+  onRemove(listener: TenantRemoveListener): () => void {
+    this.removeListeners.push(listener);
+    return () => {
+      const index = this.removeListeners.indexOf(listener);
+      if (index >= 0) {
+        this.removeListeners.splice(index, 1);
+      }
+    };
+  }
+
   remove(tenantId: string): void {
     const tenant = this.tenants.get(tenantId);
     if (tenant) {
       this.tenants.delete(tenantId);
+      for (const listener of [...this.removeListeners]) {
+        listener(tenantId);
+      }
       log(`Tenant removed: ${tenantId} (idle)`);
     }
   }

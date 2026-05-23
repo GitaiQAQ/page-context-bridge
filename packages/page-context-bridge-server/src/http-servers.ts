@@ -5,8 +5,6 @@
  */
 
 import { createServer, type Server as HttpServer } from 'http';
-import { join } from 'path';
-import { fileURLToPath } from 'url';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -16,11 +14,11 @@ import { log } from './mcp-registry.js';
 import type { TenantManager } from './tenant-manager.js';
 import { TenantManager as TM } from './tenant-manager.js';
 
-const __dirname = join(fileURLToPath(import.meta.url), '..');
 const MCP_BOOTSTRAP_TOOL = '__page_context.bootstrap.tool';
 const MCP_BOOTSTRAP_RESOURCE = '__page_context.bootstrap.resource';
 const MCP_BOOTSTRAP_RESOURCE_URI = 'context://bootstrap/resource';
 const MCP_BOOTSTRAP_PROMPT = '__page_context.bootstrap.prompt';
+const DEBUG_ENDPOINTS_ENABLED = process.env.BRIDGE_DEBUG_ENDPOINTS === '1';
 
 export function startSseServer(mcpHttpPort: number, manager: TenantManager): Promise<boolean> {
   return startSseServerWithHandle(mcpHttpPort, manager).then((started) => started.ok);
@@ -153,6 +151,26 @@ function createSseHttpServer(manager: TenantManager): HttpServer {
     Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }> // mcpSessionId -> entry
   >();
 
+  // tenant 被 manager 回收后，这里负责把还残留的 transport 一并关掉。
+  // manager 只负责生命周期判定，不应该知道 HTTP 层具体持有哪些连接。
+  manager.onRemove((tenantId) => {
+    const streamableSessions = streamablePerTenant.get(tenantId);
+    if (streamableSessions) {
+      for (const { transport } of streamableSessions.values()) {
+        void transport.close().catch(() => {});
+      }
+      streamablePerTenant.delete(tenantId);
+    }
+
+    for (const [key, entry] of transports.entries()) {
+      if (entry.tenantId !== tenantId) {
+        continue;
+      }
+      void entry.transport.close().catch(() => {});
+      transports.delete(key);
+    }
+  });
+
   async function handleStreamableRequest(
     tenantId: string,
     req: import('http').IncomingMessage,
@@ -202,6 +220,19 @@ function createSseHttpServer(manager: TenantManager): HttpServer {
   return createServer(async (req, res) => {
     const rawUrl = req.url ?? '/';
     const urlPath = rawUrl.split('?')[0];
+
+    if (DEBUG_ENDPOINTS_ENABLED && req.method === 'GET' && urlPath === '/__debug/tenants') {
+      const tenants = manager.list().map((tenant) => ({
+        id: tenant.id,
+        createdAt: tenant.createdAt,
+        lastActivityAt: tenant.lastActivityAt,
+        hasExtension: tenant.extension !== null,
+        serverCount: tenant.registry.getServerCount(),
+      }));
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ tenants }));
+      return;
+    }
 
     // POST /message?sessionId=xxx — SSE client uses relative path from endpoint event
     if (req.method === 'POST' && (urlPath === '/message' || urlPath === '/message')) {

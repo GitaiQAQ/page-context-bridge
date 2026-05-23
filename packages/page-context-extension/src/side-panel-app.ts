@@ -108,7 +108,7 @@ import { classMap } from 'lit/directives/class-map.js';
 import { when } from 'lit/directives/when.js';
 
 import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
-import { tabsCreate, tabsQuery } from './extension-api';
+import { storageLocalGet, storageLocalSet, tabsCreate, tabsQuery } from './extension-api';
 import { sendRuntimeRequest } from './runtime-rpc';
 import {
   type SidepanelSurface,
@@ -147,6 +147,14 @@ import { renderContextTab, type RenderContextTabInput } from './sidepanel-contex
 import { initializeToolTestState, resetToolTestArgsState } from './sidepanel-tool-test-controller';
 import { normalizeUrl, createBoundMessageHandler, buildLoaderUrl } from './sidepanel-navigation';
 import {
+  buildIframeUrl as buildOpenCodeIframeUrl,
+  createSession as createOpenCodeSession,
+  deleteSession as deleteOpenCodeSession,
+  ensureMcpRegistered,
+  listSessions as listOpenCodeSessions,
+  type OpenCodeConfig,
+} from './sidepanel-opencode';
+import {
   type ContextManifestResponse,
   type ContextSkillResponse,
   type RuntimeExplicitTabBinding,
@@ -161,6 +169,14 @@ import {
 
 // Vite resolves this to the built CSS asset URL at runtime
 import sidepanelCssUrl from './sidepanel.css?url';
+
+const OPENCODE_CONFIG_STORAGE_KEY = 'opencode.config.v1';
+
+interface StoredOpenCodeConfig {
+  opencodeBaseUrl?: string;
+  bridgeBaseUrl?: string;
+  sessionId?: string;
+}
 
 // Custom sidepanel-specific rules that were previously in <style> in the HTML
 const customRules = css`
@@ -231,7 +247,8 @@ export class SidePanelApp extends LitElement {
   @state() private _currentRawContextManifest: PageContextManifest | null = null;
   @state() private _currentEffectiveContextManifest: PageContextManifest | null = null;
   @state() private _currentContextDebug: ContextManifestFilterDebug | null = null;
-  @state() private _activeTab: 'tools' | 'context' | 'feedback' | 'diagnosis' = 'tools';
+  @state() private _activeTab: 'tools' | 'context' | 'feedback' | 'diagnosis' | 'opencode' =
+    'tools';
   @state() private _urlBarVisible = true;
   @state() private _currentUrl = '';
   @state() private _manifestStatus = '';
@@ -277,6 +294,14 @@ export class SidePanelApp extends LitElement {
   @state() private _agentationInjecting = false;
   @state() private _agentationInjectStatus = '';
   @state() private _agentationInjectStatusClass = 'text-xs opacity-60';
+  @state() private _opencodeBaseUrl = 'http://localhost:4096';
+  @state() private _bridgeBaseUrl = 'http://localhost:22335';
+  @state() private _opencodeSessionId = '';
+  @state() private _opencodeConnecting = false;
+  @state() private _opencodeConnected = false;
+  @state() private _opencodeStatus = '';
+  @state() private _opencodeStatusClass = 'text-xs opacity-60';
+  @state() private _opencodeDeleteSessionOnDisconnect = false;
 
   // ─── Query references (shadowRoot is guaranteed when using default createRenderRoot) ──
   @query('#iframeContainer') private _iframeContainer!: HTMLElement;
@@ -315,7 +340,7 @@ export class SidePanelApp extends LitElement {
     link.rel = 'stylesheet';
     link.href = sidepanelCssUrl;
     this.shadowRoot!.appendChild(link);
-    this._init();
+    void this._init();
   }
 
   override disconnectedCallback(): void {
@@ -362,6 +387,7 @@ export class SidePanelApp extends LitElement {
     const url = launchUrl ? String(launchUrl) : 'http://127.0.0.1:22338/';
     this._navigateTo(url);
     this.updateComplete.then(() => this._manageIframe());
+    await this._restoreOpenCodeConfig();
 
     // Register extension API listeners
     this._tabActivatedListener = (activeInfo: { tabId: number; windowId: number }) => {
@@ -396,6 +422,53 @@ export class SidePanelApp extends LitElement {
       }
     };
     chrome.tabs.onUpdated.addListener(this._tabUpdatedListener!);
+  }
+
+  private _getOpenCodeConfig(): OpenCodeConfig {
+    return {
+      opencodeBaseUrl: this._opencodeBaseUrl,
+      bridgeBaseUrl: this._bridgeBaseUrl,
+    };
+  }
+
+  /**
+   * 只恢复上次“成功连通过”的配置。
+   * 这样能减少用户把临时试错地址再次带回来的噪音。
+   */
+  private async _restoreOpenCodeConfig(): Promise<void> {
+    try {
+      const result = await storageLocalGet<{
+        [OPENCODE_CONFIG_STORAGE_KEY]?: StoredOpenCodeConfig;
+      }>(OPENCODE_CONFIG_STORAGE_KEY);
+      const saved = result[OPENCODE_CONFIG_STORAGE_KEY];
+      if (!saved) {
+        return;
+      }
+      if (typeof saved.opencodeBaseUrl === 'string' && saved.opencodeBaseUrl.trim()) {
+        this._opencodeBaseUrl = saved.opencodeBaseUrl.trim();
+      }
+      if (typeof saved.bridgeBaseUrl === 'string' && saved.bridgeBaseUrl.trim()) {
+        this._bridgeBaseUrl = saved.bridgeBaseUrl.trim();
+      }
+      if (typeof saved.sessionId === 'string') {
+        this._opencodeSessionId = saved.sessionId.trim();
+      }
+    } catch (error) {
+      spLog(
+        `Failed to restore OpenCode config: ${error instanceof Error ? error.message : String(error)}`,
+        'warn',
+      );
+    }
+  }
+
+  private async _persistOpenCodeConfig(): Promise<void> {
+    await storageLocalSet({
+      [OPENCODE_CONFIG_STORAGE_KEY]: {
+        opencodeBaseUrl: this._opencodeBaseUrl.trim(),
+        bridgeBaseUrl: this._bridgeBaseUrl.trim(),
+        sessionId: this._opencodeSessionId.trim(),
+      } satisfies StoredOpenCodeConfig,
+    });
   }
 
   // ─── Status & Tab Management ───────────────────────────────────
@@ -1093,7 +1166,7 @@ export class SidePanelApp extends LitElement {
   private _boundMessageHandler = createBoundMessageHandler();
 
   // ─── Event Handlers ────────────────────────────────────────────
-  private _handleTabClick(tab: 'tools' | 'context' | 'feedback' | 'diagnosis'): void {
+  private _handleTabClick(tab: 'tools' | 'context' | 'feedback' | 'diagnosis' | 'opencode'): void {
     console.log(
       '[side-panel] _handleTabClick called with:',
       tab,
@@ -1167,6 +1240,91 @@ export class SidePanelApp extends LitElement {
       spLog(`Agentation inject failed: ${message}`, 'error');
     } finally {
       this._agentationInjecting = false;
+      this.requestUpdate();
+    }
+  }
+
+  /**
+   * 优先复用用户指定的 session；找不到时再创建，避免 sidepanel 擅自“抢救”到错误 session。
+   */
+  private async _resolveOpenCodeSessionId(): Promise<string> {
+    const desiredSessionId = this._opencodeSessionId.trim();
+    if (!desiredSessionId) {
+      const created = await createOpenCodeSession(this._getOpenCodeConfig());
+      return created.id;
+    }
+
+    const sessions = await listOpenCodeSessions(this._getOpenCodeConfig());
+    const matched = sessions.find((session) => session.id === desiredSessionId);
+    if (matched) {
+      return matched.id;
+    }
+
+    const created = await createOpenCodeSession(this._getOpenCodeConfig());
+    return created.id;
+  }
+
+  private async _handleOpencodeConnect(): Promise<void> {
+    if (this._opencodeConnecting) {
+      return;
+    }
+
+    this._opencodeConnecting = true;
+    this._opencodeConnected = false;
+    this._opencodeStatus = 'Resolving session...';
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+
+    try {
+      const sessionId = await this._resolveOpenCodeSessionId();
+      this._opencodeSessionId = sessionId;
+
+      this._opencodeStatus = 'Registering MCP...';
+      this.requestUpdate();
+      await ensureMcpRegistered(this._getOpenCodeConfig(), sessionId);
+
+      this._opencodeConnected = true;
+      this._opencodeStatus = 'Connected';
+      this._opencodeStatusClass = 'text-xs text-success';
+      await this._persistOpenCodeConfig();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._opencodeConnected = false;
+      this._opencodeStatus = message;
+      this._opencodeStatusClass = 'text-xs text-error';
+      spLog(`OpenCode connect failed: ${message}`, 'error');
+    } finally {
+      this._opencodeConnecting = false;
+      this.requestUpdate();
+    }
+  }
+
+  private async _handleOpencodeDisconnect(): Promise<void> {
+    const sessionId = this._opencodeSessionId.trim();
+    const shouldDeleteSession = this._opencodeDeleteSessionOnDisconnect && sessionId !== '';
+
+    this._opencodeConnecting = true;
+    this._opencodeConnected = false;
+    this._opencodeStatus = shouldDeleteSession ? 'Deleting session...' : 'Disconnecting...';
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+
+    try {
+      if (shouldDeleteSession) {
+        await deleteOpenCodeSession(this._getOpenCodeConfig(), sessionId);
+      }
+      this._opencodeSessionId = '';
+      this._opencodeStatus = shouldDeleteSession
+        ? 'Disconnected and deleted session'
+        : 'Disconnected';
+      this._opencodeStatusClass = 'text-xs opacity-60';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._opencodeStatus = message;
+      this._opencodeStatusClass = 'text-xs text-error';
+      spLog(`OpenCode disconnect failed: ${message}`, 'error');
+    } finally {
+      this._opencodeConnecting = false;
       this.requestUpdate();
     }
   }
@@ -1283,6 +1441,110 @@ export class SidePanelApp extends LitElement {
     return html`
       ${builtinTools.totalTools > 0 ? renderBuiltinsNode(builtinTools) : nothing}
       ${filteredTabs.map((tab) => renderTabNode(tab))}
+    `;
+  }
+
+  private _renderOpencodeTab(): TemplateResult {
+    const iframeUrl =
+      this._opencodeConnected && this._opencodeSessionId
+        ? buildOpenCodeIframeUrl(this._getOpenCodeConfig(), this._opencodeSessionId)
+        : '';
+
+    return html`
+      <div
+        class="tab-content ${classMap({
+          active: this._activeTab === 'opencode',
+        })} flex flex-col flex-1 min-h-0"
+      >
+        <div class="flex flex-col gap-2 p-3 border-b border-base-300 bg-base-100 shrink-0">
+          <label class="form-control flex flex-col gap-1">
+            <span class="text-xs font-semibold opacity-70">OpenCode Base URL</span>
+            <input
+              type="text"
+              class="input input-sm input-bordered font-mono"
+              .value=${this._opencodeBaseUrl}
+              @input=${(event: Event) => {
+                this._opencodeBaseUrl = (event.target as HTMLInputElement).value;
+              }}
+              placeholder="http://localhost:4096"
+            />
+          </label>
+          <label class="form-control flex flex-col gap-1">
+            <span class="text-xs font-semibold opacity-70">Bridge Base URL</span>
+            <input
+              type="text"
+              class="input input-sm input-bordered font-mono"
+              .value=${this._bridgeBaseUrl}
+              @input=${(event: Event) => {
+                this._bridgeBaseUrl = (event.target as HTMLInputElement).value;
+              }}
+              placeholder="http://localhost:22335"
+            />
+          </label>
+          <label class="form-control flex flex-col gap-1">
+            <span class="text-xs font-semibold opacity-70">Session ID (optional)</span>
+            <input
+              type="text"
+              class="input input-sm input-bordered font-mono"
+              .value=${this._opencodeSessionId}
+              @input=${(event: Event) => {
+                this._opencodeSessionId = (event.target as HTMLInputElement).value;
+              }}
+              placeholder="leave empty to create a new session"
+            />
+          </label>
+          <label class="label cursor-pointer justify-start gap-2 p-0">
+            <input
+              type="checkbox"
+              class="checkbox checkbox-xs"
+              .checked=${this._opencodeDeleteSessionOnDisconnect}
+              @change=${(event: Event) => {
+                this._opencodeDeleteSessionOnDisconnect = (
+                  event.target as HTMLInputElement
+                ).checked;
+              }}
+            />
+            <span class="label-text text-xs">Delete session on disconnect</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <button
+              class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
+              @click=${() => void this._handleOpencodeConnect()}
+              ?disabled=${this._opencodeConnecting}
+            >
+              Connect
+            </button>
+            <button
+              class="btn btn-sm btn-outline"
+              @click=${() => void this._handleOpencodeDisconnect()}
+              ?disabled=${this._opencodeConnecting || !this._opencodeConnected}
+            >
+              Disconnect
+            </button>
+            ${this._opencodeStatus
+              ? html`<span class=${this._opencodeStatusClass}>${this._opencodeStatus}</span>`
+              : nothing}
+          </div>
+        </div>
+
+        <div class="flex-1 min-h-0 bg-base-100">
+          ${this._opencodeConnected && iframeUrl
+            ? html`
+                <iframe
+                  class="w-full h-full border-0"
+                  sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+                  src=${iframeUrl}
+                ></iframe>
+              `
+            : html`
+                <div
+                  class="flex h-full items-center justify-center px-6 text-center text-sm opacity-60"
+                >
+                  Connect to OpenCode to render the embedded session UI.
+                </div>
+              `}
+        </div>
+      </div>
     `;
   }
 
@@ -1440,6 +1702,25 @@ export class SidePanelApp extends LitElement {
               <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
           </button>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'opencode' })}"
+            @click=${() => this._handleTabClick('opencode')}
+            title="OpenCode"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M16 18l6-6-6-6" />
+              <path d="M8 6l-6 6 6 6" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -1549,6 +1830,8 @@ export class SidePanelApp extends LitElement {
         )}
         <div class="iframe-container flex-1 relative bg-base-100" id="iframeContainer"></div>
       </div>
+
+      ${this._renderOpencodeTab()}
     `;
   }
   // end _renderContent

@@ -33,6 +33,11 @@ const runtimeEnv = getRuntimeEnv();
 const EXT_WS_PORT = Number.parseInt(runtimeEnv.EXT_WS_PORT || '22335', 10);
 const MCP_HTTP_PORT = Number.parseInt(runtimeEnv.MCP_HTTP_PORT || '22334', 10);
 const STDIO_TENANT_ID = runtimeEnv.TENANT_ID || 'default';
+const CLEANUP_INTERVAL_MS = Number.parseInt(
+  runtimeEnv.BRIDGE_CLEANUP_INTERVAL_MS || `${5 * 60_000}`,
+  10,
+);
+const CLEANUP_IDLE_MS = Number.parseInt(runtimeEnv.BRIDGE_IDLE_MS || `${30 * 60_000}`, 10);
 
 // ── Tenant Manager: creates isolated registries per tenant ──
 
@@ -69,7 +74,7 @@ const tenantManager: TenantManager = new TenantManager({
 });
 
 // Start idle cleanup
-tenantManager.startCleanup();
+tenantManager.startCleanup(CLEANUP_INTERVAL_MS, CLEANUP_IDLE_MS);
 
 // ── Main ──
 

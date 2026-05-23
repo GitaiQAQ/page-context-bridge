@@ -735,6 +735,7 @@ export function startWebSocketServer(extWsPort: number, manager: TenantManager):
         const rawUrl = req.url ?? '/';
         const tenantId = TenantManager.extractTenantId(rawUrl);
         const tenant = manager.getOrCreate(tenantId);
+        manager.touch(tenantId);
 
         log(`[${tenantId}] Extension connecting from ${rawUrl}`);
 
@@ -748,6 +749,8 @@ export function startWebSocketServer(extWsPort: number, manager: TenantManager):
         tenant.extension = slot;
 
         ws.on('message', (data: WebSocket.RawData) => {
+          // WebSocket 是扩展侧的常驻控制面，收到任意消息都应刷新活跃时间。
+          manager.touch(tenantId);
           void slot.peer.receive(data.toString()).catch((error: unknown) => {
             log(
               `[${tenantId}] Failed to process message`,
