@@ -97,9 +97,23 @@ export class TenantManager {
     return Math.random().toString(36).slice(2, 8);
   }
 
-  /** Extract tenant ID from URL path. Returns "default" if no /{id} prefix found. */
-  static extractTenantId(urlPath: string): string {
-    const path = urlPath.split('?')[0].replace(/\/+$/, '');
+  /**
+   * 提取 tenantId。
+   *
+   * 约定优先级：
+   * 1. `?tenantId=xxx`，供 extension ws 使用；
+   * 2. `/{tenantId}/...`，供现有 HTTP MCP/SSE 路由继续复用。
+   *
+   * 这样能同时满足“ws 走 query”与“HTTP 走 path”的现有契约，不额外引入分支协议。
+   */
+  static extractTenantId(rawUrl: string): string {
+    const parsed = new URL(rawUrl, 'http://localhost');
+    const queryTenantId = parsed.searchParams.get('tenantId')?.trim();
+    if (queryTenantId) {
+      return queryTenantId;
+    }
+
+    const path = parsed.pathname.replace(/\/+$/, '');
     // Match first path segment that looks like a tenant ID
     const match = path.match(/^\/([a-zA-Z0-9_.-]+)(?:\/|$)/);
     return match?.[1] ?? 'default';

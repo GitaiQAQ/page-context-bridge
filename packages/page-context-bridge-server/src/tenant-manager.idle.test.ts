@@ -56,4 +56,15 @@ describe('tenant-manager idle cleanup', () => {
 
     expect(manager.get('tenant-with-extension')).toBe(tenant);
   });
+
+  it('prefers tenantId query param for extension websocket urls', () => {
+    expect(TenantManager.extractTenantId('/?tenantId=session-a')).toBe('session-a');
+    expect(TenantManager.extractTenantId('/default?tenantId=session-b')).toBe('session-b');
+  });
+
+  it('falls back to path prefix for existing HTTP routes', () => {
+    expect(TenantManager.extractTenantId('/tenant-c/mcp')).toBe('tenant-c');
+    expect(TenantManager.extractTenantId('/tenant-d/sse?foo=bar')).toBe('tenant-d');
+    expect(TenantManager.extractTenantId('/')).toBe('default');
+  });
 });

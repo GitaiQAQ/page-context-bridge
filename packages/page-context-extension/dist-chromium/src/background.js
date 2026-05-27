@@ -7125,11 +7125,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
    * Handles connect/reconnect, heartbeat, and queued notifications.
    */
   var DEFAULT_MCP_WS_URL = 'ws://127.0.0.1:22335/default';
-  var RECONNECT_BASE_MS = 1e3;
-  var RECONNECT_MAX_MS = 3e4;
-  var HEARTBEAT_INTERVAL_MS = 15e3;
+  var RECONNECT_BASE_MS$1 = 1e3;
+  var RECONNECT_MAX_MS$1 = 3e4;
+  var HEARTBEAT_INTERVAL_MS$1 = 15e3;
   var MCP_WS_URL_KEY = 'mcpWsUrl';
-  var WS_FORWARD_EXTENSION_METHODS = [
+  var WS_FORWARD_EXTENSION_METHODS$1 = [
     BRIDGE_METHODS.extensionStatusGet,
     BRIDGE_METHODS.extensionReconnect,
     BRIDGE_METHODS.extensionPageToolsGet,
@@ -7181,20 +7181,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       params,
     });
   }
-  function clearReconnectTimer() {
+  function clearReconnectTimer$1() {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
   }
-  function ensureHeartbeatTimer() {
+  function ensureHeartbeatTimer$1() {
     if (heartbeatTimer) return;
     heartbeatTimer = setInterval(() => {
       if (!wsReady || !rpcPeer || !sessionId) return;
       rpcPeer.notify(BRIDGE_METHODS.sessionHeartbeat, { sentAt: Date.now() }).catch((error) => {
         log('Heartbeat failed', error);
       });
-    }, HEARTBEAT_INTERVAL_MS);
+    }, HEARTBEAT_INTERVAL_MS$1);
   }
   async function flushQueuedNotifications() {
     if (!wsReady || !rpcPeer) return;
@@ -7209,7 +7209,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
   }
   function scheduleReconnect() {
     if (reconnectTimer) return;
-    const delay = Math.min(RECONNECT_BASE_MS * 2 ** reconnectAttempts, RECONNECT_MAX_MS);
+    const delay = Math.min(RECONNECT_BASE_MS$1 * 2 ** reconnectAttempts, RECONNECT_MAX_MS$1);
     reconnectAttempts += 1;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -7223,8 +7223,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }, delay);
     log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
   }
-  function registerForwardedExtensionMethods(peer, onExtensionRequest) {
-    for (const method of WS_FORWARD_EXTENSION_METHODS)
+  function registerForwardedExtensionMethods$1(peer, onExtensionRequest) {
+    for (const method of WS_FORWARD_EXTENSION_METHODS$1)
       peer.register(method, async (params) => await onExtensionRequest(method, params));
   }
   async function connectWebSocket(
@@ -7263,7 +7263,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       });
       rpcPeer.register(BRIDGE_METHODS.bridgeToolsList, async () => onToolsList());
       rpcPeer.register(BRIDGE_METHODS.bridgeTabsList, async () => onTabsList());
-      registerForwardedExtensionMethods(rpcPeer, onExtensionRequest);
+      registerForwardedExtensionMethods$1(rpcPeer, onExtensionRequest);
       await new Promise((resolve, reject) => {
         let settled = false;
         let opened = false;
@@ -7326,8 +7326,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         ).sessionId;
         wsReady = true;
         reconnectAttempts = 0;
-        clearReconnectTimer();
-        ensureHeartbeatTimer();
+        clearReconnectTimer$1();
+        ensureHeartbeatTimer$1();
         await flushQueuedNotifications();
         log('Bridge session ready', sessionId);
       } catch (error) {
@@ -7347,7 +7347,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     onTabsList,
     onExtensionRequest = defaultOnExtensionRequest,
   ) {
-    clearReconnectTimer();
+    clearReconnectTimer$1();
     reconnectAttempts = 0;
     wsReady = false;
     connectPromise = null;
@@ -9151,15 +9151,45 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     async function onTabsList() {
       return await deps.listTabs();
     }
-    function buildExtensionStatusResponse() {
+    function buildExtensionStatusResponse(params) {
+      const sessionId = params?.sessionId?.trim();
+      if (sessionId) {
+        const scopedStatus = deps.scopedBridgeConnection.getStatus(sessionId);
+        return {
+          connected: scopedStatus.connected,
+          wsUrl: null,
+          pendingToolCalls: deps.inFlightToolCalls.size,
+          sessionId,
+          scopedSessions: [scopedStatus],
+        };
+      }
       return {
         connected: deps.bridgeConnection.getWsReady(),
         wsUrl: null,
         pendingToolCalls: deps.inFlightToolCalls.size,
         sessionId: deps.bridgeConnection.getSessionId(),
+        scopedSessions: deps.scopedBridgeConnection.listStatuses(),
       };
     }
-    async function handleExtensionReconnect() {
+    async function handleExtensionReconnect(params) {
+      const payload = params;
+      const tenantId = payload?.sessionId?.trim();
+      const wsUrl = payload?.wsUrl?.trim();
+      if (tenantId) {
+        if (payload?.disconnect) {
+          await deps.scopedBridgeConnection.disconnect(tenantId);
+          return { ok: true };
+        }
+        if (!wsUrl)
+          throw new Error(`wsUrl is required when reconnecting scoped session "${tenantId}"`);
+        await deps.scopedBridgeConnection.connect(tenantId, wsUrl, {
+          onToolCall,
+          onToolsList,
+          onTabsList,
+          onExtensionRequest: onBridgeWsExtensionRequest,
+        });
+        return { ok: true };
+      }
       await deps.bridgeConnection.forceReconnect(
         onToolCall,
         onToolsList,
@@ -9286,9 +9316,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       await ensurePageToolPreferencesLoaded(deps.pageToolState);
       switch (method) {
         case BRIDGE_METHODS.extensionStatusGet:
-          return buildExtensionStatusResponse();
+          return buildExtensionStatusResponse(params);
         case BRIDGE_METHODS.extensionReconnect:
-          return await handleExtensionReconnect();
+          return await handleExtensionReconnect(params);
         case BRIDGE_METHODS.extensionPageToolsGet:
           return handleExtensionPageToolsGet(params);
         case BRIDGE_METHODS.extensionPageToolsTreeGet:
@@ -9513,9 +9543,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         case EXTENSION_E2E_REPORT_METHOD:
           return await postFirefoxE2EReport(message.params);
         case BRIDGE_METHODS.extensionStatusGet:
-          return deps.extensionControlHandlers.buildExtensionStatusResponse();
+          return deps.extensionControlHandlers.buildExtensionStatusResponse(message.params);
         case BRIDGE_METHODS.extensionReconnect:
-          return await deps.extensionControlHandlers.handleExtensionReconnect();
+          return await deps.extensionControlHandlers.handleExtensionReconnect(message.params);
         case BRIDGE_METHODS.extensionPageToolsGet:
           return deps.extensionControlHandlers.handleExtensionPageToolsGet(message.params);
         case BRIDGE_METHODS.extensionPageToolsTreeGet:
@@ -10063,9 +10093,270 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     } catch {}
   };
   //#endregion
+  //#region src/bg-scoped-ws-connection.ts
+  /**
+   * OpenCode 多 session WebSocket 管理器。
+   *
+   * 设计目标：
+   * 1. 不动现有 default tenant 单连接实现，避免把旧链路一起改坏。
+   * 2. tenantId === opencode sessionId，一条 session 对应一条独立 ws。
+   * 3. 只管理“按 session 建连/断连/查询状态”这一件事，不掺入业务路由。
+   *
+   * 这符合 Linux 哲学：把“连接管理”和“业务处理”拆开，各自只做一件事。
+   */
+  var WS_FORWARD_EXTENSION_METHODS = [
+    BRIDGE_METHODS.extensionStatusGet,
+    BRIDGE_METHODS.extensionReconnect,
+    BRIDGE_METHODS.extensionPageToolsGet,
+    BRIDGE_METHODS.extensionPageToolsTreeGet,
+    BRIDGE_METHODS.extensionPageToolsDiscover,
+    BRIDGE_METHODS.extensionPageToolsRefresh,
+    BRIDGE_METHODS.extensionPageToolsSetEnabled,
+    BRIDGE_METHODS.extensionToolDebugCall,
+    BRIDGE_METHODS.extensionMainWorldHostEnsure,
+    BRIDGE_METHODS.extensionAgentationMainEnsure,
+    BRIDGE_METHODS.extensionContextManifestGet,
+    BRIDGE_METHODS.extensionContextResourceRead,
+    BRIDGE_METHODS.extensionContextSkillGet,
+  ];
+  var RECONNECT_BASE_MS = 1e3;
+  var RECONNECT_MAX_MS = 3e4;
+  var HEARTBEAT_INTERVAL_MS = 15e3;
+  function registerForwardedExtensionMethods(peer, onExtensionRequest) {
+    for (const method of WS_FORWARD_EXTENSION_METHODS)
+      peer.register(method, async (params) => await onExtensionRequest(method, params));
+  }
+  function isOpenOrConnecting(ws) {
+    return ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING;
+  }
+  function clearReconnectTimer(connection) {
+    if (!connection.reconnectTimer) return;
+    clearTimeout(connection.reconnectTimer);
+    connection.reconnectTimer = null;
+  }
+  function clearHeartbeatTimer(connection) {
+    if (!connection.heartbeatTimer) return;
+    clearInterval(connection.heartbeatTimer);
+    connection.heartbeatTimer = null;
+  }
+  function ensureHeartbeatTimer(connection) {
+    if (connection.heartbeatTimer) return;
+    connection.heartbeatTimer = setInterval(() => {
+      if (!connection.ready || !connection.rpcPeer || !connection.bridgeSessionId) return;
+      connection.rpcPeer
+        .notify(BRIDGE_METHODS.sessionHeartbeat, { sentAt: Date.now() })
+        .catch((error) => {
+          console.warn(
+            '[PAGE-CONTEXT-BG]',
+            `[${connection.tenantId}] scoped heartbeat failed`,
+            error,
+          );
+        });
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+  function closeScopedConnection(connection, reason) {
+    connection.ready = false;
+    connection.bridgeSessionId = null;
+    clearReconnectTimer(connection);
+    clearHeartbeatTimer(connection);
+    connection.rpcPeer?.failAllPending(reason);
+    connection.handlers = null;
+    connection.connectPromise = null;
+    if (connection.ws && connection.ws.readyState < WebSocket.CLOSING) connection.ws.close();
+    connection.ws = null;
+    connection.rpcPeer = null;
+  }
+  function createScopedBridgeWsManager() {
+    const connections = /* @__PURE__ */ new Map();
+    function getOrCreateConnection(tenantId, wsUrl) {
+      const current = connections.get(tenantId);
+      if (current && current.wsUrl === wsUrl) return current;
+      if (current) closeScopedConnection(current, 'Replacing scoped bridge connection');
+      const created = {
+        tenantId,
+        wsUrl,
+        ws: null,
+        rpcPeer: null,
+        ready: false,
+        bridgeSessionId: null,
+        connectPromise: null,
+        reconnectAttempts: 0,
+        reconnectTimer: null,
+        heartbeatTimer: null,
+        handlers: null,
+      };
+      connections.set(tenantId, created);
+      return created;
+    }
+    function scheduleReconnect(connection) {
+      if (connection.reconnectTimer || !connection.handlers) return;
+      const delay = Math.min(
+        RECONNECT_BASE_MS * 2 ** connection.reconnectAttempts,
+        RECONNECT_MAX_MS,
+      );
+      connection.reconnectAttempts += 1;
+      connection.reconnectTimer = setTimeout(() => {
+        connection.reconnectTimer = null;
+        if (!connection.handlers) return;
+        connect(connection.tenantId, connection.wsUrl, connection.handlers);
+      }, delay);
+      console.warn(
+        '[PAGE-CONTEXT-BG]',
+        `[${connection.tenantId}] reconnecting scoped bridge in ${delay}ms`,
+      );
+    }
+    async function connect(tenantId, wsUrl, handlers) {
+      const connection = getOrCreateConnection(tenantId, wsUrl);
+      connection.handlers = handlers;
+      if (connection.connectPromise) return await connection.connectPromise;
+      if (isOpenOrConnecting(connection.ws)) return;
+      connection.connectPromise = (async () => {
+        const socket = new WebSocket(wsUrl);
+        connection.ws = socket;
+        connection.ready = false;
+        connection.bridgeSessionId = null;
+        const peer = new RpcPeer({
+          send: (message) => socket.send(message),
+          defaultTimeoutMs: 3e4,
+          getMeta: () => ({
+            sessionId: connection.bridgeSessionId ?? void 0,
+            source: 'extension',
+            target: 'bridge',
+          }),
+        });
+        connection.rpcPeer = peer;
+        peer.register(BRIDGE_METHODS.bridgeToolCall, async (params, request) => {
+          return await handlers.onToolCall(params, request.id);
+        });
+        peer.register(BRIDGE_METHODS.bridgeToolsList, async () => await handlers.onToolsList());
+        peer.register(BRIDGE_METHODS.bridgeTabsList, async () => await handlers.onTabsList());
+        registerForwardedExtensionMethods(peer, handlers.onExtensionRequest);
+        await new Promise((resolve, reject) => {
+          let settled = false;
+          let opened = false;
+          const resolveOnce = () => {
+            if (!settled) {
+              settled = true;
+              resolve();
+            }
+          };
+          const rejectOnce = (error) => {
+            if (!settled) {
+              settled = true;
+              reject(error);
+            }
+          };
+          socket.onopen = () => {
+            opened = true;
+            resolveOnce();
+          };
+          socket.onmessage = (event) => {
+            if (connection.ws !== socket || connection.rpcPeer !== peer) return;
+            peer.receive(String(event.data)).catch((error) => {
+              console.warn(
+                '[PAGE-CONTEXT-BG]',
+                `[${tenantId}] scoped bridge message failed`,
+                error,
+              );
+            });
+          };
+          socket.onerror = () => {
+            if (!opened) {
+              rejectOnce(
+                /* @__PURE__ */ new Error(
+                  `Scoped WebSocket errored before open for session "${tenantId}"`,
+                ),
+              );
+              socket.close();
+            }
+          };
+          socket.onclose = (event) => {
+            if (connection.ws !== socket) return;
+            connection.ready = false;
+            connection.bridgeSessionId = null;
+            clearHeartbeatTimer(connection);
+            peer.failAllPending(`Scoped bridge transport closed for "${tenantId}"`);
+            connection.ws = null;
+            connection.rpcPeer = null;
+            connection.connectPromise = null;
+            if (!opened)
+              rejectOnce(
+                /* @__PURE__ */ new Error(
+                  `Scoped WebSocket closed before open for session "${tenantId}" (code=${event.code})`,
+                ),
+              );
+            scheduleReconnect(connection);
+          };
+        });
+        try {
+          connection.bridgeSessionId = (
+            await peer.request(
+              BRIDGE_METHODS.sessionRegister,
+              {
+                extensionId: chrome.runtime.id,
+                version: chrome.runtime.getManifest().version,
+              },
+              { timeoutMs: 5e3 },
+            )
+          ).sessionId;
+          connection.ready = true;
+          connection.reconnectAttempts = 0;
+          clearReconnectTimer(connection);
+          ensureHeartbeatTimer(connection);
+        } catch (error) {
+          socket.close();
+          throw error;
+        }
+      })();
+      try {
+        await connection.connectPromise;
+      } finally {
+        connection.connectPromise = null;
+      }
+    }
+    async function disconnect(tenantId) {
+      const connection = connections.get(tenantId);
+      if (!connection) return;
+      closeScopedConnection(connection, `Scoped bridge session "${tenantId}" disconnected`);
+      connections.delete(tenantId);
+    }
+    function getStatus(tenantId) {
+      const connection = connections.get(tenantId);
+      return {
+        tenantId,
+        wsUrl: connection?.wsUrl ?? null,
+        connected: Boolean(connection?.ready && connection.ws?.readyState === WebSocket.OPEN),
+        bridgeSessionId: connection?.bridgeSessionId ?? null,
+      };
+    }
+    function listStatuses() {
+      return Array.from(connections.keys()).map((tenantId) => getStatus(tenantId));
+    }
+    function getPeer(tenantId) {
+      return connections.get(tenantId)?.rpcPeer ?? null;
+    }
+    function isMethodNotFound(error) {
+      return (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === RPC_ERROR_CODES.methodNotFound
+      );
+    }
+    return {
+      connect,
+      disconnect,
+      getStatus,
+      listStatuses,
+      getPeer,
+      isMethodNotFound,
+    };
+  }
+  //#endregion
   //#region src/background.ts
   var inFlightToolCalls = /* @__PURE__ */ new Map();
   var pageToolState = createPageToolState();
+  var scopedBridgeWsManager = createScopedBridgeWsManager();
   async function listTabs() {
     return (await tabsQuery({})).map((tab) => ({
       id: tab.id,
@@ -10087,6 +10378,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       getSessionId,
       forceReconnect,
     },
+    scopedBridgeConnection: scopedBridgeWsManager,
   });
   registerLifecycleListeners({
     pageToolState,

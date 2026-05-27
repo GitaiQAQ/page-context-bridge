@@ -12,8 +12,11 @@ describe('sidepanel-opencode', () => {
   const originalFetch = globalThis.fetch;
   const cfg: OpenCodeConfig = {
     opencodeBaseUrl: 'http://localhost:4096/',
-    bridgeBaseUrl: 'http://localhost:22335/',
+    bridgeBaseUrl: 'http://localhost:22334/',
   };
+  const projectDirectory = '/Users/bytedance/workspace/sides/browser-debug-extension';
+  const projectSegment =
+    'L1VzZXJzL2J5dGVkYW5jZS93b3Jrc3BhY2Uvc2lkZXMvYnJvd3Nlci1kZWJ1Zy1leHRlbnNpb24';
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -24,7 +27,7 @@ describe('sidepanel-opencode', () => {
   });
 
   it('builds websocket urls and rewrites http/https protocols', () => {
-    expect(buildExtWsUrl(cfg, 'session-1')).toBe('ws://localhost:22335/session-1/ext');
+    expect(buildExtWsUrl(cfg, 'session-1')).toBe('ws://localhost:22335/?tenantId=session-1');
     expect(
       buildExtWsUrl(
         {
@@ -33,12 +36,18 @@ describe('sidepanel-opencode', () => {
         },
         'session-2',
       ),
-    ).toBe('wss://bridge.example.com/session-2/ext');
+    ).toBe('wss://bridge.example.com/?tenantId=session-2');
   });
 
   it('builds iframe and mcp urls without double trailing slashes', () => {
-    expect(buildMcpUrl(cfg, 'session-1')).toBe('http://localhost:22335/session-1/mcp');
+    expect(buildMcpUrl(cfg, 'session-1')).toBe('http://localhost:22334/session-1/mcp');
     expect(buildIframeUrl(cfg, 'session 1')).toBe('http://localhost:4096/?session=session%201');
+    expect(
+      buildIframeUrl(cfg, {
+        id: 'session-1',
+        directory: projectDirectory,
+      }),
+    ).toBe(`http://localhost:4096/${projectSegment}/session/session-1`);
   });
 
   it('treats an already-connected entry as idempotent (single POST roundtrip)', async () => {
@@ -69,7 +78,7 @@ describe('sidepanel-opencode', () => {
           name: 'page-context-session-1',
           config: {
             type: 'remote',
-            url: 'http://localhost:22335/session-1/mcp',
+            url: 'http://localhost:22334/session-1/mcp',
             enabled: true,
           },
         }),
@@ -130,7 +139,7 @@ describe('sidepanel-opencode', () => {
           name: 'page-context-session-2',
           config: {
             type: 'remote',
-            url: 'http://localhost:22335/session-2/mcp',
+            url: 'http://localhost:22334/session-2/mcp',
             enabled: true,
           },
         }),
@@ -139,5 +148,22 @@ describe('sidepanel-opencode', () => {
         }),
       }),
     );
+  });
+
+  it('throws when opencode returns a non-connected entry state', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          'page-context-session-3': { status: 'connecting' },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(ensureMcpRegistered(cfg, 'session-3')).rejects.toThrow(/not connected yet/);
   });
 });

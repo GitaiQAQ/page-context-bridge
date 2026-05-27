@@ -5,10 +5,12 @@ export interface OpenCodeConfig {
 
 export interface OpenCodeSession {
   id: string;
+  directory?: string;
 }
 
 interface OpenCodeMcpEntry {
   status?: string;
+  error?: string;
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -30,6 +32,18 @@ function getNormalizedConfig(cfg: OpenCodeConfig): OpenCodeConfig {
     opencodeBaseUrl: normalizeBaseUrl(cfg.opencodeBaseUrl, 'OpenCode base URL'),
     bridgeBaseUrl: normalizeBaseUrl(cfg.bridgeBaseUrl, 'Bridge base URL'),
   };
+}
+
+/**
+ * 统一按 URL API 组装地址，避免字符串拼接把 path/query 搅在一起。
+ * 这里只做“在已有 base 后追加路径”这一件事，调用方再决定协议与端口。
+ */
+function appendPath(baseUrl: string, pathSuffix: string): URL {
+  const parsed = new URL(baseUrl);
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${pathSuffix}`;
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed;
 }
 
 async function requestJson<T>(
@@ -125,20 +139,51 @@ export async function ensureMcpRegistered(
   }
   if (entry.status === 'failed') {
     throw new Error(
-      `opencode failed to connect MCP "${mcpName}": ${(entry as { error?: string }).error ?? 'unknown error'}`,
+      `opencode failed to connect MCP "${mcpName}": ${entry.error ?? 'unknown error'}`,
+    );
+  }
+  if (entry.status !== 'connected') {
+    throw new Error(
+      `opencode MCP "${mcpName}" is not connected yet (status=${entry.status ?? 'unknown'})`,
     );
   }
 
   return { created: true, mcpName };
 }
 
-export function buildIframeUrl(cfg: OpenCodeConfig, sessionId: string): string {
+function encodeOpencodeRouteSegment(value: string): string {
+  // opencode web 真实路由使用 base64url(worktree) 作为第一段 path。
+  // 这里单独封装编码，避免各处手写替换规则时把 + / = 漏掉。
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+export function buildIframeUrl(cfg: OpenCodeConfig, session: OpenCodeSession | string): string {
   const normalized = getNormalizedConfig(cfg);
-  return `${normalized.opencodeBaseUrl}/?session=${encodeURIComponent(sessionId)}`;
+  const sessionId = typeof session === 'string' ? session : session.id;
+  const sessionDirectory = typeof session === 'string' ? '' : (session.directory?.trim() ?? '');
+
+  // 兼容旧数据：如果暂时拿不到 directory，先回退旧 query 形式，
+  // 至少不要把现有调用方直接打崩。真实联通路径则必须带 directory。
+  if (!sessionDirectory) {
+    return `${appendPath(normalized.opencodeBaseUrl, '/').toString()}?session=${encodeURIComponent(sessionId)}`;
+  }
+
+  const directorySegment = encodeOpencodeRouteSegment(sessionDirectory);
+  return appendPath(
+    normalized.opencodeBaseUrl,
+    `/${directorySegment}/session/${encodeURIComponent(sessionId)}`,
+  ).toString();
 }
 
 export function buildExtWsUrl(cfg: OpenCodeConfig, sessionId: string): string {
-  const parsed = new URL(buildMcpUrl(cfg, sessionId).replace(/\/mcp$/, '/ext'));
+  const normalized = getNormalizedConfig(cfg);
+  const parsed = new URL(normalized.bridgeBaseUrl);
+
   if (parsed.protocol === 'http:') {
     parsed.protocol = 'ws:';
   } else if (parsed.protocol === 'https:') {
@@ -146,10 +191,26 @@ export function buildExtWsUrl(cfg: OpenCodeConfig, sessionId: string): string {
   } else {
     throw new Error('Bridge base URL must use http:// or https://');
   }
+
+  // 约定：sidepanel 填的是 MCP HTTP base。
+  // 如果用户显式给了端口，则默认 ws 走“相邻端口 +1”，对齐 bridge 默认 22334/22335。
+  // 没有显式端口时不擅自猜测，让反向代理/同端口部署继续成立。
+  if (parsed.port) {
+    const httpPort = Number(parsed.port);
+    if (!Number.isFinite(httpPort) || httpPort <= 0) {
+      throw new Error('Bridge base URL port is invalid');
+    }
+    parsed.port = String(httpPort + 1);
+  }
+
+  parsed.pathname = '/';
+  parsed.search = '';
+  parsed.hash = '';
+  parsed.searchParams.set('tenantId', sessionId);
   return parsed.toString();
 }
 
 export function buildMcpUrl(cfg: OpenCodeConfig, sessionId: string): string {
   const normalized = getNormalizedConfig(cfg);
-  return `${normalized.bridgeBaseUrl}/${encodeURIComponent(sessionId)}/mcp`;
+  return appendPath(normalized.bridgeBaseUrl, `/${encodeURIComponent(sessionId)}/mcp`).toString();
 }

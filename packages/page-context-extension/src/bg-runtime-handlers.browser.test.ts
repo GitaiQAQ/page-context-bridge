@@ -26,12 +26,10 @@ function installChromeMock(): void {
       query: vi
         .fn()
         .mockResolvedValue([{ id: 5, url: 'https://active.example', title: 'active tab' }]),
-      get: vi
-        .fn()
-        .mockImplementation(async (tabId: number) => ({
-          id: tabId,
-          url: `https://tab-${tabId}.example`,
-        })),
+      get: vi.fn().mockImplementation(async (tabId: number) => ({
+        id: tabId,
+        url: `https://tab-${tabId}.example`,
+      })),
       onRemoved: { addListener: vi.fn() },
       onUpdated: { addListener: vi.fn() },
       debugger: { detach: vi.fn(), attach: vi.fn() },
@@ -114,8 +112,11 @@ describe('createRuntimeMessageHandler', () => {
           handleExtensionToolDebugCall: vi.fn(),
         } as never,
       });
-      await h({ method: BRIDGE_METHODS.extensionStatusGet }, sender);
-      expect(buildStatus).toHaveBeenCalled();
+      await h(
+        { method: BRIDGE_METHODS.extensionStatusGet, params: { sessionId: 'session-z' } },
+        sender,
+      );
+      expect(buildStatus).toHaveBeenCalledWith({ sessionId: 'session-z' });
     });
 
     it('routes extensionReconnect', async () => {
@@ -134,8 +135,20 @@ describe('createRuntimeMessageHandler', () => {
           handleExtensionToolDebugCall: vi.fn(),
         } as never,
       });
-      await h({ method: BRIDGE_METHODS.extensionReconnect }, sender);
-      expect(reconnect).toHaveBeenCalled();
+      await h(
+        {
+          method: BRIDGE_METHODS.extensionReconnect,
+          params: {
+            sessionId: 'session-z',
+            wsUrl: 'ws://127.0.0.1:22335/?tenantId=session-z',
+          },
+        },
+        sender,
+      );
+      expect(reconnect).toHaveBeenCalledWith({
+        sessionId: 'session-z',
+        wsUrl: 'ws://127.0.0.1:22335/?tenantId=session-z',
+      });
     });
 
     it('routes extensionPageToolsGet', async () => {

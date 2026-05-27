@@ -1,5 +1,12 @@
 import { i as BRIDGE_METHODS, n as sendRuntimeRequest } from '../runtime-rpc.hjw2lJPe.js';
-import { l as tabsQuery, n as runtimeGetUrl, s as tabsCreate } from '../extension-api.BMHS3pcA.js';
+import {
+  a as storageLocalRemove,
+  i as storageLocalGet,
+  l as tabsQuery,
+  n as runtimeGetUrl,
+  o as storageLocalSet,
+  s as tabsCreate,
+} from '../extension-api.BMHS3pcA.js';
 import {
   i as readSidepanelSurface,
   r as consumeLaunchUrlForSurface,
@@ -10,24 +17,24 @@ import {
  * Copyright 2019 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-var t$3 = globalThis,
-  e$6 =
-    t$3.ShadowRoot &&
-    (void 0 === t$3.ShadyCSS || t$3.ShadyCSS.nativeShadow) &&
+var t$4 = globalThis,
+  e$7 =
+    t$4.ShadowRoot &&
+    (void 0 === t$4.ShadyCSS || t$4.ShadyCSS.nativeShadow) &&
     'adoptedStyleSheets' in Document.prototype &&
     'replace' in CSSStyleSheet.prototype,
-  s$2 = Symbol(),
+  s$3 = Symbol(),
   o$4 = /* @__PURE__ */ new WeakMap();
-var n$4 = class {
+var n$5 = class {
   constructor(t, e, o) {
-    if (((this._$cssResult$ = !0), o !== s$2))
+    if (((this._$cssResult$ = !0), o !== s$3))
       throw Error('CSSResult is not constructable. Use `unsafeCSS` or `css` instead.');
     ((this.cssText = t), (this.t = e));
   }
   get styleSheet() {
     let t = this.o;
     const s = this.t;
-    if (e$6 && void 0 === t) {
+    if (e$7 && void 0 === t) {
       const e = void 0 !== s && 1 === s.length;
       (e && (t = o$4.get(s)),
         void 0 === t &&
@@ -39,9 +46,9 @@ var n$4 = class {
     return this.cssText;
   }
 };
-var r$4 = (t) => new n$4('string' == typeof t ? t : t + '', void 0, s$2),
-  i$4 = (t, ...e) => {
-    return new n$4(
+var r$5 = (t) => new n$5('string' == typeof t ? t : t + '', void 0, s$3),
+  i$5 = (t, ...e) => {
+    return new n$5(
       1 === t.length
         ? t[0]
         : e.reduce(
@@ -60,26 +67,26 @@ var r$4 = (t) => new n$4('string' == typeof t ? t : t + '', void 0, s$2),
             t[0],
           ),
       t,
-      s$2,
+      s$3,
     );
   },
   S$1 = (s, o) => {
-    if (e$6) s.adoptedStyleSheets = o.map((t) => (t instanceof CSSStyleSheet ? t : t.styleSheet));
+    if (e$7) s.adoptedStyleSheets = o.map((t) => (t instanceof CSSStyleSheet ? t : t.styleSheet));
     else
       for (const e of o) {
         const o = document.createElement('style'),
-          n = t$3.litNonce;
+          n = t$4.litNonce;
         (void 0 !== n && o.setAttribute('nonce', n), (o.textContent = e.cssText), s.appendChild(o));
       }
   },
-  c$2 = e$6
+  c$4 = e$7
     ? (t) => t
     : (t) =>
         t instanceof CSSStyleSheet
           ? ((t) => {
               let e = '';
               for (const s of t.cssRules) e += s.cssText;
-              return r$4(e);
+              return r$5(e);
             })(t)
           : t;
 //#endregion
@@ -89,23 +96,23 @@ var r$4 = (t) => new n$4('string' == typeof t ? t : t + '', void 0, s$2),
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */ var {
-    is: i$3,
-    defineProperty: e$5,
-    getOwnPropertyDescriptor: h$1,
-    getOwnPropertyNames: r$3,
+    is: i$4,
+    defineProperty: e$6,
+    getOwnPropertyDescriptor: h$2,
+    getOwnPropertyNames: r$4,
     getOwnPropertySymbols: o$3,
-    getPrototypeOf: n$3,
+    getPrototypeOf: n$4,
   } = Object,
   a$1 = globalThis,
-  c$1 = a$1.trustedTypes,
-  l$1 = c$1 ? c$1.emptyScript : '',
-  p$1 = a$1.reactiveElementPolyfillSupport,
-  d$1 = (t, s) => t,
-  u$1 = {
+  c$3 = a$1.trustedTypes,
+  l$2 = c$3 ? c$3.emptyScript : '',
+  p$2 = a$1.reactiveElementPolyfillSupport,
+  d$2 = (t, s) => t,
+  u$3 = {
     toAttribute(t, s) {
       switch (s) {
         case Boolean:
-          t = t ? l$1 : null;
+          t = t ? l$2 : null;
           break;
         case Object:
         case Array:
@@ -133,14 +140,14 @@ var r$4 = (t) => new n$4('string' == typeof t ? t : t + '', void 0, s$2),
       return i;
     },
   },
-  f$1 = (t, s) => !i$3(t, s),
+  f$2 = (t, s) => !i$4(t, s),
   b$1 = {
     attribute: !0,
     type: String,
-    converter: u$1,
+    converter: u$3,
     reflect: !1,
     useDefault: !1,
-    hasChanged: f$1,
+    hasChanged: f$2,
   };
 ((Symbol.metadata ??= Symbol('metadata')),
   (a$1.litPropertyMetadata ??= /* @__PURE__ */ new WeakMap()));
@@ -161,11 +168,11 @@ var y$1 = class extends HTMLElement {
     ) {
       const i = Symbol(),
         h = this.getPropertyDescriptor(t, i, s);
-      void 0 !== h && e$5(this.prototype, t, h);
+      void 0 !== h && e$6(this.prototype, t, h);
     }
   }
   static getPropertyDescriptor(t, s, i) {
-    const { get: e, set: r } = h$1(this.prototype, t) ?? {
+    const { get: e, set: r } = h$2(this.prototype, t) ?? {
       get() {
         return this[s];
       },
@@ -187,17 +194,17 @@ var y$1 = class extends HTMLElement {
     return this.elementProperties.get(t) ?? b$1;
   }
   static _$Ei() {
-    if (this.hasOwnProperty(d$1('elementProperties'))) return;
-    const t = n$3(this);
+    if (this.hasOwnProperty(d$2('elementProperties'))) return;
+    const t = n$4(this);
     (t.finalize(),
       void 0 !== t.l && (this.l = [...t.l]),
       (this.elementProperties = new Map(t.elementProperties)));
   }
   static finalize() {
-    if (this.hasOwnProperty(d$1('finalized'))) return;
-    if (((this.finalized = !0), this._$Ei(), this.hasOwnProperty(d$1('properties')))) {
+    if (this.hasOwnProperty(d$2('finalized'))) return;
+    if (((this.finalized = !0), this._$Ei(), this.hasOwnProperty(d$2('properties')))) {
       const t = this.properties,
-        s = [...r$3(t), ...o$3(t)];
+        s = [...r$4(t), ...o$3(t)];
       for (const i of s) this.createProperty(i, t[i]);
     }
     const t = this[Symbol.metadata];
@@ -216,8 +223,8 @@ var y$1 = class extends HTMLElement {
     const i = [];
     if (Array.isArray(s)) {
       const e = new Set(s.flat(Infinity).reverse());
-      for (const s of e) i.unshift(c$2(s));
-    } else void 0 !== s && i.push(c$2(s));
+      for (const s of e) i.unshift(c$4(s));
+    } else void 0 !== s && i.push(c$4(s));
     return i;
   }
   static _$Eu(t, s) {
@@ -278,7 +285,7 @@ var y$1 = class extends HTMLElement {
     const i = this.constructor.elementProperties.get(t),
       e = this.constructor._$Eu(t, i);
     if (void 0 !== e && !0 === i.reflect) {
-      const h = (void 0 !== i.converter?.toAttribute ? i.converter : u$1).toAttribute(s, i.type);
+      const h = (void 0 !== i.converter?.toAttribute ? i.converter : u$3).toAttribute(s, i.type);
       ((this._$Em = t),
         null == h ? this.removeAttribute(e) : this.setAttribute(e, h),
         (this._$Em = null));
@@ -294,7 +301,7 @@ var y$1 = class extends HTMLElement {
             ? { fromAttribute: t.converter }
             : void 0 !== t.converter?.fromAttribute
               ? t.converter
-              : u$1;
+              : u$3;
       this._$Em = e;
       const r = h.fromAttribute(s, t.type);
       ((this[e] = r ?? this._$Ej?.get(e) ?? r), (this._$Em = null));
@@ -307,7 +314,7 @@ var y$1 = class extends HTMLElement {
         (!1 === e && (h = this[t]),
         (i ??= r.getPropertyOptions(t)),
         !(
-          (i.hasChanged ?? f$1)(h, s) ||
+          (i.hasChanged ?? f$2)(h, s) ||
           (i.useDefault && i.reflect && h === this._$Ej?.get(t) && !this.hasAttribute(r._$Eu(t, i)))
         ))
       )
@@ -389,9 +396,9 @@ var y$1 = class extends HTMLElement {
 };
 ((y$1.elementStyles = []),
   (y$1.shadowRootOptions = { mode: 'open' }),
-  (y$1[d$1('elementProperties')] = /* @__PURE__ */ new Map()),
-  (y$1[d$1('finalized')] = /* @__PURE__ */ new Map()),
-  p$1?.({ ReactiveElement: y$1 }),
+  (y$1[d$2('elementProperties')] = /* @__PURE__ */ new Map()),
+  (y$1[d$2('finalized')] = /* @__PURE__ */ new Map()),
+  p$2?.({ ReactiveElement: y$1 }),
   (a$1.reactiveElementVersions ??= []).push('2.1.2'));
 //#endregion
 //#region ../../node_modules/.pnpm/lit-html@3.3.2/node_modules/lit-html/lit-html.js
@@ -400,24 +407,24 @@ var y$1 = class extends HTMLElement {
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-var t$2 = globalThis,
-  i$2 = (t) => t,
-  s$1 = t$2.trustedTypes,
-  e$4 = s$1 ? s$1.createPolicy('lit-html', { createHTML: (t) => t }) : void 0,
-  h = '$lit$',
+var t$3 = globalThis,
+  i$3 = (t) => t,
+  s$2 = t$3.trustedTypes,
+  e$5 = s$2 ? s$2.createPolicy('lit-html', { createHTML: (t) => t }) : void 0,
+  h$1 = '$lit$',
   o$2 = `lit$${Math.random().toFixed(9).slice(2)}$`,
-  n$2 = '?' + o$2,
-  r$2 = `<${n$2}>`,
-  l = document,
-  c = () => l.createComment(''),
+  n$3 = '?' + o$2,
+  r$3 = `<${n$3}>`,
+  l$1 = document,
+  c$2 = () => l$1.createComment(''),
   a = (t) => null === t || ('object' != typeof t && 'function' != typeof t),
-  u = Array.isArray,
-  d = (t) => u(t) || 'function' == typeof t?.[Symbol.iterator],
-  f = '[ 	\n\f\r]',
-  v = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,
+  u$2 = Array.isArray,
+  d$1 = (t) => u$2(t) || 'function' == typeof t?.[Symbol.iterator],
+  f$1 = '[ 	\n\f\r]',
+  v$1 = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,
   _ = /-->/g,
-  m = />/g,
-  p = RegExp(`>|${f}(?:([^\\s"'>=/]+)(${f}*=${f}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`, 'g'),
+  m$1 = />/g,
+  p$1 = RegExp(`>|${f$1}(?:([^\\s"'>=/]+)(${f$1}*=${f$1}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`, 'g'),
   g = /'/g,
   $ = /"/g,
   y = /^(?:script|style|textarea|title)$/i,
@@ -434,17 +441,17 @@ x(3);
 var E = Symbol.for('lit-noChange'),
   A = Symbol.for('lit-nothing'),
   C = /* @__PURE__ */ new WeakMap(),
-  P = l.createTreeWalker(l, 129);
+  P = l$1.createTreeWalker(l$1, 129);
 function V(t, i) {
-  if (!u(t) || !t.hasOwnProperty('raw')) throw Error('invalid template strings array');
-  return void 0 !== e$4 ? e$4.createHTML(i) : i;
+  if (!u$2(t) || !t.hasOwnProperty('raw')) throw Error('invalid template strings array');
+  return void 0 !== e$5 ? e$5.createHTML(i) : i;
 }
 var N = (t, i) => {
   const s = t.length - 1,
     e = [];
   let n,
     l = 2 === i ? '<svg>' : 3 === i ? '<math>' : '',
-    c = v;
+    c = v$1;
   for (let i = 0; i < s; i++) {
     const s = t[i];
     let a,
@@ -453,33 +460,33 @@ var N = (t, i) => {
       f = 0;
     for (; f < s.length && ((c.lastIndex = f), (u = c.exec(s)), null !== u); )
       ((f = c.lastIndex),
-        c === v
+        c === v$1
           ? '!--' === u[1]
             ? (c = _)
             : void 0 !== u[1]
-              ? (c = m)
+              ? (c = m$1)
               : void 0 !== u[2]
-                ? (y.test(u[2]) && (n = RegExp('</' + u[2], 'g')), (c = p))
-                : void 0 !== u[3] && (c = p)
-          : c === p
+                ? (y.test(u[2]) && (n = RegExp('</' + u[2], 'g')), (c = p$1))
+                : void 0 !== u[3] && (c = p$1)
+          : c === p$1
             ? '>' === u[0]
-              ? ((c = n ?? v), (d = -1))
+              ? ((c = n ?? v$1), (d = -1))
               : void 0 === u[1]
                 ? (d = -2)
                 : ((d = c.lastIndex - u[2].length),
                   (a = u[1]),
-                  (c = void 0 === u[3] ? p : '"' === u[3] ? $ : g))
+                  (c = void 0 === u[3] ? p$1 : '"' === u[3] ? $ : g))
             : c === $ || c === g
-              ? (c = p)
-              : c === _ || c === m
-                ? (c = v)
-                : ((c = p), (n = void 0)));
-    const x = c === p && t[i + 1].startsWith('/>') ? ' ' : '';
+              ? (c = p$1)
+              : c === _ || c === m$1
+                ? (c = v$1)
+                : ((c = p$1), (n = void 0)));
+    const x = c === p$1 && t[i + 1].startsWith('/>') ? ' ' : '';
     l +=
-      c === v
-        ? s + r$2
+      c === v$1
+        ? s + r$3
         : d >= 0
-          ? (e.push(a), s.slice(0, d) + h + s.slice(d) + o$2 + x)
+          ? (e.push(a), s.slice(0, d) + h$1 + s.slice(d) + o$2 + x)
           : s + o$2 + (-2 === d ? i : x);
   }
   return [V(t, l + (t[s] || '<?>') + (2 === i ? '</svg>' : 3 === i ? '</math>' : '')), e];
@@ -503,7 +510,7 @@ var S = class S {
       if (1 === r.nodeType) {
         if (r.hasAttributes())
           for (const t of r.getAttributeNames())
-            if (t.endsWith(h)) {
+            if (t.endsWith(h$1)) {
               const i = v[a++],
                 s = r.getAttribute(t).split(o$2),
                 e = /([.?@])?(.*)/.exec(i);
@@ -526,19 +533,19 @@ var S = class S {
           const t = r.textContent.split(o$2),
             i = t.length - 1;
           if (i > 0) {
-            r.textContent = s$1 ? s$1.emptyScript : '';
+            r.textContent = s$2 ? s$2.emptyScript : '';
             for (let s = 0; s < i; s++)
-              (r.append(t[s], c()),
+              (r.append(t[s], c$2()),
                 P.nextNode(),
                 d.push({
                   type: 2,
                   index: ++l,
                 }));
-            r.append(t[i], c());
+            r.append(t[i], c$2());
           }
         }
       } else if (8 === r.nodeType)
-        if (r.data === n$2)
+        if (r.data === n$3)
           d.push({
             type: 2,
             index: l,
@@ -556,11 +563,11 @@ var S = class S {
     }
   }
   static createElement(t, i) {
-    const s = l.createElement('template');
+    const s = l$1.createElement('template');
     return ((s.innerHTML = t), s);
   }
 };
-function M(t, i, s = t, e) {
+function M$1(t, i, s = t, e) {
   if (i === E) return i;
   let h = void 0 !== e ? s._$Co?.[e] : s._$Cl;
   const o = a(i) ? void 0 : i._$litDirective$;
@@ -569,7 +576,7 @@ function M(t, i, s = t, e) {
       (h?._$AO?.(!1),
       void 0 === o ? (h = void 0) : ((h = new o(t)), h._$AT(t, s, e)),
       void 0 !== e ? ((s._$Co ??= [])[e] = h) : (s._$Cl = h)),
-    void 0 !== h && (i = M(t, h._$AS(t, i.values), h, e)),
+    void 0 !== h && (i = M$1(t, h._$AS(t, i.values), h, e)),
     i
   );
 }
@@ -588,7 +595,7 @@ var R = class {
         el: { content: i },
         parts: s,
       } = this._$AD,
-      e = (t?.creationScope ?? l).importNode(i, !0);
+      e = (t?.creationScope ?? l$1).importNode(i, !0);
     P.currentNode = e;
     let h = P.nextNode(),
       o = 0,
@@ -607,7 +614,7 @@ var R = class {
       }
       o !== r?.index && ((h = P.nextNode()), o++);
     }
-    return ((P.currentNode = l), e);
+    return ((P.currentNode = l$1), e);
   }
   p(t) {
     let i = 0;
@@ -643,7 +650,7 @@ var k = class k {
     return this._$AB;
   }
   _$AI(t, i = this) {
-    ((t = M(this, t, i)),
+    ((t = M$1(this, t, i)),
       a(t)
         ? t === A || null == t || '' === t
           ? (this._$AH !== A && this._$AR(), (this._$AH = A))
@@ -652,7 +659,7 @@ var k = class k {
           ? this.$(t)
           : void 0 !== t.nodeType
             ? this.T(t)
-            : d(t)
+            : d$1(t)
               ? this.k(t)
               : this._(t));
   }
@@ -665,7 +672,7 @@ var k = class k {
   _(t) {
     (this._$AH !== A && a(this._$AH)
       ? (this._$AA.nextSibling.data = t)
-      : this.T(l.createTextNode(t)),
+      : this.T(l$1.createTextNode(t)),
       (this._$AH = t));
   }
   $(t) {
@@ -686,13 +693,13 @@ var k = class k {
     return (void 0 === i && C.set(t.strings, (i = new S(t))), i);
   }
   k(t) {
-    u(this._$AH) || ((this._$AH = []), this._$AR());
+    u$2(this._$AH) || ((this._$AH = []), this._$AR());
     const i = this._$AH;
     let s,
       e = 0;
     for (const h of t)
       (e === i.length
-        ? i.push((s = new k(this.O(c()), this.O(c()), this, this.options)))
+        ? i.push((s = new k(this.O(c$2()), this.O(c$2()), this, this.options)))
         : (s = i[e]),
         s._$AI(h),
         e++);
@@ -700,8 +707,8 @@ var k = class k {
   }
   _$AR(t = this._$AA.nextSibling, s) {
     for (this._$AP?.(!1, !0, s); t !== this._$AB; ) {
-      const s = i$2(t).nextSibling;
-      (i$2(t).remove(), (t = s));
+      const s = i$3(t).nextSibling;
+      (i$3(t).remove(), (t = s));
     }
   }
   setConnected(t) {
@@ -731,12 +738,12 @@ var H = class {
     const h = this.strings;
     let o = !1;
     if (void 0 === h)
-      ((t = M(this, t, i, 0)), (o = !a(t) || (t !== this._$AH && t !== E)), o && (this._$AH = t));
+      ((t = M$1(this, t, i, 0)), (o = !a(t) || (t !== this._$AH && t !== E)), o && (this._$AH = t));
     else {
       const e = t;
       let n, r;
       for (t = h[0], n = 0; n < h.length - 1; n++)
-        ((r = M(this, e[s + n], i, n)),
+        ((r = M$1(this, e[s + n], i, n)),
           r === E && (r = this._$AH[n]),
           (o ||= !a(r) || r !== this._$AH[n]),
           r === A ? (t = A) : t !== A && (t += (r ?? '') + h[n + 1]),
@@ -771,7 +778,7 @@ var z = class extends H {
     (super(t, i, s, e, h), (this.type = 5));
   }
   _$AI(t, i = this) {
-    if ((t = M(this, t, i, 0) ?? A) === E) return;
+    if ((t = M$1(this, t, i, 0) ?? A) === E) return;
     const s = this._$AH,
       e =
         (t === A && s !== A) ||
@@ -790,28 +797,44 @@ var z = class extends H {
   }
 };
 var Z = class {
-    constructor(t, i, s) {
-      ((this.element = t),
-        (this.type = 6),
-        (this._$AN = void 0),
-        (this._$AM = i),
-        (this.options = s));
-    }
-    get _$AU() {
-      return this._$AM._$AU;
-    }
-    _$AI(t) {
-      M(this, t);
-    }
+  constructor(t, i, s) {
+    ((this.element = t),
+      (this.type = 6),
+      (this._$AN = void 0),
+      (this._$AM = i),
+      (this.options = s));
+  }
+  get _$AU() {
+    return this._$AM._$AU;
+  }
+  _$AI(t) {
+    M$1(this, t);
+  }
+};
+var j$1 = {
+    M: h$1,
+    P: o$2,
+    A: n$3,
+    C: 1,
+    L: N,
+    R,
+    D: d$1,
+    V: M$1,
+    I: k,
+    H,
+    N: L,
+    U: z,
+    B: I,
+    F: Z,
   },
-  B = t$2.litHtmlPolyfillSupport;
-(B?.(S, k), (t$2.litHtmlVersions ??= []).push('3.3.2'));
+  B = t$3.litHtmlPolyfillSupport;
+(B?.(S, k), (t$3.litHtmlVersions ??= []).push('3.3.2'));
 var D = (t, i, s) => {
   const e = s?.renderBefore ?? i;
   let h = e._$litPart$;
   if (void 0 === h) {
     const t = s?.renderBefore ?? null;
-    e._$litPart$ = h = new k(i.insertBefore(c(), t), t, void 0, s ?? {});
+    e._$litPart$ = h = new k(i.insertBefore(c$2(), t), t, void 0, s ?? {});
   }
   return (h._$AI(t), h);
 };
@@ -821,8 +844,8 @@ var D = (t, i, s) => {
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */ var s = globalThis;
-var i$1 = class extends y$1 {
+ */ var s$1 = globalThis;
+var i$2 = class extends y$1 {
   constructor() {
     (super(...arguments), (this.renderOptions = { host: this }), (this._$Do = void 0));
   }
@@ -846,12 +869,12 @@ var i$1 = class extends y$1 {
     return E;
   }
 };
-((i$1._$litElement$ = !0),
-  (i$1['finalized'] = !0),
-  s.litElementHydrateSupport?.({ LitElement: i$1 }));
-var o$1 = s.litElementPolyfillSupport;
-o$1?.({ LitElement: i$1 });
-(s.litElementVersions ??= []).push('4.2.2');
+((i$2._$litElement$ = !0),
+  (i$2['finalized'] = !0),
+  s$1.litElementHydrateSupport?.({ LitElement: i$2 }));
+var o$1 = s$1.litElementPolyfillSupport;
+o$1?.({ LitElement: i$2 });
+(s$1.litElementVersions ??= []).push('4.2.2');
 //#endregion
 //#region ../../node_modules/.pnpm/@lit+reactive-element@2.1.2/node_modules/@lit/reactive-element/decorators/custom-element.js
 /**
@@ -859,7 +882,7 @@ o$1?.({ LitElement: i$1 });
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-var t$1 = (t) => (e, o) => {
+var t$2 = (t) => (e, o) => {
   void 0 !== o
     ? o.addInitializer(() => {
         customElements.define(t, e);
@@ -875,11 +898,11 @@ var t$1 = (t) => (e, o) => {
  */ var o = {
     attribute: !0,
     type: String,
-    converter: u$1,
+    converter: u$3,
     reflect: !1,
-    hasChanged: f$1,
+    hasChanged: f$2,
   },
-  r$1 = (t = o, e, r) => {
+  r$2 = (t = o, e, r) => {
     const { kind: n, metadata: i } = r;
     let s = globalThis.litPropertyMetadata.get(i);
     if (
@@ -908,10 +931,10 @@ var t$1 = (t) => (e, o) => {
     }
     throw Error('Unsupported decorator location: ' + n);
   };
-function n$1(t) {
+function n$2(t) {
   return (e, o) =>
     'object' == typeof o
-      ? r$1(t, e, o)
+      ? r$2(t, e, o)
       : ((t, e, o) => {
           const r = e.hasOwnProperty(o);
           return (
@@ -926,8 +949,8 @@ function n$1(t) {
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */ function r(r) {
-  return n$1({
+ */ function r$1(r) {
+  return n$2({
     ...r,
     state: !0,
     attribute: !1,
@@ -940,7 +963,7 @@ function n$1(t) {
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-var e$3 = (e, t, c) => (
+var e$4 = (e, t, c) => (
   (c.configurable = !0),
   (c.enumerable = !0),
   Reflect.decorate && 'object' != typeof t && Object.defineProperty(e, t, c),
@@ -952,7 +975,7 @@ var e$3 = (e, t, c) => (
  * @license
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */ function e$2(e, r) {
+ */ function e$3(e, r) {
   return (n, s, i) => {
     const o = (t) => t.renderRoot?.querySelector(e) ?? null;
     if (r) {
@@ -971,7 +994,7 @@ var e$3 = (e, t, c) => (
                 },
               };
             })());
-      return e$3(n, s, {
+      return e$4(n, s, {
         get() {
           let t = e.call(this);
           return (
@@ -981,7 +1004,7 @@ var e$3 = (e, t, c) => (
         },
       });
     }
-    return e$3(n, s, {
+    return e$4(n, s, {
       get() {
         return o(this);
       },
@@ -1009,7 +1032,7 @@ function __decorate(decorators, target, key, desc) {
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-var t = {
+var t$1 = {
     ATTRIBUTE: 1,
     CHILD: 2,
     PROPERTY: 3,
@@ -1017,13 +1040,13 @@ var t = {
     EVENT: 5,
     ELEMENT: 6,
   },
-  e$1 =
+  e$2 =
     (t) =>
     (...e) => ({
       _$litDirective$: t,
       values: e,
     });
-var i = class {
+var i$1 = class {
   constructor(t) {}
   get _$AU() {
     return this._$AM._$AU;
@@ -1044,48 +1067,156 @@ var i = class {
  * @license
  * Copyright 2018 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
- */ var e = e$1(
-  class extends i {
-    constructor(t$4) {
-      if ((super(t$4), t$4.type !== t.ATTRIBUTE || 'class' !== t$4.name || t$4.strings?.length > 2))
-        throw Error(
-          '`classMap()` can only be used in the `class` attribute and must be the only part in the attribute.',
+ */ var e$1 = e$2(
+    class extends i$1 {
+      constructor(t) {
+        if ((super(t), t.type !== t$1.ATTRIBUTE || 'class' !== t.name || t.strings?.length > 2))
+          throw Error(
+            '`classMap()` can only be used in the `class` attribute and must be the only part in the attribute.',
+          );
+      }
+      render(t) {
+        return (
+          ' ' +
+          Object.keys(t)
+            .filter((s) => t[s])
+            .join(' ') +
+          ' '
         );
-    }
-    render(t) {
-      return (
-        ' ' +
-        Object.keys(t)
-          .filter((s) => t[s])
-          .join(' ') +
-        ' '
-      );
-    }
-    update(s, [i]) {
-      if (void 0 === this.st) {
-        ((this.st = /* @__PURE__ */ new Set()),
-          void 0 !== s.strings &&
-            (this.nt = new Set(
-              s.strings
-                .join(' ')
-                .split(/\s/)
-                .filter((t) => '' !== t),
-            )));
-        for (const t in i) i[t] && !this.nt?.has(t) && this.st.add(t);
-        return this.render(i);
       }
-      const r = s.element.classList;
-      for (const t of this.st) t in i || (r.remove(t), this.st.delete(t));
-      for (const t in i) {
-        const s = !!i[t];
-        s === this.st.has(t) ||
-          this.nt?.has(t) ||
-          (s ? (r.add(t), this.st.add(t)) : (r.remove(t), this.st.delete(t)));
+      update(s, [i]) {
+        if (void 0 === this.st) {
+          ((this.st = /* @__PURE__ */ new Set()),
+            void 0 !== s.strings &&
+              (this.nt = new Set(
+                s.strings
+                  .join(' ')
+                  .split(/\s/)
+                  .filter((t) => '' !== t),
+              )));
+          for (const t in i) i[t] && !this.nt?.has(t) && this.st.add(t);
+          return this.render(i);
+        }
+        const r = s.element.classList;
+        for (const t of this.st) t in i || (r.remove(t), this.st.delete(t));
+        for (const t in i) {
+          const s = !!i[t];
+          s === this.st.has(t) ||
+            this.nt?.has(t) ||
+            (s ? (r.add(t), this.st.add(t)) : (r.remove(t), this.st.delete(t)));
+        }
+        return E;
       }
-      return E;
+    },
+  ),
+  { I: t } = j$1,
+  i = (o) => o,
+  s = () => document.createComment(''),
+  v = (o, n, e) => {
+    const l = o._$AA.parentNode,
+      d = void 0 === n ? o._$AB : n._$AA;
+    if (void 0 === e) e = new t(l.insertBefore(s(), d), l.insertBefore(s(), d), o, o.options);
+    else {
+      const t = e._$AB.nextSibling,
+        n = e._$AM,
+        c = n !== o;
+      if (c) {
+        let t;
+        (e._$AQ?.(o), (e._$AM = o), void 0 !== e._$AP && (t = o._$AU) !== n._$AU && e._$AP(t));
+      }
+      if (t !== d || c) {
+        let o = e._$AA;
+        for (; o !== t; ) {
+          const t = i(o).nextSibling;
+          (i(l).insertBefore(o, d), (o = t));
+        }
+      }
     }
+    return e;
   },
-);
+  u$1 = (o, t, i = o) => (o._$AI(t, i), o),
+  m = {},
+  p = (o, t = m) => (o._$AH = t),
+  M = (o) => o._$AH,
+  h = (o) => {
+    (o._$AR(), o._$AA.remove());
+  };
+//#endregion
+//#region ../../node_modules/.pnpm/lit-html@3.3.2/node_modules/lit-html/directives/repeat.js
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+var u = (e, s, t) => {
+    const r = /* @__PURE__ */ new Map();
+    for (let l = s; l <= t; l++) r.set(e[l], l);
+    return r;
+  },
+  c = e$2(
+    class extends i$1 {
+      constructor(e) {
+        if ((super(e), e.type !== t$1.CHILD))
+          throw Error('repeat() can only be used in text expressions');
+      }
+      dt(e, s, t) {
+        let r;
+        void 0 === t ? (t = s) : void 0 !== s && (r = s);
+        const l = [],
+          o = [];
+        let i = 0;
+        for (const s of e) ((l[i] = r ? r(s, i) : i), (o[i] = t(s, i)), i++);
+        return {
+          values: o,
+          keys: l,
+        };
+      }
+      render(e, s, t) {
+        return this.dt(e, s, t).values;
+      }
+      update(s, [t, r, c]) {
+        const d = M(s),
+          { values: p$3, keys: a } = this.dt(t, r, c);
+        if (!Array.isArray(d)) return ((this.ut = a), p$3);
+        const h$3 = (this.ut ??= []),
+          v$2 = [];
+        let m,
+          y,
+          x = 0,
+          j = d.length - 1,
+          k = 0,
+          w = p$3.length - 1;
+        for (; x <= j && k <= w; )
+          if (null === d[x]) x++;
+          else if (null === d[j]) j--;
+          else if (h$3[x] === a[k]) ((v$2[k] = u$1(d[x], p$3[k])), x++, k++);
+          else if (h$3[j] === a[w]) ((v$2[w] = u$1(d[j], p$3[w])), j--, w--);
+          else if (h$3[x] === a[w])
+            ((v$2[w] = u$1(d[x], p$3[w])), v(s, v$2[w + 1], d[x]), x++, w--);
+          else if (h$3[j] === a[k]) ((v$2[k] = u$1(d[j], p$3[k])), v(s, d[x], d[j]), j--, k++);
+          else if ((void 0 === m && ((m = u(a, k, w)), (y = u(h$3, x, j))), m.has(h$3[x])))
+            if (m.has(h$3[j])) {
+              const e = y.get(a[k]),
+                t = void 0 !== e ? d[e] : null;
+              if (null === t) {
+                const e = v(s, d[x]);
+                (u$1(e, p$3[k]), (v$2[k] = e));
+              } else ((v$2[k] = u$1(t, p$3[k])), v(s, d[x], t), (d[e] = null));
+              k++;
+            } else (h(d[j]), j--);
+          else (h(d[x]), x++);
+        for (; k <= w; ) {
+          const e = v(s, v$2[w + 1]);
+          (u$1(e, p$3[k]), (v$2[k++] = e));
+        }
+        for (; x <= j; ) {
+          const e = d[x++];
+          null !== e && h(e);
+        }
+        return ((this.ut = a), p(s, v$2), E);
+      }
+    },
+  );
 //#endregion
 //#region ../../node_modules/.pnpm/lit-html@3.3.2/node_modules/lit-html/directives/when.js
 /**
@@ -2328,7 +2459,7 @@ function buildCapabilityBriefing(input) {
 function renderContextTab(input) {
   const capabilityBriefing = buildCapabilityBriefing(input);
   return b`
-    <div class="tab-content ${e({ active: input.active })} flex flex-col flex-1 min-h-0">
+    <div class="tab-content ${e$1({ active: input.active })} flex flex-col flex-1 min-h-0">
       <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
         <div class="flex flex-col gap-0.5">
           <span class="text-xs font-bold uppercase tracking-[0.18em] opacity-60"
@@ -2587,8 +2718,158 @@ function buildLoaderUrl(currentUrl) {
   return runtimeGetUrl('loader.html') + '#' + currentUrl;
 }
 //#endregion
+//#region src/sidepanel-opencode.ts
+var REQUEST_TIMEOUT_MS = 1e4;
+function trimTrailingSlashes(value) {
+  return value.replace(/\/+$/, '');
+}
+function normalizeBaseUrl(value, fieldName) {
+  const normalized = trimTrailingSlashes(value.trim());
+  if (!normalized) throw new Error(`${fieldName} is required`);
+  return normalized;
+}
+function getNormalizedConfig(cfg) {
+  return {
+    opencodeBaseUrl: normalizeBaseUrl(cfg.opencodeBaseUrl, 'OpenCode base URL'),
+    bridgeBaseUrl: normalizeBaseUrl(cfg.bridgeBaseUrl, 'Bridge base URL'),
+  };
+}
+/**
+ * 统一按 URL API 组装地址，避免字符串拼接把 path/query 搅在一起。
+ * 这里只做“在已有 base 后追加路径”这一件事，调用方再决定协议与端口。
+ */
+function appendPath(baseUrl, pathSuffix) {
+  const parsed = new URL(baseUrl);
+  parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}${pathSuffix}`;
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed;
+}
+async function requestJson(url, init = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+      body: init.bodyJson === void 0 ? init.body : JSON.stringify(init.bodyJson),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const message = await response.text().catch(() => response.statusText);
+      throw new Error(`${response.status} ${message || response.statusText}`.trim());
+    }
+    if (response.status === 204) return;
+    return await response.json();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError')
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function getSessionApiUrl(cfg) {
+  return `${getNormalizedConfig(cfg).opencodeBaseUrl}/session`;
+}
+function getMcpApiUrl(cfg) {
+  return `${getNormalizedConfig(cfg).opencodeBaseUrl}/mcp`;
+}
+async function listSessions(cfg) {
+  return requestJson(getSessionApiUrl(cfg), { method: 'GET' });
+}
+async function createSession(cfg) {
+  return requestJson(getSessionApiUrl(cfg), {
+    method: 'POST',
+    bodyJson: {},
+  });
+}
+async function deleteSession(cfg, id) {
+  await requestJson(`${getSessionApiUrl(cfg)}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+/**
+ * 注意：opencode `GET /mcp` 只返回 config 文件里的静态 MCP，不会列出运行时动态 add 的；
+ * 而 `POST /mcp` 的响应 body 是当前 MCP 全集（含动态项）。
+ * 所以这里直接用 POST 的返回值判断目标是否已 connected，再决定是否需要再次注册。
+ */
+async function ensureMcpRegistered(cfg, sessionId) {
+  const normalized = getNormalizedConfig(cfg);
+  const mcpName = `page-context-${sessionId}`;
+  const entry = (
+    await requestJson(getMcpApiUrl(normalized), {
+      method: 'POST',
+      bodyJson: {
+        name: mcpName,
+        config: {
+          type: 'remote',
+          url: buildMcpUrl(normalized, sessionId),
+          enabled: true,
+        },
+      },
+    })
+  )?.[mcpName];
+  if (!entry) throw new Error(`opencode did not register MCP entry "${mcpName}"`);
+  if (entry.status === 'failed')
+    throw new Error(
+      `opencode failed to connect MCP "${mcpName}": ${entry.error ?? 'unknown error'}`,
+    );
+  if (entry.status !== 'connected')
+    throw new Error(
+      `opencode MCP "${mcpName}" is not connected yet (status=${entry.status ?? 'unknown'})`,
+    );
+  return {
+    created: true,
+    mcpName,
+  };
+}
+function encodeOpencodeRouteSegment(value) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+function buildIframeUrl(cfg, session) {
+  const normalized = getNormalizedConfig(cfg);
+  const sessionId = typeof session === 'string' ? session : session.id;
+  const sessionDirectory = typeof session === 'string' ? '' : (session.directory?.trim() ?? '');
+  if (!sessionDirectory)
+    return `${appendPath(normalized.opencodeBaseUrl, '/').toString()}?session=${encodeURIComponent(sessionId)}`;
+  const directorySegment = encodeOpencodeRouteSegment(sessionDirectory);
+  return appendPath(
+    normalized.opencodeBaseUrl,
+    `/${directorySegment}/session/${encodeURIComponent(sessionId)}`,
+  ).toString();
+}
+function buildExtWsUrl(cfg, sessionId) {
+  const normalized = getNormalizedConfig(cfg);
+  const parsed = new URL(normalized.bridgeBaseUrl);
+  if (parsed.protocol === 'http:') parsed.protocol = 'ws:';
+  else if (parsed.protocol === 'https:') parsed.protocol = 'wss:';
+  else throw new Error('Bridge base URL must use http:// or https://');
+  if (parsed.port) {
+    const httpPort = Number(parsed.port);
+    if (!Number.isFinite(httpPort) || httpPort <= 0)
+      throw new Error('Bridge base URL port is invalid');
+    parsed.port = String(httpPort + 1);
+  }
+  parsed.pathname = '/';
+  parsed.search = '';
+  parsed.hash = '';
+  parsed.searchParams.set('tenantId', sessionId);
+  return parsed.toString();
+}
+function buildMcpUrl(cfg, sessionId) {
+  return appendPath(
+    getNormalizedConfig(cfg).bridgeBaseUrl,
+    `/${encodeURIComponent(sessionId)}/mcp`,
+  ).toString();
+}
+//#endregion
 //#region src/sidepanel.css?url
-var sidepanel_default = '/sidepanel.DVDqThPY.css';
+var sidepanel_default = '/sidepanel.DQZpVP27.css';
 //#endregion
 //#region src/side-panel-app.ts
 /**
@@ -2656,7 +2937,8 @@ function normalizeRuntimeExplicitTabBinding(input) {
     ...(input.windowId != null ? { windowId: input.windowId } : {}),
   };
 }
-var customRules = i$4`
+var OPENCODE_CONFIG_STORAGE_KEY = 'opencode.config.v1';
+var customRules = i$5`
   /* tree indentation */
   .tree-indent-1 {
     padding-left: 1.5rem;
@@ -2695,8 +2977,16 @@ var customRules = i$4`
   .tab-content.active {
     display: flex;
   }
+  .opencode-session-frame {
+    display: none;
+    width: 100%;
+    height: 100%;
+  }
+  .opencode-session-frame.active {
+    display: block;
+  }
 `;
-var SidePanelApp = class SidePanelApp extends i$1 {
+var SidePanelApp = class SidePanelApp extends i$2 {
   constructor(..._args) {
     super(..._args);
     this._connected = false;
@@ -2751,6 +3041,15 @@ var SidePanelApp = class SidePanelApp extends i$1 {
     this._agentationInjecting = false;
     this._agentationInjectStatus = '';
     this._agentationInjectStatusClass = 'text-xs opacity-60';
+    this._opencodeBaseUrl = 'http://localhost:4096';
+    this._bridgeBaseUrl = 'http://localhost:22334';
+    this._opencodeDraftSessionId = '';
+    this._opencodeActiveSessionId = '';
+    this._opencodeSessions = [];
+    this._opencodeConnecting = false;
+    this._opencodeStatus = '';
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this._opencodeDeleteSessionOnDisconnect = false;
     this._currentIframe = null;
     this._statusIntervalId = null;
     this._feedbackPollIntervalId = null;
@@ -2770,7 +3069,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
   static {
     this.styles = [
       customRules,
-      i$4`
+      i$5`
       :host {
         display: flex;
         flex-direction: column;
@@ -2821,6 +3120,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
     const url = launchUrl ? String(launchUrl) : 'http://127.0.0.1:22338/';
     this._navigateTo(url);
     this.updateComplete.then(() => this._manageIframe());
+    await this._restoreOpenCodeConfig();
     this._tabActivatedListener = (activeInfo) => {
       if (this._boundTabId != null && activeInfo.tabId !== this._boundTabId) return;
       if (activeInfo.tabId !== this._currentTabId && this._activeTab === 'tools')
@@ -2838,6 +3138,208 @@ var SidePanelApp = class SidePanelApp extends i$1 {
         }, 1e3);
     };
     chrome.tabs.onUpdated.addListener(this._tabUpdatedListener);
+  }
+  _getOpenCodeConfig() {
+    return {
+      opencodeBaseUrl: this._opencodeBaseUrl,
+      bridgeBaseUrl: this._bridgeBaseUrl,
+    };
+  }
+  _buildOpenCodeSessionView(session, runtimeStatus) {
+    const cfg = this._getOpenCodeConfig();
+    return {
+      sessionId: session.id,
+      sessionDirectory: session.directory?.trim() ?? '',
+      iframeUrl: buildIframeUrl(cfg, session),
+      wsUrl: runtimeStatus?.wsUrl ?? buildExtWsUrl(cfg, session.id),
+      connected: runtimeStatus?.connected ?? false,
+      bridgeSessionId: runtimeStatus?.bridgeSessionId ?? null,
+    };
+  }
+  _getOpenCodeSession(sessionId) {
+    return this._opencodeSessions.find((session) => session.sessionId === sessionId);
+  }
+  /**
+   * session 列表是 sidepanel 里唯一的 iframe/runtime 真相源。
+   * 按 id 原地更新，避免切 tab 时 iframe 被整批重建。
+   */
+  _upsertOpenCodeSession(session) {
+    const index = this._opencodeSessions.findIndex(
+      (entry) => entry.sessionId === session.sessionId,
+    );
+    if (index < 0) {
+      this._opencodeSessions = [...this._opencodeSessions, session];
+      return;
+    }
+    this._opencodeSessions = this._opencodeSessions.map((entry, entryIndex) =>
+      entryIndex === index ? session : entry,
+    );
+  }
+  _removeOpenCodeSession(sessionId) {
+    this._opencodeSessions = this._opencodeSessions.filter(
+      (session) => session.sessionId !== sessionId,
+    );
+  }
+  async _selectOpenCodeSession(sessionId) {
+    this._opencodeActiveSessionId = sessionId;
+    this._opencodeDraftSessionId = sessionId;
+    await this._persistOpenCodeConfig();
+  }
+  _getActiveOpenCodeSession() {
+    if (!this._opencodeActiveSessionId) return null;
+    return this._getOpenCodeSession(this._opencodeActiveSessionId) ?? null;
+  }
+  async _disconnectOpenCodeBridgeSession(sessionId) {
+    await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
+      sessionId,
+      disconnect: true,
+    });
+  }
+  /**
+   * 这里只接受 bridge 明确回报 connected 的状态。
+   * 如果 transport 还没 ready，宁可提前失败，也不要把半连通状态暴露给 iframe。
+   */
+  async _getScopedRuntimeStatus(sessionId) {
+    const status = await sendRuntimeRequest(BRIDGE_METHODS.extensionStatusGet, { sessionId });
+    const scopedStatus = status.scopedSessions?.[0];
+    if (!status.connected || !scopedStatus?.connected)
+      throw new Error(`Bridge WebSocket for session "${sessionId}" is not connected`);
+    return scopedStatus;
+  }
+  async _createOrReuseOpenCodeSession(forceNewSession = false) {
+    const desiredSessionId = forceNewSession ? '' : this._opencodeDraftSessionId.trim();
+    if (!desiredSessionId) return createSession(this._getOpenCodeConfig());
+    const matched = (await listSessions(this._getOpenCodeConfig())).find(
+      (session) => session.id === desiredSessionId,
+    );
+    if (matched) return matched;
+    return createSession(this._getOpenCodeConfig());
+  }
+  async _connectOpenCodeSession(session) {
+    const cfg = this._getOpenCodeConfig();
+    const sessionId = session.id;
+    this._opencodeStatus = `Connecting bridge session ${sessionId}...`;
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+    await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
+      sessionId,
+      wsUrl: buildExtWsUrl(cfg, sessionId),
+    });
+    const scopedStatus = await this._getScopedRuntimeStatus(sessionId);
+    this._opencodeStatus = `Registering MCP for ${sessionId}...`;
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+    await ensureMcpRegistered(cfg, sessionId);
+    const sessionView = this._buildOpenCodeSessionView(session, scopedStatus);
+    this._upsertOpenCodeSession(sessionView);
+    await this._selectOpenCodeSession(sessionId);
+    this._opencodeStatus = `Connected ${sessionId}`;
+    this._opencodeStatusClass = 'text-xs text-success';
+    return sessionView;
+  }
+  /**
+   * 只恢复上次“成功连通过”的配置。
+   * 这样能减少用户把临时试错地址再次带回来的噪音。
+   */
+  async _restoreOpenCodeConfig() {
+    try {
+      const saved = (await storageLocalGet(OPENCODE_CONFIG_STORAGE_KEY))[
+        OPENCODE_CONFIG_STORAGE_KEY
+      ];
+      if (!saved) return;
+      if (typeof saved.opencodeBaseUrl === 'string' && saved.opencodeBaseUrl.trim())
+        this._opencodeBaseUrl = saved.opencodeBaseUrl.trim();
+      if (typeof saved.bridgeBaseUrl === 'string' && saved.bridgeBaseUrl.trim())
+        this._bridgeBaseUrl = saved.bridgeBaseUrl.trim();
+      const lastSessionId =
+        typeof saved.lastSessionId === 'string'
+          ? saved.lastSessionId.trim()
+          : typeof saved.sessionId === 'string'
+            ? saved.sessionId.trim()
+            : '';
+      this._opencodeDraftSessionId = lastSessionId;
+      if (!lastSessionId) return;
+      const cfg = this._getOpenCodeConfig();
+      const [sessions, runtimeStatus] = await Promise.all([
+        listSessions(cfg),
+        sendRuntimeRequest(BRIDGE_METHODS.extensionStatusGet).catch(() => ({
+          connected: false,
+          scopedSessions: [],
+        })),
+      ]);
+      const aliveSessionIds = new Set(sessions.map((session) => session.id));
+      const staleScopedSessions = (runtimeStatus.scopedSessions ?? []).filter(
+        (session) => !aliveSessionIds.has(session.tenantId),
+      );
+      await Promise.all(
+        staleScopedSessions.map(async (session) => {
+          try {
+            await this._disconnectOpenCodeBridgeSession(session.tenantId);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            spLog(
+              `Failed to drop stale OpenCode bridge session ${session.tenantId}: ${message}`,
+              'warn',
+            );
+          }
+        }),
+      );
+      if (!aliveSessionIds.has(lastSessionId)) {
+        this._opencodeSessions = [];
+        this._opencodeActiveSessionId = '';
+        this._opencodeDraftSessionId = '';
+        this._opencodeStatus = 'Last session no longer exists. Cleared saved state.';
+        this._opencodeStatusClass = 'text-xs opacity-60';
+        await storageLocalRemove(OPENCODE_CONFIG_STORAGE_KEY);
+        return;
+      }
+      const aliveScopedSessions = (runtimeStatus.scopedSessions ?? []).filter(
+        (session) => session.connected && aliveSessionIds.has(session.tenantId),
+      );
+      const sessionById = new Map(sessions.map((session) => [session.id, session]));
+      this._opencodeSessions = aliveScopedSessions.map((session) =>
+        this._buildOpenCodeSessionView(
+          sessionById.get(session.tenantId) ?? { id: session.tenantId },
+          session,
+        ),
+      );
+      let restoredStatus = aliveScopedSessions.find(
+        (session) => session.tenantId === lastSessionId,
+      );
+      if (!restoredStatus) {
+        await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
+          sessionId: lastSessionId,
+          wsUrl: buildExtWsUrl(cfg, lastSessionId),
+        });
+        restoredStatus = await this._getScopedRuntimeStatus(lastSessionId);
+      }
+      this._upsertOpenCodeSession(
+        this._buildOpenCodeSessionView(
+          sessionById.get(lastSessionId) ?? { id: lastSessionId },
+          restoredStatus,
+        ),
+      );
+      this._opencodeActiveSessionId = lastSessionId;
+      this._opencodeStatus = `Restored session ${lastSessionId}`;
+      this._opencodeStatusClass = 'text-xs text-success';
+      await this._persistOpenCodeConfig();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._opencodeStatus = `Restore skipped: ${message}`;
+      this._opencodeStatusClass = 'text-xs text-warning';
+      spLog(`Failed to restore OpenCode config: ${message}`, 'warn');
+    }
+  }
+  async _persistOpenCodeConfig() {
+    const lastSessionId = this._opencodeActiveSessionId.trim();
+    await storageLocalSet({
+      [OPENCODE_CONFIG_STORAGE_KEY]: {
+        opencodeBaseUrl: this._opencodeBaseUrl.trim(),
+        bridgeBaseUrl: this._bridgeBaseUrl.trim(),
+        lastSessionId,
+        sessionId: lastSessionId,
+      },
+    });
   }
   async _refreshStatus() {
     try {
@@ -3495,6 +3997,56 @@ var SidePanelApp = class SidePanelApp extends i$1 {
       this.requestUpdate();
     }
   }
+  async _handleOpencodeConnect(forceNewSession = false) {
+    if (this._opencodeConnecting) return;
+    this._opencodeConnecting = true;
+    this._opencodeStatus = 'Resolving session...';
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+    try {
+      const session = await this._createOrReuseOpenCodeSession(forceNewSession);
+      this._opencodeDraftSessionId = session.id;
+      await this._connectOpenCodeSession(session);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._opencodeStatus = message;
+      this._opencodeStatusClass = 'text-xs text-error';
+      spLog(`OpenCode connect failed: ${message}`, 'error');
+    } finally {
+      this._opencodeConnecting = false;
+      this.requestUpdate();
+    }
+  }
+  async _handleOpencodeDisconnect(sessionId = this._opencodeActiveSessionId) {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) return;
+    const shouldDeleteSession = this._opencodeDeleteSessionOnDisconnect && sessionId !== '';
+    this._opencodeConnecting = true;
+    this._opencodeStatus = shouldDeleteSession ? 'Deleting session...' : 'Disconnecting...';
+    this._opencodeStatusClass = 'text-xs opacity-60';
+    this.requestUpdate();
+    try {
+      await this._disconnectOpenCodeBridgeSession(normalizedSessionId);
+      if (shouldDeleteSession) await deleteSession(this._getOpenCodeConfig(), normalizedSessionId);
+      this._removeOpenCodeSession(normalizedSessionId);
+      if (this._opencodeActiveSessionId === normalizedSessionId)
+        this._opencodeActiveSessionId = this._opencodeSessions[0]?.sessionId ?? '';
+      this._opencodeDraftSessionId = shouldDeleteSession ? '' : normalizedSessionId;
+      await this._persistOpenCodeConfig();
+      this._opencodeStatus = shouldDeleteSession
+        ? `Disconnected and deleted ${normalizedSessionId}`
+        : `Disconnected ${normalizedSessionId}`;
+      this._opencodeStatusClass = 'text-xs opacity-60';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this._opencodeStatus = message;
+      this._opencodeStatusClass = 'text-xs text-error';
+      spLog(`OpenCode disconnect failed: ${message}`, 'error');
+    } finally {
+      this._opencodeConnecting = false;
+      this.requestUpdate();
+    }
+  }
   _handleOpenTab() {
     const url = this.shadowRoot.querySelector('#urlInput')?.value.trim();
     if (url) tabsCreate({ url });
@@ -3576,6 +4128,147 @@ var SidePanelApp = class SidePanelApp extends i$1 {
       ${filteredTabs.map((tab) => renderTabNode(tab))}
     `;
   }
+  _renderOpencodeTab() {
+    const activeSession = this._getActiveOpenCodeSession();
+    return b`
+      <div
+        class="tab-content ${e$1({ active: this._activeTab === 'opencode' })} flex flex-col flex-1 min-h-0"
+      >
+        <div class="flex flex-col gap-2 p-3 border-b border-base-300 bg-base-100 shrink-0">
+          <label class="form-control flex flex-col gap-1">
+            <span class="text-xs font-semibold opacity-70">OpenCode Base URL</span>
+            <input
+              type="text"
+              class="input input-sm input-bordered font-mono"
+              .value=${this._opencodeBaseUrl}
+              @input=${(event) => {
+                this._opencodeBaseUrl = event.target.value;
+              }}
+              placeholder="http://localhost:4096"
+            />
+          </label>
+          <label class="form-control flex flex-col gap-1">
+            <span class="text-xs font-semibold opacity-70">Bridge Base URL</span>
+            <input
+              type="text"
+              class="input input-sm input-bordered font-mono"
+              .value=${this._bridgeBaseUrl}
+              @input=${(event) => {
+                this._bridgeBaseUrl = event.target.value;
+              }}
+              placeholder="http://localhost:22334"
+            />
+          </label>
+          <label class="form-control flex flex-col gap-1">
+            <span class="text-xs font-semibold opacity-70">Session ID (optional)</span>
+            <input
+              type="text"
+              class="input input-sm input-bordered font-mono"
+              .value=${this._opencodeDraftSessionId}
+              @input=${(event) => {
+                this._opencodeDraftSessionId = event.target.value;
+              }}
+              placeholder="leave empty to create a new session"
+            />
+          </label>
+          <label class="label cursor-pointer justify-start gap-2 p-0">
+            <input
+              type="checkbox"
+              class="checkbox checkbox-xs"
+              .checked=${this._opencodeDeleteSessionOnDisconnect}
+              @change=${(event) => {
+                this._opencodeDeleteSessionOnDisconnect = event.target.checked;
+              }}
+            />
+            <span class="label-text text-xs">Delete session on disconnect</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <button
+              class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
+              @click=${() => void this._handleOpencodeConnect()}
+              ?disabled=${this._opencodeConnecting}
+            >
+              Connect
+            </button>
+            <button
+              class="btn btn-sm btn-secondary"
+              @click=${() => void this._handleOpencodeConnect(true)}
+              ?disabled=${this._opencodeConnecting}
+            >
+              New Session
+            </button>
+            <button
+              class="btn btn-sm btn-outline"
+              @click=${() => void this._handleOpencodeDisconnect()}
+              ?disabled=${this._opencodeConnecting || !activeSession}
+            >
+              Disconnect
+            </button>
+            ${this._opencodeStatus ? b`<span class=${this._opencodeStatusClass}>${this._opencodeStatus}</span>` : A}
+          </div>
+          ${
+            this._opencodeSessions.length > 0
+              ? b`
+                <div class="flex flex-wrap items-center gap-2">
+                  ${c(
+                    this._opencodeSessions,
+                    (session) => session.sessionId,
+                    (session) => b`
+                      <button
+                        class=${e$1({
+                          'btn btn-xs': true,
+                          'btn-primary': session.sessionId === this._opencodeActiveSessionId,
+                          'btn-outline': session.sessionId !== this._opencodeActiveSessionId,
+                        })}
+                        title=${session.wsUrl}
+                        @click=${() => void this._selectOpenCodeSession(session.sessionId)}
+                      >
+                        ${session.sessionId}
+                      </button>
+                    `,
+                  )}
+                </div>
+              `
+              : A
+          }
+        </div>
+
+        <div class="flex-1 min-h-0 bg-base-100">
+          ${
+            this._opencodeSessions.length > 0 && activeSession
+              ? b`
+                ${c(
+                  this._opencodeSessions,
+                  (session) => session.sessionId,
+                  (session) => b`
+                    <div
+                      class=${e$1({
+                        'opencode-session-frame': true,
+                        active: session.sessionId === this._opencodeActiveSessionId,
+                      })}
+                    >
+                      <iframe
+                        class="w-full h-full border-0"
+                        data-session-id=${session.sessionId}
+                        sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+                        src=${session.iframeUrl}
+                      ></iframe>
+                    </div>
+                  `,
+                )}
+              `
+              : b`
+                <div
+                  class="flex h-full items-center justify-center px-6 text-center text-sm opacity-60"
+                >
+                  Connect to OpenCode to render the embedded session UI.
+                </div>
+              `
+          }
+        </div>
+      </div>
+    `;
+  }
   render() {
     try {
       return this._renderContent();
@@ -3643,7 +4336,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
         <div role="tablist" class="tabs tabs-boxed ml-auto bg-transparent border-none gap-0.5">
           <button
             role="tab"
-            class="tab tab-xs px-2 ${e({ 'tab-active': this._activeTab === 'tools' })}"
+            class="tab tab-xs px-2 ${e$1({ 'tab-active': this._activeTab === 'tools' })}"
             @click=${() => this._handleTabClick('tools')}
             title="Tools"
           >
@@ -3663,7 +4356,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${e({ 'tab-active': this._activeTab === 'context' })}"
+            class="tab tab-xs px-2 ${e$1({ 'tab-active': this._activeTab === 'context' })}"
             @click=${() => this._handleTabClick('context')}
             title="Context"
           >
@@ -3684,7 +4377,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${e({ 'tab-active': this._activeTab === 'feedback' })}"
+            class="tab tab-xs px-2 ${e$1({ 'tab-active': this._activeTab === 'feedback' })}"
             @click=${() => this._handleTabClick('feedback')}
             title="Feedback"
           >
@@ -3702,7 +4395,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${e({ 'tab-active': this._activeTab === 'diagnosis' })}"
+            class="tab tab-xs px-2 ${e$1({ 'tab-active': this._activeTab === 'diagnosis' })}"
             @click=${() => this._handleTabClick('diagnosis')}
             title="Diagnosis"
           >
@@ -3718,6 +4411,25 @@ var SidePanelApp = class SidePanelApp extends i$1 {
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
               <line x1="8" y1="21" x2="16" y2="21" />
               <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </button>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${e$1({ 'tab-active': this._activeTab === 'opencode' })}"
+            @click=${() => this._handleTabClick('opencode')}
+            title="OpenCode"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M16 18l6-6-6-6" />
+              <path d="M8 6l-6 6 6 6" />
             </svg>
           </button>
         </div>
@@ -3807,7 +4519,7 @@ var SidePanelApp = class SidePanelApp extends i$1 {
 
       <!-- Diagnosis Tab -->
       <div
-        class="tab-content ${e({ active: this._activeTab === 'diagnosis' })} flex flex-col flex-1 min-h-0"
+        class="tab-content ${e$1({ active: this._activeTab === 'diagnosis' })} flex flex-col flex-1 min-h-0"
       >
         ${n(
           this._urlBarVisible,
@@ -3829,64 +4541,75 @@ var SidePanelApp = class SidePanelApp extends i$1 {
         )}
         <div class="iframe-container flex-1 relative bg-base-100" id="iframeContainer"></div>
       </div>
+
+      ${this._renderOpencodeTab()}
     `;
   }
 };
-__decorate([r()], SidePanelApp.prototype, '_connected', void 0);
-__decorate([r()], SidePanelApp.prototype, '_refreshing', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentTabId', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTreeResponse', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentFilter', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentToolTestSelection', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentRawContextManifest', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentEffectiveContextManifest', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentContextDebug', void 0);
-__decorate([r()], SidePanelApp.prototype, '_activeTab', void 0);
-__decorate([r()], SidePanelApp.prototype, '_urlBarVisible', void 0);
-__decorate([r()], SidePanelApp.prototype, '_currentUrl', void 0);
-__decorate([r()], SidePanelApp.prototype, '_manifestStatus', void 0);
-__decorate([r()], SidePanelApp.prototype, '_manifestStatusClass', void 0);
-__decorate([r()], SidePanelApp.prototype, '_manifestOutput', void 0);
-__decorate([r()], SidePanelApp.prototype, '_diffStatus', void 0);
-__decorate([r()], SidePanelApp.prototype, '_diffOutput', void 0);
-__decorate([r()], SidePanelApp.prototype, '_resourceStatus', void 0);
-__decorate([r()], SidePanelApp.prototype, '_resourceOutput', void 0);
-__decorate([r()], SidePanelApp.prototype, '_skillStatus', void 0);
-__decorate([r()], SidePanelApp.prototype, '_skillOutput', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextAppValue', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextSceneValue', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextTabValue', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextRouteValue', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextNamespaceCount', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextResourceCount', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextSkillCount', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextNamespacesListHtml', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextResourcesListHtml', void 0);
-__decorate([r()], SidePanelApp.prototype, '_contextSkillsListHtml', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestArgs', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestOutput', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestStatusText', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestStatusClass', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestRunning', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestSchemaOutput', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestTitle', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestSubtitle', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestTabIdValue', void 0);
-__decorate([r()], SidePanelApp.prototype, '_toolTestTabIdDisabled', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackBody', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackPriority', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackCreateStatus', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackCreateStatusClass', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackSnapshot', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackLoading', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackError', void 0);
-__decorate([r()], SidePanelApp.prototype, '_feedbackActionStateByAnnotationId', void 0);
-__decorate([r()], SidePanelApp.prototype, '_agentationInjecting', void 0);
-__decorate([r()], SidePanelApp.prototype, '_agentationInjectStatus', void 0);
-__decorate([r()], SidePanelApp.prototype, '_agentationInjectStatusClass', void 0);
-__decorate([e$2('#iframeContainer')], SidePanelApp.prototype, '_iframeContainer', void 0);
-__decorate([r()], SidePanelApp.prototype, '_diffStatusClass', void 0);
-__decorate([r()], SidePanelApp.prototype, '_resourceStatusClass', void 0);
-__decorate([r()], SidePanelApp.prototype, '_skillStatusClass', void 0);
-SidePanelApp = __decorate([t$1('side-panel-app')], SidePanelApp);
+__decorate([r$1()], SidePanelApp.prototype, '_connected', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_refreshing', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentTabId', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTreeResponse', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentFilter', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentToolTestSelection', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentRawContextManifest', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentEffectiveContextManifest', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentContextDebug', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_activeTab', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_urlBarVisible', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_currentUrl', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_manifestStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_manifestStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_manifestOutput', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_diffStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_diffOutput', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_resourceStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_resourceOutput', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_skillStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_skillOutput', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextAppValue', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextSceneValue', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextTabValue', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextRouteValue', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextNamespaceCount', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextResourceCount', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextSkillCount', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextNamespacesListHtml', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextResourcesListHtml', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_contextSkillsListHtml', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestArgs', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestOutput', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestStatusText', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestRunning', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestSchemaOutput', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestTitle', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestSubtitle', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestTabIdValue', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_toolTestTabIdDisabled', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackBody', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackPriority', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackCreateStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackCreateStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackSnapshot', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackLoading', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackError', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_feedbackActionStateByAnnotationId', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_agentationInjecting', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_agentationInjectStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_agentationInjectStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeBaseUrl', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_bridgeBaseUrl', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeDraftSessionId', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeActiveSessionId', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeSessions', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeConnecting', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeStatus', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeDeleteSessionOnDisconnect', void 0);
+__decorate([e$3('#iframeContainer')], SidePanelApp.prototype, '_iframeContainer', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_diffStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_resourceStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_skillStatusClass', void 0);
+SidePanelApp = __decorate([t$2('side-panel-app')], SidePanelApp);
 //#endregion

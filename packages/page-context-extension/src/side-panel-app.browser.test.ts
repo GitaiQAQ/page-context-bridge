@@ -16,10 +16,29 @@ import {
 } from '@page-context/tool-visibility';
 
 const sendRuntimeRequestMock = vi.fn();
+const createOpenCodeSessionMock = vi.fn();
+const deleteOpenCodeSessionMock = vi.fn();
+const ensureMcpRegisteredMock = vi.fn();
+const listOpenCodeSessionsMock = vi.fn();
+const opencodeProjectDirectory = '/Users/bytedance/workspace/sides/browser-debug-extension';
+const opencodeProjectSegment =
+  'L1VzZXJzL2J5dGVkYW5jZS93b3Jrc3BhY2Uvc2lkZXMvYnJvd3Nlci1kZWJ1Zy1leHRlbnNpb24';
 
 vi.mock('./runtime-rpc', () => ({
   sendRuntimeRequest: sendRuntimeRequestMock,
 }));
+
+vi.mock('./sidepanel-opencode', async () => {
+  const actual =
+    await vi.importActual<typeof import('./sidepanel-opencode')>('./sidepanel-opencode');
+  return {
+    ...actual,
+    createSession: createOpenCodeSessionMock,
+    deleteSession: deleteOpenCodeSessionMock,
+    ensureMcpRegistered: ensureMcpRegisteredMock,
+    listSessions: listOpenCodeSessionsMock,
+  };
+});
 
 describe('side-panel-app tools tree interactions', () => {
   const originalChrome = globalThis.chrome;
@@ -200,6 +219,16 @@ describe('side-panel-app tools tree interactions', () => {
       contextResourcePayloads,
       contextSkillPrompts,
     });
+    createOpenCodeSessionMock.mockResolvedValue({
+      id: 'session-created',
+      directory: opencodeProjectDirectory,
+    });
+    deleteOpenCodeSessionMock.mockResolvedValue(undefined);
+    ensureMcpRegisteredMock.mockResolvedValue({
+      created: true,
+      mcpName: 'page-context-session-created',
+    });
+    listOpenCodeSessionsMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -815,7 +844,328 @@ describe('side-panel-app tools tree interactions', () => {
       expect(text).toContain('late.inspect');
     });
   });
+
+  test('connects opencode session by wiring scoped ws before MCP registration', async () => {
+    await import('./side-panel-app');
+
+    createOpenCodeSessionMock.mockResolvedValueOnce({
+      id: 'session-alpha',
+      directory: opencodeProjectDirectory,
+    });
+    sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
+      switch (method) {
+        case BRIDGE_METHODS.extensionStatusGet: {
+          const payload = params as { sessionId?: string } | undefined;
+          if (payload?.sessionId === 'session-alpha') {
+            return {
+              connected: true,
+              scopedSessions: [
+                {
+                  tenantId: 'session-alpha',
+                  wsUrl: 'ws://localhost:22335/?tenantId=session-alpha',
+                  connected: true,
+                  bridgeSessionId: 'bridge-alpha',
+                },
+              ],
+            };
+          }
+          return { connected: true, scopedSessions: [] };
+        }
+        case BRIDGE_METHODS.extensionReconnect:
+          return { ok: true };
+        case BRIDGE_METHODS.extensionPageToolsTreeGet:
+          return buildToolTree(tabs, pageEntries, builtinTools, {});
+        default:
+          return null;
+      }
+    });
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+    await openOpencodeTab(element);
+
+    findButtonByText(element, 'Connect')?.click();
+
+    await vi.waitFor(() => {
+      expect(ensureMcpRegisteredMock).toHaveBeenCalledWith(
+        {
+          opencodeBaseUrl: 'http://localhost:4096',
+          bridgeBaseUrl: 'http://localhost:22334',
+        },
+        'session-alpha',
+      );
+    });
+
+    const reconnectCall = sendRuntimeRequestMock.mock.calls.find(
+      ([method]) => method === BRIDGE_METHODS.extensionReconnect,
+    );
+    expect(reconnectCall).toEqual([
+      BRIDGE_METHODS.extensionReconnect,
+      {
+        sessionId: 'session-alpha',
+        wsUrl: 'ws://localhost:22335/?tenantId=session-alpha',
+      },
+    ]);
+    expect(sendRuntimeRequestMock.mock.invocationCallOrder[1]).toBeLessThan(
+      ensureMcpRegisteredMock.mock.invocationCallOrder[0]!,
+    );
+
+    await vi.waitFor(() => {
+      const iframe = element.shadowRoot?.querySelector(
+        'iframe[data-session-id="session-alpha"]',
+      ) as HTMLIFrameElement | null;
+      expect(iframe?.src).toContain(
+        `http://localhost:4096/${opencodeProjectSegment}/session/session-alpha`,
+      );
+    });
+  });
+
+  test('creates a second opencode session without reconnecting the first one', async () => {
+    await import('./side-panel-app');
+
+    createOpenCodeSessionMock
+      .mockResolvedValueOnce({ id: 'session-alpha', directory: opencodeProjectDirectory })
+      .mockResolvedValueOnce({ id: 'session-beta', directory: opencodeProjectDirectory });
+    ensureMcpRegisteredMock.mockResolvedValue({
+      created: true,
+      mcpName: 'page-context-session',
+    });
+
+    const connectedSessions = new Map<string, string>();
+    sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
+      switch (method) {
+        case BRIDGE_METHODS.extensionReconnect: {
+          const payload = params as { sessionId?: string; wsUrl?: string; disconnect?: boolean };
+          if (payload.sessionId && payload.wsUrl && !payload.disconnect) {
+            connectedSessions.set(payload.sessionId, payload.wsUrl);
+          }
+          if (payload.sessionId && payload.disconnect) {
+            connectedSessions.delete(payload.sessionId);
+          }
+          return { ok: true };
+        }
+        case BRIDGE_METHODS.extensionStatusGet: {
+          const payload = params as { sessionId?: string } | undefined;
+          if (payload?.sessionId) {
+            const wsUrl = connectedSessions.get(payload.sessionId);
+            return {
+              connected: Boolean(wsUrl),
+              scopedSessions: wsUrl
+                ? [
+                    {
+                      tenantId: payload.sessionId,
+                      wsUrl,
+                      connected: true,
+                      bridgeSessionId: `bridge-${payload.sessionId}`,
+                    },
+                  ]
+                : [],
+            };
+          }
+          return {
+            connected: true,
+            scopedSessions: Array.from(connectedSessions.entries()).map(([tenantId, wsUrl]) => ({
+              tenantId,
+              wsUrl,
+              connected: true,
+              bridgeSessionId: `bridge-${tenantId}`,
+            })),
+          };
+        }
+        case BRIDGE_METHODS.extensionPageToolsTreeGet:
+          return buildToolTree(tabs, pageEntries, builtinTools, {});
+        default:
+          return null;
+      }
+    });
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+    await openOpencodeTab(element);
+
+    findButtonByText(element, 'Connect')?.click();
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]'),
+      ).not.toBeNull();
+    });
+
+    findButtonByText(element, 'New Session')?.click();
+
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]'),
+      ).not.toBeNull();
+    });
+
+    expect(
+      sendRuntimeRequestMock.mock.calls.filter(
+        ([method, params]) =>
+          method === BRIDGE_METHODS.extensionReconnect &&
+          Boolean((params as { disconnect?: boolean } | undefined)?.disconnect) === false,
+      ),
+    ).toHaveLength(2);
+    expect(connectedSessions.size).toBe(2);
+
+    const sessionButtons = [
+      ...(element.shadowRoot?.querySelectorAll('button[title^="ws://"]') ?? []),
+    ].map((button) => button.textContent?.trim());
+    expect(sessionButtons).toContain('session-alpha');
+    expect(sessionButtons).toContain('session-beta');
+  });
+
+  test('restores last live session without re-registering MCP', async () => {
+    const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (typeof keyOrDefaults === 'string') {
+        return {
+          'opencode.config.v1': {
+            opencodeBaseUrl: 'http://localhost:4096',
+            bridgeBaseUrl: 'http://localhost:22334',
+            lastSessionId: 'session-restored',
+          },
+        };
+      }
+      return keyOrDefaults;
+    });
+    listOpenCodeSessionsMock.mockResolvedValueOnce([
+      { id: 'session-restored', directory: opencodeProjectDirectory },
+    ]);
+
+    await import('./side-panel-app');
+
+    sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
+      switch (method) {
+        case BRIDGE_METHODS.extensionStatusGet: {
+          const payload = params as { sessionId?: string } | undefined;
+          if (payload?.sessionId === 'session-restored') {
+            return {
+              connected: true,
+              scopedSessions: [
+                {
+                  tenantId: 'session-restored',
+                  wsUrl: 'ws://localhost:22335/?tenantId=session-restored',
+                  connected: true,
+                  bridgeSessionId: 'bridge-restored',
+                },
+              ],
+            };
+          }
+          return {
+            connected: true,
+            scopedSessions: [
+              {
+                tenantId: 'session-restored',
+                wsUrl: 'ws://localhost:22335/?tenantId=session-restored',
+                connected: true,
+                bridgeSessionId: 'bridge-restored',
+              },
+            ],
+          };
+        }
+        case BRIDGE_METHODS.extensionPageToolsTreeGet:
+          return buildToolTree(tabs, pageEntries, builtinTools, {});
+        default:
+          return null;
+      }
+    });
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+    await openOpencodeTab(element);
+
+    await vi.waitFor(() => {
+      const iframe = element.shadowRoot?.querySelector(
+        'iframe[data-session-id="session-restored"]',
+      ) as HTMLIFrameElement | null;
+      expect(iframe?.src).toContain(`${opencodeProjectSegment}/session/session-restored`);
+    });
+
+    expect(ensureMcpRegisteredMock).not.toHaveBeenCalled();
+    expect(
+      sendRuntimeRequestMock.mock.calls.some(
+        ([method]) => method === BRIDGE_METHODS.extensionReconnect,
+      ),
+    ).toBe(false);
+  });
+
+  test('clears stale last session when opencode no longer has it', async () => {
+    const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    const storageRemoveMock = chrome.storage.local.remove as unknown as ReturnType<typeof vi.fn>;
+    storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (typeof keyOrDefaults === 'string') {
+        return {
+          'opencode.config.v1': {
+            opencodeBaseUrl: 'http://localhost:4096',
+            bridgeBaseUrl: 'http://localhost:22334',
+            lastSessionId: 'session-dead',
+          },
+        };
+      }
+      return keyOrDefaults;
+    });
+    listOpenCodeSessionsMock.mockResolvedValueOnce([]);
+
+    sendRuntimeRequestMock.mockImplementation(async (method: string) => {
+      switch (method) {
+        case BRIDGE_METHODS.extensionStatusGet:
+          return {
+            connected: true,
+            scopedSessions: [
+              {
+                tenantId: 'session-dead',
+                wsUrl: 'ws://localhost:22335/?tenantId=session-dead',
+                connected: true,
+                bridgeSessionId: 'bridge-dead',
+              },
+            ],
+          };
+        case BRIDGE_METHODS.extensionReconnect:
+          return { ok: true };
+        case BRIDGE_METHODS.extensionPageToolsTreeGet:
+          return buildToolTree(tabs, pageEntries, builtinTools, {});
+        default:
+          return null;
+      }
+    });
+
+    await import('./side-panel-app');
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+    await openOpencodeTab(element);
+
+    await vi.waitFor(() => {
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('Cleared saved state');
+    });
+
+    expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('opencode.config.v1');
+    expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionReconnect, {
+      sessionId: 'session-dead',
+      disconnect: true,
+    });
+    expect(element.shadowRoot?.querySelector('iframe[data-session-id]')).toBeNull();
+  });
 });
+
+async function openOpencodeTab(element: Element): Promise<void> {
+  await vi.waitFor(() => {
+    expect(element.shadowRoot?.querySelector('[title="OpenCode"]')).not.toBeNull();
+  });
+  (element.shadowRoot?.querySelector('[title="OpenCode"]') as HTMLButtonElement | null)?.click();
+  await vi.waitFor(() => {
+    expect(element.shadowRoot?.textContent ?? '').toContain('OpenCode Base URL');
+  });
+}
+
+function findButtonByText(element: Element, text: string): HTMLButtonElement | null {
+  return (
+    [...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+      (button) => button.textContent?.trim() === text,
+    ) ?? null
+  );
+}
 
 function installRuntimeRequestMock(input: {
   builtinTools: PageToolSpec[];
@@ -962,6 +1312,7 @@ function installChromeMock(): void {
           }
           return keyOrDefaults;
         }),
+        set: vi.fn(async () => undefined),
         remove: vi.fn(async () => undefined),
       },
     },

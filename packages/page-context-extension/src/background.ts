@@ -21,9 +21,11 @@ import { createRuntimeMessageHandler } from './bg-runtime-handlers';
 import { registerLifecycleListeners } from './bg-lifecycle';
 import { installPageContextBridgeHostInMainWorld } from './bg-main-world-bridge-host';
 import { tabsQuery } from './extension-api';
+import { createScopedBridgeWsManager } from './bg-scoped-ws-connection';
 
 const inFlightToolCalls = new Map<string, string>();
 const pageToolState = createPageToolState();
+const scopedBridgeWsManager = createScopedBridgeWsManager();
 
 // ── Tab helpers ──
 
@@ -52,6 +54,7 @@ const wsHandlers = createWsHandlers({
     getSessionId,
     forceReconnect,
   },
+  scopedBridgeConnection: scopedBridgeWsManager,
 });
 
 const runtimeMessageHandler = createRuntimeMessageHandler({

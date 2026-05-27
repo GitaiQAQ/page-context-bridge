@@ -3721,6 +3721,11 @@
       --btn-fg: var(--color-primary-content);
     }
 
+    .btn-secondary {
+      --btn-color: var(--color-secondary);
+      --btn-fg: var(--color-secondary-content);
+    }
+
     .btn-success {
       --btn-color: var(--color-success);
       --btn-fg: var(--color-success-content);
@@ -4509,6 +4514,10 @@
     justify-content: flex-end;
   }
 
+  .justify-start {
+    justify-content: flex-start;
+  }
+
   .gap-0\.5 {
     gap: calc(var(--spacing) * 0.5);
   }
@@ -4562,6 +4571,11 @@
   .border {
     border-style: var(--tw-border-style);
     border-width: 1px;
+  }
+
+  .border-0 {
+    border-style: var(--tw-border-style);
+    border-width: 0;
   }
 
   .border-t {
@@ -4665,6 +4679,10 @@
     padding-inline: calc(var(--spacing) * 3);
   }
 
+  .px-6 {
+    padding-inline: calc(var(--spacing) * 6);
+  }
+
   .py-1\.5 {
     padding-block: calc(var(--spacing) * 1.5);
   }
@@ -4675,6 +4693,10 @@
 
   .pl-4 {
     padding-left: calc(var(--spacing) * 4);
+  }
+
+  .text-center {
+    text-align: center;
   }
 
   .font-mono {
@@ -4753,6 +4775,10 @@
 
   .text-success {
     color: var(--color-success);
+  }
+
+  .text-warning {
+    color: var(--color-warning);
   }
 
   .text-white {

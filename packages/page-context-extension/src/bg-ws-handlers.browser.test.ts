@@ -113,6 +113,17 @@ describe('createWsHandlers', () => {
         getSessionId: vi.fn().mockReturnValue('session-1'),
         forceReconnect: vi.fn().mockResolvedValue(undefined),
       },
+      scopedBridgeConnection: {
+        connect: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        getStatus: vi.fn().mockImplementation((tenantId: string) => ({
+          tenantId,
+          wsUrl: `ws://127.0.0.1:22335/?tenantId=${tenantId}`,
+          connected: true,
+          bridgeSessionId: `bridge-${tenantId}`,
+        })),
+        listStatuses: vi.fn().mockReturnValue([]),
+      },
       ...overrides,
     };
     const { createWsHandlers } = await import('./bg-ws-handlers.js');
@@ -162,6 +173,37 @@ describe('createWsHandlers', () => {
       expect(status.connected).toBe(false);
       expect(status.sessionId).toBeNull();
     });
+
+    it('returns scoped session status when sessionId is provided', async () => {
+      const getStatus = vi.fn().mockReturnValue({
+        tenantId: 'session-z',
+        wsUrl: 'ws://127.0.0.1:22335/?tenantId=session-z',
+        connected: true,
+        bridgeSessionId: 'bridge-z',
+      });
+      const handlers = await createHandlers({
+        scopedBridgeConnection: {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          getStatus,
+          listStatuses: vi.fn(),
+        } as never,
+      });
+
+      const status = handlers.buildExtensionStatusResponse({ sessionId: 'session-z' });
+
+      expect(status.connected).toBe(true);
+      expect(status.sessionId).toBe('session-z');
+      expect(status.scopedSessions).toEqual([
+        {
+          tenantId: 'session-z',
+          wsUrl: 'ws://127.0.0.1:22335/?tenantId=session-z',
+          connected: true,
+          bridgeSessionId: 'bridge-z',
+        },
+      ]);
+      expect(getStatus).toHaveBeenCalledWith('session-z');
+    });
   });
 
   describe('handleExtensionReconnect()', () => {
@@ -174,6 +216,55 @@ describe('createWsHandlers', () => {
 
       expect(result).toEqual({ ok: true });
       expect(forceReconnect).toHaveBeenCalled();
+    });
+
+    it('connects a scoped opencode session when sessionId and wsUrl are provided', async () => {
+      const connect = vi.fn().mockResolvedValue(undefined);
+      const handlers = await createHandlers({
+        scopedBridgeConnection: {
+          connect,
+          disconnect: vi.fn(),
+          getStatus: vi.fn(),
+          listStatuses: vi.fn(),
+        } as never,
+      });
+
+      const result = await handlers.handleExtensionReconnect({
+        sessionId: 'session-a',
+        wsUrl: 'ws://127.0.0.1:22335/?tenantId=session-a',
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(connect).toHaveBeenCalledWith(
+        'session-a',
+        'ws://127.0.0.1:22335/?tenantId=session-a',
+        expect.objectContaining({
+          onToolCall: expect.any(Function),
+          onToolsList: expect.any(Function),
+          onTabsList: expect.any(Function),
+          onExtensionRequest: expect.any(Function),
+        }),
+      );
+    });
+
+    it('disconnects a scoped opencode session when disconnect is requested', async () => {
+      const disconnect = vi.fn().mockResolvedValue(undefined);
+      const handlers = await createHandlers({
+        scopedBridgeConnection: {
+          connect: vi.fn(),
+          disconnect,
+          getStatus: vi.fn(),
+          listStatuses: vi.fn(),
+        } as never,
+      });
+
+      const result = await handlers.handleExtensionReconnect({
+        sessionId: 'session-b',
+        disconnect: true,
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(disconnect).toHaveBeenCalledWith('session-b');
     });
   });
 

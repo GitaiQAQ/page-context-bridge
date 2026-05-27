@@ -11,8 +11,18 @@ import type {
 
 import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
 
+export interface RuntimeScopedSessionStatus {
+  tenantId: string;
+  wsUrl: string | null;
+  connected: boolean;
+  bridgeSessionId: string | null;
+}
+
 export interface RuntimeStatus {
   connected: boolean;
+  pendingToolCalls?: number;
+  sessionId?: string | null;
+  scopedSessions?: RuntimeScopedSessionStatus[];
 }
 
 export interface ToolTreeTool {

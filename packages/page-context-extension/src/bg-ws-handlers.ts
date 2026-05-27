@@ -39,6 +39,7 @@ import {
   setScopeEnabled,
 } from '@page-context/tool-visibility';
 import { sendTabRequest } from './runtime-rpc';
+import type { ScopedBridgeStatus } from './bg-scoped-ws-connection';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -58,14 +59,31 @@ interface WsBridgeConnectionDeps {
   ): Promise<void>;
 }
 
+interface ScopedBridgeConnectionDeps {
+  connect(
+    tenantId: string,
+    wsUrl: string,
+    handlers: {
+      onToolCall: WsOnToolCallHandler;
+      onToolsList: WsOnToolsListHandler;
+      onTabsList: WsOnTabsListHandler;
+      onExtensionRequest: WsOnExtensionRequestHandler;
+    },
+  ): Promise<void>;
+  disconnect(tenantId: string): Promise<void>;
+  getStatus(tenantId: string): ScopedBridgeStatus;
+  listStatuses(): ScopedBridgeStatus[];
+}
+
 export interface ExtensionControlHandlers {
-  buildExtensionStatusResponse(): {
+  buildExtensionStatusResponse(params?: unknown): {
     connected: boolean;
     wsUrl: null;
     pendingToolCalls: number;
     sessionId: string | null;
+    scopedSessions?: ScopedBridgeStatus[];
   };
-  handleExtensionReconnect(): Promise<{ ok: true }>;
+  handleExtensionReconnect(params?: unknown): Promise<{ ok: true }>;
   handleExtensionPageToolsGet(params: unknown): { tools: PageToolSpec[] };
   handleExtensionPageToolsTreeGet(): Promise<unknown>;
   handleExtensionPageToolsRefresh(params: unknown): Promise<{ tools: PageToolSpec[] }>;
@@ -93,6 +111,7 @@ interface CreateWsHandlersDeps {
   >;
   installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstaller;
   bridgeConnection: WsBridgeConnectionDeps;
+  scopedBridgeConnection: ScopedBridgeConnectionDeps;
 }
 
 export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
@@ -188,16 +207,54 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     return await deps.listTabs();
   }
 
-  function buildExtensionStatusResponse() {
+  function buildExtensionStatusResponse(params?: unknown) {
+    const payload = params as { sessionId?: string } | undefined;
+    const sessionId = payload?.sessionId?.trim();
+    if (sessionId) {
+      const scopedStatus = deps.scopedBridgeConnection.getStatus(sessionId);
+      return {
+        connected: scopedStatus.connected,
+        wsUrl: null,
+        pendingToolCalls: deps.inFlightToolCalls.size,
+        sessionId,
+        scopedSessions: [scopedStatus],
+      };
+    }
+
     return {
       connected: deps.bridgeConnection.getWsReady(),
       wsUrl: null,
       pendingToolCalls: deps.inFlightToolCalls.size,
       sessionId: deps.bridgeConnection.getSessionId(),
+      scopedSessions: deps.scopedBridgeConnection.listStatuses(),
     };
   }
 
-  async function handleExtensionReconnect(): Promise<{ ok: true }> {
+  async function handleExtensionReconnect(params?: unknown): Promise<{ ok: true }> {
+    const payload = params as { sessionId?: string; wsUrl?: string; disconnect?: boolean } | null;
+    const tenantId = payload?.sessionId?.trim();
+    const wsUrl = payload?.wsUrl?.trim();
+
+    // session 作用域存在时，说明调用方明确要操作 OpenCode 多 session 链路。
+    if (tenantId) {
+      if (payload?.disconnect) {
+        await deps.scopedBridgeConnection.disconnect(tenantId);
+        return { ok: true };
+      }
+
+      if (!wsUrl) {
+        throw new Error(`wsUrl is required when reconnecting scoped session "${tenantId}"`);
+      }
+
+      await deps.scopedBridgeConnection.connect(tenantId, wsUrl, {
+        onToolCall,
+        onToolsList,
+        onTabsList,
+        onExtensionRequest: onBridgeWsExtensionRequest,
+      });
+      return { ok: true };
+    }
+
     // Must pass the same set of callbacks back to the connection layer so reconnection behaves identically to the first connection.
     await deps.bridgeConnection.forceReconnect(
       onToolCall,
@@ -365,9 +422,9 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
 
     switch (method) {
       case BRIDGE_METHODS.extensionStatusGet:
-        return buildExtensionStatusResponse();
+        return buildExtensionStatusResponse(params);
       case BRIDGE_METHODS.extensionReconnect:
-        return await handleExtensionReconnect();
+        return await handleExtensionReconnect(params);
       case BRIDGE_METHODS.extensionPageToolsGet:
         return handleExtensionPageToolsGet(params);
       case BRIDGE_METHODS.extensionPageToolsTreeGet:

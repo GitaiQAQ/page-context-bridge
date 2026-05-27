@@ -133,9 +133,9 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
       case EXTENSION_E2E_REPORT_METHOD:
         return await postFirefoxE2EReport(message.params);
       case BRIDGE_METHODS.extensionStatusGet:
-        return deps.extensionControlHandlers.buildExtensionStatusResponse();
+        return deps.extensionControlHandlers.buildExtensionStatusResponse(message.params);
       case BRIDGE_METHODS.extensionReconnect:
-        return await deps.extensionControlHandlers.handleExtensionReconnect();
+        return await deps.extensionControlHandlers.handleExtensionReconnect(message.params);
       case BRIDGE_METHODS.extensionPageToolsGet:
         return deps.extensionControlHandlers.handleExtensionPageToolsGet(message.params);
       case BRIDGE_METHODS.extensionPageToolsTreeGet:
