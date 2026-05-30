@@ -512,8 +512,8 @@ export function createExtensionState(
       `[${tenantId}] Extension registered: ${payload.extensionId ?? 'unknown'} v${payload.version ?? 'unknown'} → session ${sessionId}`,
     );
 
-    // 先把 barrier 换成这次 replay，再处理后续 tab 事件。
-    // 这样可以避免“session.register 的旧快照晚到，覆盖更新事件里的新状态”。
+    // Replace the barrier with this replay before handling later tab events.
+    // This prevents an old session.register snapshot from arriving late and overwriting newer event state.
     registryReplayBarrier = syncRegistryStateFromConnectedExtension(
       tenantId,
       manager,
@@ -749,7 +749,7 @@ export function startWebSocketServer(extWsPort: number, manager: TenantManager):
         tenant.extension = slot;
 
         ws.on('message', (data: WebSocket.RawData) => {
-          // WebSocket 是扩展侧的常驻控制面，收到任意消息都应刷新活跃时间。
+          // WebSocket is the extension's long-lived control plane, so any message should refresh activity time.
           manager.touch(tenantId);
           void slot.peer.receive(data.toString()).catch((error: unknown) => {
             log(

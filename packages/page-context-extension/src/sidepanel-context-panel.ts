@@ -1,6 +1,6 @@
 /**
- * Context manifest 面板渲染模块。
- * 提供 namespace / resource / skill 卡片组件和 diff 面板的纯渲染函数。
+ * Context manifest panel rendering module.
+ * Provides pure render functions for namespace/resource/skill cards and diff panels.
  */
 
 import { html, nothing, type TemplateResult } from 'lit';
@@ -22,8 +22,8 @@ export { buildContextManifestDiff } from './context-manifest-diff';
 import { formatJson } from './sidepanel-tree-renderer';
 
 /**
- * 渲染完整 context manifest 面板（旧版内联模板，保留兼容）。
- * 当前主入口已迁移至 renderContextTab()，此函数仅作降级/测试用途。
+ * Render the full context manifest panel (legacy inline template kept for compatibility).
+ * The main entry has moved to renderContextTab(); this function remains only for fallback/tests.
  */
 export function renderContextManifestPanel(
   rawManifest: PageContextManifest,
@@ -52,7 +52,7 @@ export function renderContextManifestPanel(
   `;
 }
 
-/** 渲染空状态面板（无 manifest 可用时显示占位内容） */
+/** Render the empty state panel shown when no manifest is available. */
 export function renderContextEmptyPanel(
   message: string,
   currentTabId: number | null,
@@ -94,7 +94,7 @@ ${isError ? formatJson({ error: message }) : '(manifest not loaded)'}</pre
   `;
 }
 
-/** 渲染 manifest diff 面板（原始 vs 过滤后的差异对比） */
+/** Render the manifest diff panel comparing raw vs filtered data. */
 export function renderContextDiffPanel(
   rawManifest: PageContextManifest | null,
   effectiveManifest: PageContextManifest | null,
@@ -145,7 +145,7 @@ export function renderContextDiffPanel(
   `;
 }
 
-/** 渲染单个 diff 分类卡片（原始/有效计数 + 隐藏项列表） */
+/** Render one diff category card with raw/effective counts and hidden items. */
 function renderDiffCard(
   title: string,
   rawCount: number,
@@ -170,7 +170,7 @@ function renderDiffCard(
   `;
 }
 
-/** 渲染 skill 工具裁剪卡片（被过滤掉的推荐工具列表） */
+/** Render the skill tool trimming card for filtered-out recommended tools. */
 function renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): TemplateResult {
   const trimmed: ContextSkillToolTrimDebug[] = debug?.trimmedSkillTools ?? [];
   return html`
@@ -193,8 +193,8 @@ function renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): Templ
 }
 
 /**
- * 将过滤原因码转译为人类可读文案。
- * 统一出口，避免在 side-panel-app 和 panel 中各写一份。
+ * Translate filter reason codes to human-readable text.
+ * Keep one shared exit so side-panel-app and panel do not duplicate it.
  */
 export function formatReason(reason: string): string {
   switch (reason) {
@@ -211,7 +211,7 @@ export function formatReason(reason: string): string {
   }
 }
 
-/** 渲染 namespace 描述为紧凑的业务域卡片 */
+/** Render a namespace descriptor as a compact domain card. */
 export function renderContextNamespaceCard(namespace: ContextNamespaceDescriptor): TemplateResult {
   const tags = namespace.tags ?? [];
 
@@ -235,7 +235,7 @@ export function renderContextNamespaceCard(namespace: ContextNamespaceDescriptor
   `;
 }
 
-/** 渲染 resource 描述为数据卡片（含 "Inspect Payload" 按钮） */
+/** Render a resource descriptor as a data card with an "Inspect Payload" button. */
 export function renderContextResourceCard(resource: ContextResourceDescriptor): TemplateResult {
   const tags = resource.tags ?? [];
 
@@ -274,7 +274,7 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
   `;
 }
 
-/** 渲染 skill 描述为工作流卡片（含 "Inspect Skill" 按钮） */
+/** Render a skill descriptor as a workflow card with an "Inspect Skill" button. */
 export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateResult {
   const intentTags = skill.intentTags ?? [];
   const linkedResourceCount = skill.resourceIds?.length ?? 0;

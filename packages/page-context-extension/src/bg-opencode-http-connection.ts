@@ -1,9 +1,9 @@
 /**
- * OpenCode HTTP 探活 driver。
+ * OpenCode HTTP health-check driver.
  *
- * 设计选择：
- * - 默认后台 30s 周期探活，Connections tab 不开也能看到真实状态
- * - UI 的 Reconnect 动作会触发一次立即探活，避免改完 endpoint 还要等下个周期
+ * Design choices:
+ * - Poll every 30s in the background so state stays accurate even when the Connections tab is closed.
+ * - UI Reconnect triggers an immediate health check after endpoint changes.
  */
 
 import { getConnectionRegistry } from './bg-connection-registry';

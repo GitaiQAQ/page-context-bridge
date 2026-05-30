@@ -1,10 +1,10 @@
 /**
- * 统一连接注册表。
+ * Shared connection registry.
  *
- * 目标：
- * 1. background 内所有“对外链路”都在这里挂账
- * 2. sidepanel 只读 descriptor，不再自己拼状态字符串
- * 3. 动作统一经由 driver 路由，避免 UI 直接耦合具体实现
+ * Goals:
+ * 1. Track every external background link here.
+ * 2. Let the sidepanel read descriptors instead of composing status strings.
+ * 3. Route actions through drivers so UI does not couple to concrete implementations.
  */
 
 import {
@@ -73,8 +73,8 @@ export function createConnectionRegistry(
     try {
       await runtimeSendMessage(createNotification(method, params));
     } catch {
-      // 广播属于“尽力而为”能力。
-      // 某些单测只装了局部 chrome mock，这里不该让业务流程因为广播失败而整体报错。
+      // Broadcasts are best effort.
+      // Some unit tests install partial chrome mocks, so broadcast failures should not fail the business flow.
     }
   };
 
@@ -187,8 +187,8 @@ export function getConnectionRegistry(): ConnectionRegistry {
 }
 
 /**
- * 仅供单测清理全局状态。
- * 业务代码不要调用，避免把运行中的 registry 清空。
+ * Only for unit tests that need to clear global state.
+ * Production code should not call this, otherwise it may clear a live registry.
  */
 export function resetConnectionRegistryForTests(): void {
   singletonRegistry.clear();

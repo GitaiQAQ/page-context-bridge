@@ -237,8 +237,8 @@ export async function discoverPageToolsForTab(
           'error',
           error instanceof Error ? error.message : String(error),
         );
-        // 主动刷新需要把 backend 不可用抛给上层；生命周期自动探测则只记录，
-        // 避免测试/受限运行时因 unsupported backend 产生未处理 rejection。
+        // Manual refresh should surface unavailable backend errors; lifecycle auto-probes only log them
+        // to avoid unhandled rejections in tests or restricted runtimes.
         if (failOnBackendError && isPageAccessBackendError(error)) {
           throw error;
         }
@@ -252,8 +252,8 @@ export async function discoverPageToolsForTab(
       pageAccessBackendKind === 'firefox-probe' &&
       latestEntries.some((entry) => Array.isArray(entry.tools) && entry.tools.length > 0)
     ) {
-      // Firefox 只读注册可能晚于这轮后台轮询开始时间。
-      // 这里必须看“当前状态”而不是函数开头的快照，否则会把轮询过程中刚注册好的工具错误清掉。
+      // Firefox readonly registration may happen after this background poll starts.
+      // Check current state instead of the function-entry snapshot, or newly registered tools may be cleared incorrectly.
       log('Preserving current Firefox page tools after empty rediscovery', tabId);
       return latestEntries;
     }

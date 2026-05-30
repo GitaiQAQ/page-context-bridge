@@ -244,12 +244,12 @@ describe('sidepanel builtin filtering', () => {
             {
               namespace: 'campaign-selector',
               namespaceTitle: 'Campaign Selector',
-              namespaceDescription: 'campaign selector 调试能力集合',
+              namespaceDescription: 'Campaign selector debugging capabilities',
               instanceId: 'default',
               tools: [
                 {
                   name: 'campaign-selector.pick-instance',
-                  description: '选择调试实例',
+                  description: 'Select debug instance',
                   annotations: { readOnlyHint: true },
                 },
               ],
@@ -264,7 +264,7 @@ describe('sidepanel builtin filtering', () => {
     expect(tree.tabs[0]?.namespaces[0]).toMatchObject({
       namespace: 'campaign-selector',
       title: 'Campaign Selector',
-      description: 'campaign selector 调试能力集合',
+      description: 'Campaign selector debugging capabilities',
     });
   });
 });

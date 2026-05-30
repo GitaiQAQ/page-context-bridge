@@ -17,14 +17,12 @@ import {
 } from '@page-context/tool-visibility';
 
 const sendRuntimeRequestMock = vi.fn();
-const createOpenCodeWorktreeMock = vi.fn();
 const createOpenCodeSessionMock = vi.fn();
 const deleteOpenCodeSessionMock = vi.fn();
 const ensureMcpRegisteredMock = vi.fn();
 const listOpenCodeSessionsMock = vi.fn();
 const opencodeProjectDirectory = '/home/user/project';
 const opencodeProjectSegment = encodeOpenCodeRouteSegment(opencodeProjectDirectory);
-const opencodeWorktreeDirectory = `${opencodeProjectDirectory}.worktrees/session-created`;
 
 function encodeOpenCodeRouteSegment(value: string): string {
   const bytes = new TextEncoder().encode(value);
@@ -70,7 +68,6 @@ vi.mock('./sidepanel-opencode', async () => {
     await vi.importActual<typeof import('./sidepanel-opencode')>('./sidepanel-opencode');
   return {
     ...actual,
-    createIsolatedWorktree: createOpenCodeWorktreeMock,
     createSession: createOpenCodeSessionMock,
     deleteSession: deleteOpenCodeSessionMock,
     ensureMcpRegistered: ensureMcpRegisteredMock,
@@ -257,16 +254,9 @@ describe('side-panel-app tools tree interactions', () => {
       contextResourcePayloads,
       contextSkillPrompts,
     });
-    createOpenCodeWorktreeMock.mockResolvedValue({
-      sourceDirectory: opencodeProjectDirectory,
-      repositoryRoot: opencodeProjectDirectory,
-      directory: opencodeWorktreeDirectory,
-      branch: 'opencode/session-created',
-      opencodeBaseUrl: 'http://127.0.0.1:4100',
-    });
     createOpenCodeSessionMock.mockImplementation(async (cfg?: { opencodeBaseUrl?: string }) => ({
       id: 'session-created',
-      directory: opencodeWorktreeDirectory,
+      directory: opencodeProjectDirectory,
       opencodeBaseUrl: cfg?.opencodeBaseUrl,
     }));
     deleteOpenCodeSessionMock.mockResolvedValue(undefined);
@@ -919,19 +909,22 @@ describe('side-panel-app tools tree interactions', () => {
   });
 
   test('connects opencode session by wiring scoped ws before MCP registration', async () => {
+    const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (keyOrDefaults === 'page-context.bridge-install-id.v1') {
+        return { 'page-context.bridge-install-id.v1': 'install-test' };
+      }
+      if (typeof keyOrDefaults === 'string') {
+        return {};
+      }
+      return keyOrDefaults;
+    });
     await import('./side-panel-app');
 
-    const sessionAlphaWorktree = `${opencodeProjectDirectory}.worktrees/session-alpha`;
-    createOpenCodeWorktreeMock.mockResolvedValueOnce({
-      sourceDirectory: opencodeProjectDirectory,
-      repositoryRoot: opencodeProjectDirectory,
-      directory: sessionAlphaWorktree,
-      branch: 'opencode/session-alpha',
-      opencodeBaseUrl: 'http://127.0.0.1:4101',
-    });
+    const sessionAlphaDirectory = `${opencodeProjectDirectory}/session-alpha`;
     createOpenCodeSessionMock.mockResolvedValueOnce({
       id: 'session-alpha',
-      directory: sessionAlphaWorktree,
+      directory: sessionAlphaDirectory,
       opencodeBaseUrl: 'http://127.0.0.1:4101',
     });
     sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
@@ -945,8 +938,8 @@ describe('side-panel-app tools tree interactions', () => {
                 endpoint: 'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox',
               },
               makeScopedConnectionDescriptor(
-                'session-alpha',
-                'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox?tenantId=session-alpha',
+                'install-test',
+                'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox?tenantId=install-test',
               ),
             ],
           };
@@ -983,7 +976,7 @@ describe('side-panel-app tools tree interactions', () => {
       );
     });
     expect(createOpenCodeSessionMock).toHaveBeenCalledWith({
-      opencodeBaseUrl: 'http://127.0.0.1:4101',
+      opencodeBaseUrl: 'http://localhost:4096',
       bridgeBaseUrl: 'http://localhost:22334',
     });
 
@@ -993,8 +986,8 @@ describe('side-panel-app tools tree interactions', () => {
     expect(reconnectCall).toEqual([
       BRIDGE_METHODS.extensionReconnect,
       {
-        sessionId: 'session-alpha',
-        wsUrl: 'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox?tenantId=session-alpha',
+        sessionId: 'install-test',
+        wsUrl: 'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox?tenantId=install-test',
       },
     ]);
     expect(sendRuntimeRequestMock.mock.invocationCallOrder[1]).toBeLessThan(
@@ -1010,7 +1003,7 @@ describe('side-panel-app tools tree interactions', () => {
     );
     expect(iframe).not.toBeNull();
     expect(iframe?.src).toBe(
-      `http://127.0.0.1:4101/${encodeOpenCodeRouteSegment(sessionAlphaWorktree)}/session/session-alpha`,
+      `http://127.0.0.1:4101/${encodeOpenCodeRouteSegment(sessionAlphaDirectory)}/session/session-alpha`,
     );
 
     closeOpenCodeIframe(element);
@@ -1022,35 +1015,30 @@ describe('side-panel-app tools tree interactions', () => {
     });
   });
 
-  test('creates a second opencode session without reconnecting the first one', async () => {
+  test('creates a second opencode session while reusing the install bridge channel', async () => {
+    const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (keyOrDefaults === 'page-context.bridge-install-id.v1') {
+        return { 'page-context.bridge-install-id.v1': 'install-test' };
+      }
+      if (typeof keyOrDefaults === 'string') {
+        return {};
+      }
+      return keyOrDefaults;
+    });
     await import('./side-panel-app');
 
-    const sessionAlphaWorktree = `${opencodeProjectDirectory}.worktrees/session-alpha`;
-    const sessionBetaWorktree = `${opencodeProjectDirectory}.worktrees/session-beta`;
-    createOpenCodeWorktreeMock
-      .mockResolvedValueOnce({
-        sourceDirectory: opencodeProjectDirectory,
-        repositoryRoot: opencodeProjectDirectory,
-        directory: sessionAlphaWorktree,
-        branch: 'opencode/session-alpha',
-        opencodeBaseUrl: 'http://127.0.0.1:4101',
-      })
-      .mockResolvedValueOnce({
-        sourceDirectory: sessionAlphaWorktree,
-        repositoryRoot: opencodeProjectDirectory,
-        directory: sessionBetaWorktree,
-        branch: 'opencode/session-beta',
-        opencodeBaseUrl: 'http://127.0.0.1:4102',
-      });
+    const sessionAlphaDirectory = `${opencodeProjectDirectory}/session-alpha`;
+    const sessionBetaDirectory = `${opencodeProjectDirectory}/session-beta`;
     createOpenCodeSessionMock
       .mockResolvedValueOnce({
         id: 'session-alpha',
-        directory: sessionAlphaWorktree,
+        directory: sessionAlphaDirectory,
         opencodeBaseUrl: 'http://127.0.0.1:4101',
       })
       .mockResolvedValueOnce({
         id: 'session-beta',
-        directory: sessionBetaWorktree,
+        directory: sessionBetaDirectory,
         opencodeBaseUrl: 'http://127.0.0.1:4102',
       });
     ensureMcpRegisteredMock.mockResolvedValue({
@@ -1118,29 +1106,16 @@ describe('side-panel-app tools tree interactions', () => {
           Boolean((params as { disconnect?: boolean } | undefined)?.disconnect) === false,
       ),
     ).toHaveLength(2);
-    expect(connectedSessions.size).toBe(2);
-    expect(createOpenCodeWorktreeMock).toHaveBeenNthCalledWith(
-      1,
-      {
-        opencodeBaseUrl: 'http://localhost:4096',
-        bridgeBaseUrl: 'http://localhost:22334',
-      },
-      undefined,
-    );
-    expect(createOpenCodeWorktreeMock).toHaveBeenNthCalledWith(
-      2,
-      {
-        opencodeBaseUrl: 'http://localhost:4096',
-        bridgeBaseUrl: 'http://localhost:22334',
-      },
-      sessionAlphaWorktree,
+    expect(connectedSessions.size).toBe(1);
+    expect(connectedSessions.get('install-test')).toBe(
+      'ws://127.0.0.1:22335/default?tenantId=install-test',
     );
     expect(createOpenCodeSessionMock).toHaveBeenNthCalledWith(1, {
-      opencodeBaseUrl: 'http://127.0.0.1:4101',
+      opencodeBaseUrl: 'http://localhost:4096',
       bridgeBaseUrl: 'http://localhost:22334',
     });
     expect(createOpenCodeSessionMock).toHaveBeenNthCalledWith(2, {
-      opencodeBaseUrl: 'http://127.0.0.1:4102',
+      opencodeBaseUrl: 'http://localhost:4096',
       bridgeBaseUrl: 'http://localhost:22334',
     });
 
@@ -1168,6 +1143,9 @@ describe('side-panel-app tools tree interactions', () => {
   test('restores last live session without re-registering MCP', async () => {
     const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
     storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (keyOrDefaults === 'page-context.bridge-install-id.v1') {
+        return { 'page-context.bridge-install-id.v1': 'install-restored' };
+      }
       if (typeof keyOrDefaults === 'string') {
         return {
           'opencode.config.v1': {
@@ -1216,11 +1194,11 @@ describe('side-panel-app tools tree interactions', () => {
               makeDefaultConnectionDescriptor(),
               {
                 ...makeScopedConnectionDescriptor(
-                  'session-restored',
-                  'ws://localhost:22335/?tenantId=session-restored',
+                  'install-restored',
+                  'ws://localhost:22335/?tenantId=install-restored',
                 ),
                 meta: {
-                  tenantId: 'session-restored',
+                  tenantId: 'install-restored',
                   bridgeSessionId: 'bridge-restored',
                 },
               },
@@ -1268,6 +1246,9 @@ describe('side-panel-app tools tree interactions', () => {
     const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
     const storageRemoveMock = chrome.storage.local.remove as unknown as ReturnType<typeof vi.fn>;
     storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (keyOrDefaults === 'page-context.bridge-install-id.v1') {
+        return { 'page-context.bridge-install-id.v1': 'install-dead' };
+      }
       if (typeof keyOrDefaults === 'string') {
         return {
           'opencode.config.v1': {
@@ -1301,11 +1282,11 @@ describe('side-panel-app tools tree interactions', () => {
               makeDefaultConnectionDescriptor(),
               {
                 ...makeScopedConnectionDescriptor(
-                  'session-dead',
-                  'ws://localhost:22335/?tenantId=session-dead',
+                  'install-dead',
+                  'ws://localhost:22335/?tenantId=install-dead',
                 ),
                 meta: {
-                  tenantId: 'session-dead',
+                  tenantId: 'install-dead',
                   bridgeSessionId: 'bridge-dead',
                 },
               },
@@ -1333,7 +1314,7 @@ describe('side-panel-app tools tree interactions', () => {
 
     expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('opencode.config.v1');
     expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionReconnect, {
-      sessionId: 'session-dead',
+      sessionId: 'install-dead',
       disconnect: true,
     });
     expect(element.shadowRoot?.querySelector('iframe[data-session-id]')).toBeNull();

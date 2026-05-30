@@ -1,8 +1,8 @@
 /**
- * tab 相关连接 descriptor 辅助函数。
+ * Helpers for tab-related connection descriptors.
  *
- * 这些链路不是标准 socket，但从用户视角看，依然是“扩展和页面之间是否打通”的外部连接。
- * 统一挂到 registry 后，Connections 面板才能一眼看完。
+ * These links are not standard sockets, but users still see them as external connections
+ * between the extension and the page. Registering them together lets the Connections panel show them at a glance.
  */
 
 import type { ConnectionKind, ConnectionStatus } from '@page-context/shared-protocol';

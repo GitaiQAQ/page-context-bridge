@@ -145,20 +145,20 @@ export interface ContextSkillResponse {
 
 /**
  * Sidepanel URL query binding.
- * 只用于 launcher/fallback URL，和 runtime RPC payload 分离，避免语义混淆。
+ * Used only for launcher/fallback URLs and kept separate from runtime RPC payloads to avoid semantic confusion.
  */
 export interface SidepanelUrlTabBinding {
   /**
-   * 兼容字段：已有 fallback URL 使用 boundTabId。
-   * query 层继续保留该名字，避免旧链接失效。
+   * Compatibility field: existing fallback URLs use boundTabId.
+   * Keep this name at the query layer so old links remain valid.
    */
   boundTabId?: number;
   windowId?: number;
 }
 
 /**
- * Runtime/feedback 显式 tab 绑定。
- * RPC 层统一使用 tabId/windowId，不和 URL query 字段名耦合。
+ * Explicit tab binding for runtime/feedback.
+ * The RPC layer consistently uses tabId/windowId and is not coupled to URL query field names.
  */
 export interface RuntimeExplicitTabBinding {
   tabId?: number;
@@ -166,9 +166,9 @@ export interface RuntimeExplicitTabBinding {
 }
 
 /**
- * runtime 入口兼容输入：
- * - 新字段 tabId
- * - 兼容字段 boundTabId（例如从 URL 绑定透传过来的场景）
+ * Runtime entry compatible inputs:
+ * - New field tabId.
+ * - Compatible field boundTabId, such as values passed through from URL bindings.
  */
 export type RuntimeExplicitTabBindingInput = RuntimeExplicitTabBinding & {
   boundTabId?: number;

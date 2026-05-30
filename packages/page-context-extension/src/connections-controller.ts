@@ -1,10 +1,10 @@
 /**
- * sidepanel 连接状态控制器。
+ * Sidepanel connection state controller.
  *
- * 目标：
- * - 所有组件共用一份连接快照
- * - 监听 background 的 `connections.changed` 广播后自动刷新
- * - 不再让每个组件各自轮询 RPC
+ * Goals:
+ * - Share one connection snapshot across all components.
+ * - Auto-refresh after background `connections.changed` broadcasts.
+ * - Avoid separate RPC polling in each component.
  */
 
 import {
@@ -132,10 +132,10 @@ class ConnectionsStore {
   }
 
   /**
-   * 等待某条连接满足条件。
+   * Wait until one connection matches a predicate.
    *
-   * 这里用短轮询，而不是把一次性流程绑到 UI 订阅回调里，
-   * 能让 connect/restore 这类命令式流程保持简单。
+   * Use short polling instead of tying one-off flows to UI subscription callbacks,
+   * keeping imperative connect/restore flows simple.
    */
   async waitForDescriptor(
     descriptorId: string,

@@ -107,8 +107,8 @@ async function saveAndReconnect(): Promise<void> {
 }
 
 /**
- * 读取 launcher 的显式绑定。
- * 边界上只返回“存在的字段”，避免把 null/undefined 混在同一条链路里。
+ * Read explicit launcher bindings.
+ * Return only present fields at the boundary to avoid mixing null/undefined into one path.
  */
 async function getLauncherRuntimeBinding(): Promise<RuntimeExplicitTabBinding> {
   const [activeTab] = await tabsQuery({ active: true, currentWindow: true });
@@ -118,7 +118,7 @@ async function getLauncherRuntimeBinding(): Promise<RuntimeExplicitTabBinding> {
   };
 }
 
-/** runtime 绑定 -> launcher URL query 绑定（保留 boundTabId 兼容字段）。 */
+/** Runtime binding -> launcher URL query binding, keeping boundTabId for compatibility. */
 function toSidepanelUrlTabBinding(binding: RuntimeExplicitTabBinding): SidepanelUrlTabBinding {
   return {
     ...(binding.tabId != null ? { boundTabId: binding.tabId } : {}),
@@ -126,7 +126,7 @@ function toSidepanelUrlTabBinding(binding: RuntimeExplicitTabBinding): Sidepanel
   };
 }
 
-/** fallback 页面继续输出 boundTabId/windowId，保证旧 query 协议兼容。 */
+/** Fallback pages still emit boundTabId/windowId to keep legacy query protocol compatibility. */
 function buildFallbackConsoleUiUrl(binding: RuntimeExplicitTabBinding): string {
   const url = new URL(runtimeGetUrl(FALLBACK_CONSOLE_UI_PATH));
   const queryBinding = toSidepanelUrlTabBinding(binding);

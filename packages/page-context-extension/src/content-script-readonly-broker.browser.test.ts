@@ -114,7 +114,7 @@ describe('content-script-readonly-broker', () => {
       }),
     };
 
-    // main-world helper 的最薄职责：收到 request 事件后读取 bridge，再回发 response。
+    // The main-world helper's minimal job: read the bridge after a request event, then send a response.
     const onRequest = async (event: Event) => {
       const detail = parseReadonlyBrokerRequest((event as CustomEvent<unknown>).detail);
       if (!detail) {

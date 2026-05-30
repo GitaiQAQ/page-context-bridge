@@ -45,7 +45,7 @@ describe('connections-panel', () => {
     document.body.innerHTML = '';
   });
 
-  test('保存 endpoint 时兼容旧 background 缺少 connections.action', async () => {
+  test('saves endpoint with legacy background missing connections.action', async () => {
     performActionMock.mockRejectedValueOnce(
       new Error('Unhandled runtime method: connections.action'),
     );
@@ -109,7 +109,7 @@ describe('connections-panel', () => {
     ]);
   });
 
-  test('渲染产品化 cockpit、journey step 与 attention summary', async () => {
+  test('renders product cockpit, journey step, and attention summary', async () => {
     mockDescriptors = [
       {
         id: 'bridge-default-ws',
@@ -167,7 +167,7 @@ describe('connections-panel', () => {
     expect(element.textContent ?? '').toContain('Summary: 1 healthy / 1 attention');
   });
 
-  test('诊断报告提示 default bridge 与 session-scoped extension WS 路由不一致', async () => {
+  test('diagnostic report flags default bridge and session-scoped extension WS route mismatch', async () => {
     mockDescriptors = [
       {
         id: 'bridge-default-ws',

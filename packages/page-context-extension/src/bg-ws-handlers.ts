@@ -198,8 +198,8 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
       entry.tools.some((tool) => tool.name === toolName),
     );
 
-    // Firefox 真实链路里，后台内存态偶尔会晚于内容脚本注册。
-    // 这里只有“本地根本没有该工具”时才做一次强制重发现，避免把明确禁用的工具误当成可执行。
+    // In real Firefox flows, background memory can lag behind content-script registration.
+    // Force rediscovery only when the tool is entirely absent locally, avoiding disabled tools being treated as executable.
     if (!toolExistsInCurrentState) {
       await discoverPageToolsForTab(
         deps.pageToolState,
@@ -286,7 +286,7 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
     const tenantId = payload?.sessionId?.trim();
     const wsUrl = payload?.wsUrl?.trim();
 
-    // session 作用域存在时，说明调用方明确要操作 OpenCode 多 session 链路。
+    // A session scope means the caller explicitly targets the OpenCode multi-session path.
     if (tenantId) {
       if (payload?.disconnect) {
         await deps.scopedBridgeConnection.disconnect(tenantId);

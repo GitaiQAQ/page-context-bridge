@@ -74,9 +74,9 @@ function parseReadonlyBrokerPayload(value: unknown): unknown {
 function stringifyReadonlyBrokerPayload(
   payload: ReadonlyBrokerRequest | ReadonlyBrokerResponse,
 ): string {
-  // Firefox 不保证 CustomEvent.detail 里的对象能跨 world 直接访问。
-  // 这里统一编码成 JSON 字符串，避免 MAIN world / content script 之间再出现
-  // “Permission denied to access object” 这类跨 compartment 问题。
+  // Firefox does not guarantee objects in CustomEvent.detail can be accessed across worlds.
+  // Encode them as JSON strings to avoid cross-compartment issues such as
+  // "Permission denied to access object" between MAIN world and content script.
   return JSON.stringify(payload);
 }
 
@@ -90,9 +90,8 @@ export async function requestReadonlyFromMainWorld<TResult>(
   const request: ReadonlyBrokerRequest = {
     requestId,
     method,
-    // 这里先把 runtime message 里的入参压成 plain JSON，
-    // 避免 background -> content script -> MAIN world 这条链路里再次夹带 Firefox 的
-    // 跨 compartment 包装对象，导致后面的 JSON 编码或页面函数调用报权限错误。
+    // Normalize runtime message args to plain JSON first, so the background -> content script -> MAIN world path
+    // does not carry Firefox cross-compartment wrappers that later break JSON encoding or page function calls.
     params: params === undefined ? undefined : cloneCrossWorldJson(params),
   };
 
@@ -469,7 +468,7 @@ function collectNamespaceMetadata(
       };
     }
   } catch {
-    // manifest 只是补充信息，拿不到也不应该阻塞工具发现。
+    // Manifest is supplemental; failing to read it should not block tool discovery.
   }
 
   return metadataById;
@@ -485,9 +484,9 @@ function readToolList(
     return [];
   }
   const tools = wrapReadonlyStep(stepLabel, () => Reflect.apply(listTools, rawSource, []));
-  // listTools() 返回的 descriptor 仍然来自页面 realm。
-  // 这里尽早压成 plain JSON，避免后面 response 序列化阶段再被 Firefox 以
-  // “Permission denied to access object” 拒绝。
+  // Descriptors returned by listTools() still come from the page realm.
+  // Convert them to plain JSON early so Firefox does not reject later response serialization with
+  // "Permission denied to access object".
   return Array.isArray(tools) ? cloneCrossWorldJson(tools as PageToolEntry['tools']) : [];
 }
 
@@ -542,7 +541,7 @@ function getPageContextBridge(win: Window): PageContextBridgeLike | null {
     __pageContextBridge__?: PageContextBridgeLike;
     __pageContextTools__?: PageContextBridgeLike;
   };
-  // 优先读 host 额外暴露的裸 bridge，避免 Firefox 访问 host getter 时再触发
+  // Prefer the raw bridge exposed by the host so Firefox does not hit host getter access again.
   // “Permission denied to access object”。
   const bridge = wrapReadonlyStep(
     'window.pageContextBridge',
@@ -638,9 +637,9 @@ function unwrapFirefoxObject<T>(value: T): T {
 }
 
 function cloneCrossWorldJson<T>(value: T): T {
-  // 页面 bridge 的函数运行在另一个 compartment 里。
-  // 这里统一先做一次 JSON 克隆，把扩展侧对象压成 plain data，
-  // 避免 Firefox 在 callTool(...) 入参上报 “Permission denied to access object”。
+  // Page bridge functions run in another compartment.
+  // JSON-clone extension-side objects into plain data first to avoid Firefox reporting
+  // "Permission denied to access object" on callTool(...) args.
   return unwrapXray(value);
 }
 

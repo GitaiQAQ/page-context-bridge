@@ -57,8 +57,8 @@ export class TenantManager {
   }
 
   /**
-   * 注册 tenant 删除监听。
-   * 这里只暴露 tenantId，让资源释放逻辑留在调用方，各自处理各自持有的 transport。
+   * Register a tenant removal listener.
+   * Expose only tenantId so callers own resource cleanup for the transports they hold.
    */
   onRemove(listener: TenantRemoveListener): () => void {
     this.removeListeners.push(listener);
@@ -98,13 +98,13 @@ export class TenantManager {
   }
 
   /**
-   * 提取 tenantId。
+   * Extract tenantId.
    *
-   * 约定优先级：
-   * 1. `?tenantId=xxx`，供 extension ws 使用；
-   * 2. `/{tenantId}/...`，供现有 HTTP MCP/SSE 路由继续复用。
+   * Priority:
+   * 1. `?tenantId=xxx`, for extension WebSocket use;
+   * 2. `/{tenantId}/...`, so existing HTTP MCP/SSE routes can keep reusing it.
    *
-   * 这样能同时满足“ws 走 query”与“HTTP 走 path”的现有契约，不额外引入分支协议。
+   * This preserves the existing "WS uses query" and "HTTP uses path" contract without adding another protocol branch.
    */
   static extractTenantId(rawUrl: string): string {
     const parsed = new URL(rawUrl, 'http://localhost');

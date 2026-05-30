@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Firefox E2E 验证入口。
+ * Firefox E2E validation entry.
  *
- * 设计目标：
- * 1. 只验证 Firefox 特有链路，不回归 Chrome 已有能力。
- * 2. 给出机器可判定的 PASS / FAIL，而不是“浏览器好像开起来了”。
- * 3. 失败时尽量能落到具体层级：产物、装载、注入、只读桥接、工具调用。
+ * Goals:
+ * 1. Validate only Firefox-specific paths instead of retesting Chrome coverage.
+ * 2. Produce machine-checkable PASS / FAIL output, not visual browser smoke checks.
+ * 3. Keep failures scoped to artifacts, loading, injection, readonly bridge, or tool calls.
  *
- * 前置条件：
+ * Prerequisite:
  *   pnpm run build:firefox:target
  *
- * 用法：
+ * Usage:
  *   node scripts/firefox-e2e.mjs
  */
 
@@ -65,8 +65,8 @@ function parseExpectedToolArgs() {
 }
 
 function getExpectedReadonlyExecuteTarget() {
-  // 外部真实页面和本地 demo 的工具名并不相同。
-  // 这里把“要打哪个 page tool”显式参数化，避免测试脚本偷偷把 fixture 专用值带到真实站点。
+  // External pages use different tool names from the local demo.
+  // Make the target page tool explicit so fixture-only values do not leak to real sites.
   if (EXPECTED_PAGE_TOOL_NAME && EXPECTED_PAGE_TOOL_NAMESPACE) {
     return {
       pageToolName: EXPECTED_PAGE_TOOL_NAME,
@@ -120,10 +120,10 @@ if (!existsSync(path.join(distDir, 'manifest.json'))) {
 }
 
 /**
- * 使用临时 profile，避免复用用户常驻 Firefox 导致：
- * 1. 扩展未真正重装
- * 2. 旧页面或旧缓存污染结果
- * 3. web-ext 附着到已打开实例后行为不确定
+ * Use a temporary profile to avoid reusing a long-lived Firefox profile:
+ * 1. The extension may not be fully reinstalled.
+ * 2. Old pages or caches may pollute results.
+ * 3. web-ext behavior is unclear when it attaches to an existing instance.
  */
 function createTempFirefoxProfile() {
   return mkdtempSync(path.join(tmpdir(), 'page-context-firefox-e2e-'));
@@ -134,7 +134,7 @@ function cleanupDir(dirPath) {
   try {
     rmSync(dirPath, { recursive: true, force: true });
   } catch {
-    // 清理失败不影响主流程，避免把真实业务错误淹没在退出阶段。
+    // Cleanup failures should not mask real flow errors.
   }
 }
 
@@ -393,14 +393,14 @@ while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
-// 某些更重的端到端场景需要在探针报告成功后，继续给外部 MCP client
-// 一小段时间发起真实调用。默认不等待，避免影响原有本地 smoke 速度。
+// Heavier E2E flows need a short window after the probe succeeds so an external MCP client
+// can make real calls. Default to no wait to keep local smoke checks fast.
 if (e2eRuntimeReport != null && AFTER_REPORT_WAIT_MS > 0) {
   log(`Holding Firefox for ${AFTER_REPORT_WAIT_MS}ms so external MCP checks can run...`);
   await new Promise((resolve) => setTimeout(resolve, AFTER_REPORT_WAIT_MS));
 }
 
-// 统一在分析前做清理，避免下一次执行撞到旧 profile 或旧进程。
+// Clean up before analysis to avoid stale profiles or processes on the next run.
 if (child.exitCode == null) {
   child.kill('SIGTERM');
   setTimeout(() => child.kill('SIGKILL'), 3000).unref();

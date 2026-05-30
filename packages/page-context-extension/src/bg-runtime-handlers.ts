@@ -66,10 +66,10 @@ function withSenderTabId(params: unknown, sender: chrome.runtime.MessageSender):
 }
 
 /**
- * runtime 绑定字段归一化：
- * - 新字段 tabId 优先
- * - 兼容字段 boundTabId 次之
- * - windowId 仅在存在时透传
+ * Runtime binding field normalization:
+ * - Prefer the new tabId field.
+ * - Fall back to the compatible boundTabId field.
+ * - Pass windowId through only when present.
  */
 function normalizeRuntimeExplicitTabBinding(
   input?: RuntimeExplicitTabBindingInput | null,
@@ -101,7 +101,7 @@ async function postFirefoxE2EReport(params: unknown): Promise<{ ok: true }> {
     throw new Error('E2E reportUrl is required');
   }
 
-  // 让扩展后台代发诊断请求，避免真实 HTTPS 页面里直连本地 HTTP 端口时被 mixed content 拦截。
+  // Proxy diagnostics through the extension background to avoid mixed-content blocks from HTTPS pages to local HTTP ports.
   await fetch(reportUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -171,7 +171,7 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
       case BRIDGE_METHODS.extensionFeedbackStateSnapshot: {
         const payload = (message.params ?? {}) as FeedbackStateSnapshotParams &
           RuntimeExplicitTabBindingInput;
-        // 统一绑定语义：tabId > boundTabId；windowId 仅在 sender.tab 缺失时作为兜底条件。
+        // Unified binding semantics: tabId > boundTabId; windowId is only a fallback when sender.tab is missing.
         const runtimeBinding = normalizeRuntimeExplicitTabBinding(payload);
         const params: FeedbackStateSnapshotParams = {
           tabId: runtimeBinding.tabId,

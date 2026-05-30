@@ -154,7 +154,6 @@ import {
   buildExtWsUrl as buildOpenCodeExtWsUrl,
   buildExtWsUrlFromDefaultBridgeWs,
   buildIframeUrl as buildOpenCodeWebUrl,
-  createIsolatedWorktree as createOpenCodeIsolatedWorktree,
   createSession as createOpenCodeSession,
   deleteSession as deleteOpenCodeSession,
   ensureMcpRegistered,
@@ -192,7 +191,6 @@ interface StoredOpenCodeConfig {
   sessionId?: string;
   sessions?: Array<{
     sessionId: string;
-    channelId?: string;
     directory?: string;
     opencodeBaseUrl?: string;
   }>;
@@ -200,7 +198,7 @@ interface StoredOpenCodeConfig {
 
 interface OpenCodeSessionView {
   sessionId: string;
-  channelId: string;
+  bridgeChannelId: string;
   sessionDirectory: string;
   opencodeBaseUrl: string;
   webUrl: string;
@@ -453,22 +451,23 @@ export class SidePanelApp extends LitElement {
   private _buildOpenCodeSessionView(
     session: OpenCodeSession,
     descriptor?: ConnectionDescriptor | null,
+    bridgeChannelId = '',
   ): OpenCodeSessionView {
     const cfg = {
       ...this._getOpenCodeConfig(),
       opencodeBaseUrl: session.opencodeBaseUrl?.trim() || this._opencodeBaseUrl,
     };
     const channelId =
-      session.channelId?.trim() ||
+      bridgeChannelId.trim() ||
       (typeof descriptor?.meta?.tenantId === 'string' ? descriptor.meta.tenantId : '') ||
-      session.id;
+      this._bridgeInstallId;
     return {
       sessionId: session.id,
-      channelId,
+      bridgeChannelId: channelId,
       sessionDirectory: session.directory?.trim() ?? '',
       opencodeBaseUrl: cfg.opencodeBaseUrl,
       webUrl: buildOpenCodeWebUrl(cfg, session),
-      wsUrl: descriptor?.endpoint ?? this._getOpenCodeExtWsUrl(session.id),
+      wsUrl: descriptor?.endpoint ?? (channelId ? this._getOpenCodeExtWsUrl(channelId) : ''),
       connected: descriptor?.status === 'connected',
       bridgeSessionId:
         typeof descriptor?.meta?.bridgeSessionId === 'string'
@@ -482,8 +481,8 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * session 列表是 sidepanel 里唯一的 OpenCode session/runtime 真相源。
-   * 按 id 原地更新，避免切换 session 时丢掉已有 scoped ws 状态。
+   * The session list is the sidepanel's single source of truth for OpenCode session/runtime state.
+   * Update by id in place so switching sessions does not lose existing scoped ws state.
    */
   private _upsertOpenCodeSession(session: OpenCodeSessionView): void {
     const index = this._opencodeSessions.findIndex(
@@ -521,9 +520,11 @@ export class SidePanelApp extends LitElement {
 
   private _getOpenCodeScopedDescriptor(sessionId: string): ConnectionDescriptor | null {
     const session = this._getOpenCodeSession(sessionId);
-    return this._connections.getDescriptor(
-      getScopedBridgeDescriptorId(session?.channelId ?? sessionId),
-    );
+    const channelId = session?.bridgeChannelId || this._bridgeInstallId;
+    if (!channelId) {
+      return null;
+    }
+    return this._connections.getDescriptor(getScopedBridgeDescriptorId(channelId));
   }
 
   private _getOpenCodeExtWsUrl(channelId: string): string {
@@ -567,9 +568,8 @@ export class SidePanelApp extends LitElement {
     return generated;
   }
 
-  private async _buildBridgeChannelId(sessionId: string): Promise<string> {
-    const installId = await this._getBridgeInstallId();
-    return `${installId}:${sessionId}`;
+  private async _getBridgeChannelId(): Promise<string> {
+    return this._getBridgeInstallId();
   }
 
   private _getOpenCodeReadiness(): {
@@ -606,20 +606,26 @@ export class SidePanelApp extends LitElement {
     ) {
       return {
         title: 'Bridge control plane is offline',
-        detail: bridge.statusReason ?? '请先在 Connections 面板重连 bridge。',
+        detail: bridge.statusReason ?? 'Reconnect the bridge in the Connections panel first.',
         tone: 'warning',
       };
     }
 
     return {
       title: 'Create or restore an OpenCode session',
-      detail: '填写 sessionId 可复用已有会话，留空则创建带独立 git worktree 的新 session。',
+      detail:
+        'Provide sessionId to reuse an existing session, or leave it blank to create a new OpenCode session.',
       tone: 'neutral',
     };
   }
 
   private async _disconnectOpenCodeBridgeSession(sessionId: string): Promise<void> {
-    const channelId = this._getOpenCodeSession(sessionId)?.channelId ?? sessionId;
+    const channelId =
+      this._getOpenCodeSession(sessionId)?.bridgeChannelId || (await this._getBridgeChannelId());
+    await this._disconnectOpenCodeBridgeChannel(channelId);
+  }
+
+  private async _disconnectOpenCodeBridgeChannel(channelId: string): Promise<void> {
     await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
       sessionId: channelId,
       disconnect: true,
@@ -627,9 +633,9 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * 等待 scoped ws descriptor 进入稳定状态。
+   * Wait until the scoped ws descriptor reaches a stable state.
    *
-   * 这里不再读旧的 `extensionStatusGet`，统一改成等 registry descriptor。
+   * Stop reading legacy `extensionStatusGet`; wait for the registry descriptor instead.
    */
   private async _waitForScopedConnection(channelId: string): Promise<ConnectionDescriptor> {
     const descriptorId = getScopedBridgeDescriptorId(channelId);
@@ -653,7 +659,7 @@ export class SidePanelApp extends LitElement {
   private async _createOrReuseOpenCodeSession(forceNewSession = false): Promise<OpenCodeSession> {
     const desiredSessionId = forceNewSession ? '' : this._opencodeDraftSessionId.trim();
     if (!desiredSessionId) {
-      return this._createOpenCodeSessionInIsolatedWorktree();
+      return this._createOpenCodeSession();
     }
 
     const sessions = await listOpenCodeSessions(this._getOpenCodeConfig());
@@ -662,41 +668,18 @@ export class SidePanelApp extends LitElement {
       return matched;
     }
 
-    return this._createOpenCodeSessionInIsolatedWorktree();
+    return this._createOpenCodeSession();
   }
 
-  private _getOpenCodeWorktreeSourceDirectory(): string | undefined {
-    const activeDirectory = this._getActiveOpenCodeSession()?.sessionDirectory.trim();
-    if (activeDirectory) {
-      return activeDirectory;
-    }
-
-    const knownDirectory = this._opencodeSessions.find((session) =>
-      Boolean(session.sessionDirectory.trim()),
-    )?.sessionDirectory;
-    return knownDirectory?.trim() || undefined;
-  }
-
-  private async _createOpenCodeSessionInIsolatedWorktree(): Promise<OpenCodeSession> {
+  private async _createOpenCodeSession(): Promise<OpenCodeSession> {
     const cfg = this._getOpenCodeConfig();
-    const sourceDirectory = this._getOpenCodeWorktreeSourceDirectory();
-    this._opencodeMessage = sourceDirectory
-      ? `Creating isolated git worktree from ${sourceDirectory}...`
-      : 'Creating isolated git worktree...';
+    this._opencodeMessage = 'Creating OpenCode session...';
     this.requestUpdate();
-
-    const worktree = await createOpenCodeIsolatedWorktree(cfg, sourceDirectory);
-    const sessionCfg = {
-      ...cfg,
-      opencodeBaseUrl: worktree.opencodeBaseUrl?.trim() || cfg.opencodeBaseUrl,
-    };
-    this._opencodeMessage = `Creating OpenCode session in ${worktree.directory}...`;
-    this.requestUpdate();
-    const session = await createOpenCodeSession(sessionCfg);
+    const session = await createOpenCodeSession(cfg);
     return {
       ...session,
-      directory: session.directory?.trim() || worktree.directory,
-      opencodeBaseUrl: sessionCfg.opencodeBaseUrl,
+      directory: session.directory?.trim(),
+      opencodeBaseUrl: session.opencodeBaseUrl?.trim() || cfg.opencodeBaseUrl,
     };
   }
 
@@ -706,7 +689,7 @@ export class SidePanelApp extends LitElement {
       opencodeBaseUrl: session.opencodeBaseUrl?.trim() || this._opencodeBaseUrl,
     };
     const sessionId = session.id;
-    const channelId = session.channelId?.trim() || (await this._buildBridgeChannelId(sessionId));
+    const channelId = await this._getBridgeChannelId();
 
     this._opencodeMessage = `Connecting bridge channel ${channelId}...`;
     this.requestUpdate();
@@ -719,9 +702,9 @@ export class SidePanelApp extends LitElement {
 
     this._opencodeMessage = `Registering MCP for ${sessionId}...`;
     this.requestUpdate();
-    await ensureMcpRegistered(cfg, sessionId, channelId);
+    await ensureMcpRegistered(cfg, sessionId);
 
-    const sessionView = this._buildOpenCodeSessionView({ ...session, channelId }, descriptor);
+    const sessionView = this._buildOpenCodeSessionView(session, descriptor, channelId);
     this._upsertOpenCodeSession(sessionView);
     await this._selectOpenCodeSession(sessionId);
     this._opencodeMessage = `Connected ${sessionId}`;
@@ -729,8 +712,8 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * 只恢复上次“成功连通过”的配置。
-   * 这样能减少用户把临时试错地址再次带回来的噪音。
+   * Restore only the last configuration that connected successfully.
+   * This reduces noise from temporary trial endpoints being restored.
    */
   private async _restoreOpenCodeConfig(): Promise<void> {
     try {
@@ -786,6 +769,7 @@ export class SidePanelApp extends LitElement {
       const sessions = settledSessionLists.flatMap((result) =>
         result.status === 'fulfilled' ? result.value : [],
       );
+      const channelId = await this._getBridgeChannelId();
       await getConnectionsStore().refresh();
       const descriptors = this._connections.descriptors;
       const aliveSessionIds = new Set(sessions.map((session) => session.id));
@@ -793,20 +777,21 @@ export class SidePanelApp extends LitElement {
         (descriptor) =>
           descriptor.kind === 'opencode-bridge-ws' &&
           typeof descriptor.meta?.tenantId === 'string' &&
-          !aliveSessionIds.has(descriptor.meta.tenantId),
+          descriptor.meta.tenantId !== channelId,
       );
 
-      // 外部删 session 是真实用户动作，不是异常状态。
-      // sidepanel 恢复时顺手把这些“浏览器里还连着、opencode 里已经没了”的 ws 收掉，
-      // 让 runtime 状态和 opencode 真相重新对齐。
+      // External session deletion is a real user action, not an error state.
+      // During sidepanel restore, close ws links that still exist in the browser but no longer exist in opencode,
+      // realigning runtime state with opencode truth.
       await Promise.all(
         staleScopedDescriptors.map(async (descriptor) => {
+          const staleChannelId = String(descriptor.meta?.tenantId ?? '');
           try {
-            await this._disconnectOpenCodeBridgeSession(String(descriptor.meta?.tenantId ?? ''));
+            await this._disconnectOpenCodeBridgeChannel(staleChannelId);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             spLog(
-              `Failed to drop stale OpenCode bridge session ${String(descriptor.meta?.tenantId ?? '')}: ${message}`,
+              `Failed to drop stale OpenCode bridge channel ${staleChannelId}: ${message}`,
               'warn',
             );
           }
@@ -815,6 +800,7 @@ export class SidePanelApp extends LitElement {
       await getConnectionsStore().refresh();
 
       if (!aliveSessionIds.has(lastSessionId)) {
+        await this._disconnectOpenCodeBridgeChannel(channelId).catch(() => undefined);
         this._opencodeSessions = [];
         this._opencodeActiveSessionId = '';
         this._opencodeDraftSessionId = '';
@@ -829,33 +815,31 @@ export class SidePanelApp extends LitElement {
           descriptor.kind === 'opencode-bridge-ws' &&
           descriptor.status === 'connected' &&
           typeof descriptor.meta?.tenantId === 'string' &&
-          aliveSessionIds.has(descriptor.meta.tenantId),
+          descriptor.meta.tenantId === channelId,
       );
       const sessionById = new Map(sessions.map((session) => [session.id, session] as const));
-      this._opencodeSessions = aliveScopedDescriptors.map((descriptor) =>
-        (() => {
-          const tenantId = String(descriptor.meta?.tenantId ?? '');
-          const savedSession = savedSessionById.get(tenantId);
-          return this._buildOpenCodeSessionView(
-            sessionById.get(tenantId) ?? {
-              id: tenantId,
-              directory: savedSession?.directory,
-              opencodeBaseUrl: savedSession?.opencodeBaseUrl,
+      const restoredDescriptor = aliveScopedDescriptors[0] ?? null;
+      this._opencodeSessions = savedSessions
+        .filter((session) => aliveSessionIds.has(session.sessionId.trim()))
+        .map((savedSession) =>
+          this._buildOpenCodeSessionView(
+            sessionById.get(savedSession.sessionId.trim()) ?? {
+              id: savedSession.sessionId.trim(),
+              directory: savedSession.directory,
+              opencodeBaseUrl: savedSession.opencodeBaseUrl,
             },
-            descriptor,
-          );
-        })(),
-      );
+            restoredDescriptor,
+            channelId,
+          ),
+        );
 
-      let restoredDescriptor = aliveScopedDescriptors.find(
-        (descriptor) => descriptor.meta?.tenantId === lastSessionId,
-      );
-      if (!restoredDescriptor) {
+      let activeDescriptor = restoredDescriptor;
+      if (!activeDescriptor) {
         await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
-          sessionId: lastSessionId,
-          wsUrl: this._getOpenCodeExtWsUrl(lastSessionId),
+          sessionId: channelId,
+          wsUrl: this._getOpenCodeExtWsUrl(channelId),
         });
-        restoredDescriptor = await this._waitForScopedConnection(lastSessionId);
+        activeDescriptor = await this._waitForScopedConnection(channelId);
       }
 
       this._upsertOpenCodeSession(
@@ -865,7 +849,8 @@ export class SidePanelApp extends LitElement {
             directory: lastSavedSession?.directory,
             opencodeBaseUrl: lastSavedSession?.opencodeBaseUrl,
           },
-          restoredDescriptor,
+          activeDescriptor,
+          channelId,
         ),
       );
       this._opencodeActiveSessionId = lastSessionId;
@@ -888,7 +873,7 @@ export class SidePanelApp extends LitElement {
     await storageLocalSet({
       [OPENCODE_CONFIG_STORAGE_KEY]: {
         lastSessionId,
-        // 兼容旧版本字段，避免用户升级后把已保存配置读丢。
+        // Support legacy fields so saved config is not lost after upgrades.
         sessionId: lastSessionId,
         sessions,
       } satisfies StoredOpenCodeConfig,
@@ -910,11 +895,11 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * 构建 feedback/runtime 请求使用的显式绑定。
-   * 规则：
-   * - 能确定 tabId 时优先带 tabId；
-   * - 没有 tabId 但有 windowId 时只带 windowId；
-   * - 两者都没有则不传绑定字段。
+   * Build explicit bindings for feedback/runtime requests.
+   * Rules:
+   * - Prefer tabId when it is known.
+   * - Use only windowId when tabId is missing but windowId exists.
+   * - Omit binding fields when neither exists.
    */
   private _buildRuntimeBindingPayload(tabId: number | null): RuntimeExplicitTabBinding | undefined {
     const runtimeBinding = normalizeRuntimeExplicitTabBinding({
@@ -991,9 +976,9 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  // ─── Context Manifest（页面能力清单） ──────────────────────
+  // Context Manifest (page capabilities)
 
-  /** 加载当前 tab 的上下文清单，填充左侧摘要 + 右侧详情面板 */
+  /** Load the current tab context manifest and fill the left summary plus right details panel. */
   private async _loadContextManifest(): Promise<void> {
     this._currentTabId = await this._getCurrentTabId();
     if (!this._currentTabId) {
@@ -1066,8 +1051,8 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * 清空所有 context 面板状态，显示占位消息。
-   * 在无活跃 tab 或清单加载失败时调用。
+   * Clear all context panel state and show a placeholder message.
+   * Called when there is no active tab or manifest loading fails.
    */
   private _renderContextEmpty(
     message: string,
@@ -1119,7 +1104,7 @@ export class SidePanelApp extends LitElement {
   @state() private _skillStatusClass = 'text-xs font-semibold opacity-60';
 
   /**
-   * 构建原始清单与过滤后清单的 diff 卡片（隐藏项 + 裁剪工具）。
+   * Build diff cards between raw and filtered manifests (hidden items plus trimmed tools).
    */
   private _renderContextDiff(
     rawManifest: PageContextManifest | null,
@@ -1169,7 +1154,7 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * 渲染单个 diff 分类卡片（Namespaces / Resources / Skills）。
+   * Render one diff category card (Namespaces / Resources / Skills).
    */
   private _renderDiffCard(
     title: string,
@@ -1195,7 +1180,7 @@ export class SidePanelApp extends LitElement {
     `;
   }
 
-  /** 渲染 skill 工具裁剪卡片（被过滤掉的推荐工具列表） */
+  /** Render the skill tool trimming card (recommended tools filtered out). */
   private _renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): TemplateResult {
     const trimmed = debug?.trimmedSkillTools ?? [];
     return html`
@@ -1219,7 +1204,7 @@ export class SidePanelApp extends LitElement {
     `;
   }
 
-  /** 通过 RPC 读取指定资源 payload，填充右侧 Data Payload 卡片 */
+  /** Read a resource payload through RPC and fill the right Data Payload card. */
   private async _loadContextResource(resourceId: string): Promise<void> {
     if (!this._currentTabId) return;
 
@@ -1243,7 +1228,7 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  /** 通过 RPC 获取 skill 的 prompt 合同文本，填充右侧 Skill Prompt 卡片 */
+  /** Fetch a skill prompt contract through RPC and fill the right Skill Prompt card. */
   private async _loadContextSkillPrompt(skillId: string): Promise<void> {
     if (!this._currentTabId) return;
 
@@ -1761,7 +1746,7 @@ export class SidePanelApp extends LitElement {
     });
   }
 
-  /** 响应侧栏 "Inspect Payload" 按钮点击，委托给 _loadContextResource */
+  /** Handle sidepanel "Inspect Payload" clicks by delegating to _loadContextResource. */
   private _handleContextResourceClick(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'read-resource') return;
@@ -1771,7 +1756,7 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  /** 响应侧栏 "Inspect Skill" 按钮点击，委托给 _loadContextSkillPrompt */
+  /** Handle sidepanel "Inspect Skill" clicks by delegating to _loadContextSkillPrompt. */
   private _handleContextSkillClick(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement) || target.dataset.action !== 'preview-skill') return;
@@ -1909,8 +1894,8 @@ export class SidePanelApp extends LitElement {
         <div class="flex gap-2 overflow-x-auto pb-1">
           ${this._renderJourneyCard({
             eyebrow: '01 · Setup',
-            title: attentionCount > 0 ? '修复外部连接' : '检查 endpoint config',
-            body: '统一维护 OpenCode Base URL、Bridge Base URL、health check 与诊断报告。',
+            title: attentionCount > 0 ? 'Fix external connections' : 'Check endpoint config',
+            body: 'Maintain OpenCode Base URL, Bridge Base URL, health checks, and diagnostics in one place.',
             cta: 'Open config',
             tab: 'connections',
             active: this._activeTab === 'connections',
@@ -1920,7 +1905,7 @@ export class SidePanelApp extends LitElement {
           ${this._renderJourneyCard({
             eyebrow: '02 · AI workspace',
             title: readiness.title,
-            body: 'Create or restore multi-session OpenCode; new sessions use an independent git worktree and register scoped bridge MCP.',
+            body: 'Create or restore multi-session OpenCode and register scoped bridge MCP.',
             cta: 'Manage OpenCode',
             tab: 'opencode',
             active: this._activeTab === 'opencode',
@@ -1934,7 +1919,7 @@ export class SidePanelApp extends LitElement {
           })}
           ${this._renderJourneyCard({
             eyebrow: '03 · Page capability',
-            title: '验证当前页面工具',
+            title: 'Validate current page tools',
             body: 'Debug callable tools in Tools tab; view resources, skills, and manifest diffs in Context tab.',
             cta: 'Inspect tools',
             tab: 'tools',
@@ -1943,7 +1928,7 @@ export class SidePanelApp extends LitElement {
           })}
           ${this._renderJourneyCard({
             eyebrow: '04 · Feedback loop',
-            title: '把问题转成可处理反馈',
+            title: 'Turn issues into actionable feedback',
             body: 'Collect annotations, claim/reply/resolve, and push browser issues back into the collaboration pipeline.',
             cta: 'Review feedback',
             tab: 'feedback',
@@ -2139,9 +2124,8 @@ export class SidePanelApp extends LitElement {
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs opacity-60 leading-relaxed">
-                New Session creates an independent git worktree first, then creates an OpenCode
-                session; Disconnect only tears down the scoped bridge, deleting a session requires
-                the Delete action on the session card.
+                New Session creates an OpenCode session; Disconnect only tears down the scoped
+                bridge, deleting a session requires the Delete action on the session card.
               </span>
               ${this._opencodeMessage
                 ? html`<span class="text-xs opacity-60" role="status"
@@ -2211,8 +2195,9 @@ export class SidePanelApp extends LitElement {
                                   >
                                 </div>
                                 <p class="mt-2 text-[11px] leading-relaxed opacity-60">
-                                  Active 只是当前选中的 session；新建 session 默认拥有独立 git
-                                  worktree。点击 Sidebar 会全屏打开 iframe，关闭后连接仍保持。
+                                  Active is only the currently selected session. Clicking Sidebar
+                                  opens the iframe fullscreen, and connections remain after closing
+                                  it.
                                 </p>
                               `
                             : nothing}
@@ -2271,8 +2256,8 @@ export class SidePanelApp extends LitElement {
                     <div class="text-3xl mb-2">⌘</div>
                     <div class="text-sm font-semibold">No OpenCode sessions yet</div>
                     <p class="text-xs opacity-60 mt-2 leading-relaxed">
-                      点击 New Session 会创建独立 git worktree、创建 OpenCode session、建立 scoped
-                      bridge WS、注册 MCP，随后把 OpenCode 直接嵌入当前 sidebar。
+                      Clicking New Session creates an OpenCode session, connects scoped bridge WS,
+                      registers MCP, then embeds OpenCode directly in the current sidebar.
                     </p>
                     <button
                       class="btn btn-sm btn-primary mt-4 ${this._opencodeConnecting

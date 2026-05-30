@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Chromium E2E 验证入口。
+ * Chromium E2E validation entry.
  *
- * 设计目标：
- * 1. 补齐和 Firefox 对等的真实浏览器链路验证，而不是只停留在单测。
- * 2. 直接验证“页面 -> 扩展 -> 诊断上报”是否打通。
- * 3. 失败时把问题尽量压缩到产物、装载、注入、工具发现、工具执行这些层级。
+ * Goals:
+ * 1. Add real-browser path validation equivalent to Firefox, beyond unit tests.
+ * 2. Verify the page -> extension -> diagnostic report path directly.
+ * 3. Keep failures scoped to artifacts, loading, injection, discovery, or execution.
  *
- * 前置条件：
+ * Prerequisite:
  *   pnpm run build:chromium:target
  *
- * 用法：
+ * Usage:
  *   node scripts/chromium-e2e.mjs
  */
 
@@ -65,8 +65,8 @@ function parseExpectedToolArgs() {
 }
 
 function getExpectedReadonlyExecuteTarget() {
-  // 真实页面的工具名和本地 fixture 不一样。
-  // 这里和 Firefox 一样显式参数化，避免把本地 demo 的工具名错带到真实站点。
+  // Real pages use different tool names from the local fixture.
+  // Keep this explicit, as in Firefox, so demo-only names do not leak to real sites.
   if (EXPECTED_PAGE_TOOL_NAME && EXPECTED_PAGE_TOOL_NAMESPACE) {
     return {
       pageToolName: EXPECTED_PAGE_TOOL_NAME,
@@ -120,13 +120,13 @@ function cleanupDir(dirPath) {
   try {
     rmSync(dirPath, { recursive: true, force: true });
   } catch {
-    // 清理失败不影响主流程，避免把退出期噪音误判成业务失败。
+    // Cleanup failures should not mask the main flow.
   }
 }
 
 function cleanupChromiumSingletonArtifacts(profileDir) {
-  // Playwright persistent context 偶尔会遗留 Singleton 文件。
-  // 临时目录理论上很干净，但这里顺手兜底，避免调试时重复跑出锁文件问题。
+  // Playwright persistent contexts can leave Singleton files behind.
+  // The temp directory should be clean, but this avoids stale lock issues while debugging.
   for (const artifact of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
     const artifactPath = path.join(profileDir, artifact);
     if (!existsSync(artifactPath)) {

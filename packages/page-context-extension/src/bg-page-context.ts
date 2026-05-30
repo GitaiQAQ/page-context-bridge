@@ -1,6 +1,6 @@
 /**
- * 页面桥接调用入口。
- * 这里只保留协议层函数，真正的 MAIN world 访问细节在 backend 中统一实现。
+ * Page bridge call entrypoint.
+ * This file keeps only protocol-level functions; backend owns the MAIN world access details.
  */
 
 import {
@@ -15,7 +15,7 @@ import { selectedPageAccessBackend } from './bg-page-access-backend';
 type JsonRecord = Record<string, unknown>;
 const pageAccessBackend = selectedPageAccessBackend.backend;
 /**
- * 暴露探测结果给上层观测/测试，避免 Firefox 路径再次被误判为 Chromium。
+ * Expose probe results for observation/tests so Firefox paths are not mistaken for Chromium again.
  */
 export const pageAccessBackendKind = selectedPageAccessBackend.kind;
 

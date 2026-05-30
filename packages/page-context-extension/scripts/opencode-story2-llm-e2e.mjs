@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Story 2: 在 sidepanel iframe 里让 OpenCode 真实调用 builtin.page.get_page_info。
+ * Story 2: Make OpenCode call builtin.page.get_page_info inside the sidepanel iframe.
  *
- * 约束：
- * 1. 必须走真实 Chromium 扩展 + 真实 opencode iframe。
- * 2. 只验证“模型能在当前 active tab 上拿到页面信息”这一件事。
- * 3. 默认使用上次人工验证过的 deepseek:deepseek-v4-pro，避免把时间浪费在 provider 噪音上。
+ * Constraints:
+ * 1. Use the real Chromium extension and real opencode iframe.
+ * 2. Only verify that the model can read page info from the current active tab.
+ * 3. Default to the manually verified deepseek:deepseek-v4-pro to avoid provider noise.
  */
 
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -117,7 +117,7 @@ async function main() {
     const frame = await iframe.elementHandle().then((handle) => handle.contentFrame());
     await frame.waitForLoadState('domcontentloaded');
 
-    // 等 iframe 壳稳定后再切模型，避免点在未挂载完的占位节点上。
+    // Wait for the iframe shell to settle before switching models, avoiding placeholder clicks.
     await frame
       .getByRole('button', { name: /Claude|DeepSeek|GPT|Gemini|Kimi|GLM/i })
       .first()
@@ -136,7 +136,7 @@ async function main() {
     });
     await textbox.click();
     await panel.keyboard.type(promptText, { delay: 10 });
-    await frame.getByRole('button', { name: '发送' }).click();
+    await frame.getByRole('button', { name: 'Send' }).click();
 
     const deadline = Date.now() + 180_000;
     let finalBodyText = '';

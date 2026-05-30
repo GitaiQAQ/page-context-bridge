@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * OpenCode sidepanel 多 session 真实 Chromium 验证。
+ * OpenCode sidepanel multi-session real Chromium validation.
  *
- * 目标：
- * 1. 用真实 Chromium 扩展产物验证 Connect / New Session / restore / stale cleanup。
- * 2. 把关键状态收敛成可机器读取的 JSON，避免只靠肉眼截图。
- * 3. 只覆盖浏览器侧最脆弱的链路；Story 2 的 LLM 调用仍保留人工验证证据。
+ * Goals:
+ * 1. Validate Connect / New Session / restore / stale cleanup with the real Chromium artifact.
+ * 2. Emit key state as machine-readable JSON instead of relying on screenshots only.
+ * 3. Cover only the most fragile browser paths; Story 2 LLM calls keep manual evidence.
  *
- * Linux 哲学：
- * - 这个脚本只做“驱动浏览器并读状态”这一件事。
- * - session 管理、bridge 逻辑、opencode API 仍交给各自系统处理。
+ * Unix style:
+ * - This script only drives the browser and reads state.
+ * - Session management, bridge logic, and the opencode API stay in their own systems.
  */
 
 import { mkdtemp, rm } from 'node:fs/promises';

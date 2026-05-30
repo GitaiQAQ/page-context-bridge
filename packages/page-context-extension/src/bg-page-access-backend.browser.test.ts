@@ -89,7 +89,7 @@ describe('bg-page-access-backend selectPageAccessBackend()', () => {
       generatedAt: '2026-05-14T00:00:00.000Z',
     };
 
-    // 用 method 分发 mock 响应，避免把测试耦合到调用顺序。
+    // Dispatch mock responses by method so tests do not depend on call order.
     sendTabRequestMock.mockImplementation(
       async (_tabId: number, method: string, params?: unknown) => {
         if (method === FIREFOX_READONLY_METHODS.manifestGet) {

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Firefox + bridge server + MCP client 真正端到端验证。
+ * Firefox + bridge server + MCP client full E2E validation.
  *
- * 目标：
- * 1. 启动真实 bridge server（SSE + WebSocket）。
- * 2. 启动真实 Firefox 扩展验证脚本，并让扩展连上 bridge server。
- * 3. 使用真实 MCP SSE client 枚举并调用页面工具。
- * 4. 用明确的 PASS / FAIL 证明“页面数据已被 MCP 消费”。
+ * Goals:
+ * 1. Start the real bridge server (SSE + WebSocket).
+ * 2. Start the real Firefox extension E2E script and connect it to the bridge server.
+ * 3. Use a real MCP SSE client to list and call page tools.
+ * 4. Use explicit PASS / FAIL output to prove MCP consumed page data.
  */
 
 import { spawn } from 'node:child_process';
@@ -59,9 +59,9 @@ function isPlainObject(value) {
 }
 
 function assertJsonContains(actual, expected, trace = 'result') {
-  // 这里做“子集断言”：
-  // 1. 只校验调用方关心的字段，避免把测试绑死在无关噪音上。
-  // 2. 字符串按“包含”匹配，更适合 URL、标题这类易追加细节的字段。
+  // Use subset assertions:
+  // 1. Check only fields callers care about, avoiding unrelated noise.
+  // 2. Match strings by containment, which suits URLs, titles, and other expandable fields.
   if (typeof expected === 'string') {
     if (typeof actual !== 'string' || !actual.includes(expected)) {
       throw new Error(`${trace} expected to include "${expected}", got ${JSON.stringify(actual)}`);
@@ -136,10 +136,10 @@ async function callJsonTool(client, name, args = {}) {
 }
 
 async function callPageToolUntilReady(client, name, args, timeoutMs = 20_000) {
-  // 远端 tenant 可能残留旧注册：
-  // 1. listTools 能先看到工具名；
-  // 2. 但第一次 callTool 仍可能命中旧会话或未就绪状态。
-  // 这里按“结果可用”重试，而不是盲信首次发现。
+  // Remote tenants may retain stale registrations:
+  // 1. listTools may see the tool name first;
+  // 2. the first callTool can still hit an old session or a not-ready state.
+  // Retry until the result is usable instead of trusting first discovery.
   const deadline = Date.now() + timeoutMs;
   let lastResult = null;
   let lastText = '';
@@ -284,10 +284,10 @@ function inferReadonlyTargetFromToolSuffix(toolSuffix) {
     return null;
   }
 
-  // 规则很朴素：
-  // 1. `page.getPageInfo` 这种 2 段名视为 default instance。
-  // 2. `metrics.dashboard.getSummary` 这种 3 段及以上，最后一段是工具名，
-  //    第一段是 namespace，中间段拼成 instanceId。
+  // Simple rules:
+  // 1. Two-segment names like `page.getPageInfo` use the default instance.
+  // 2. Names with 3+ segments like `metrics.dashboard.getSummary` use the last segment
+  //    as the tool name, the first as namespace, and middle segments as instanceId.
   if (segments.length === 2) {
     return {
       namespace: segments[0],
@@ -606,8 +606,8 @@ async function main() {
 
     const firefoxResult = await waitForChildExit(firefoxChild, 'firefox-e2e');
     if (firefoxResult.code !== 0) {
-      // 这个子脚本在接入真实 bridge server 后，内部 runtime 断言可能仍然因为时序/偏好状态失败。
-      // 对完整 MCP 端到端来说，更强的证据是“真实 MCP 调用已成功拿到页面数据”。
+      // After connecting to the real bridge server, this helper can still fail internal runtime assertions due to timing or preference state.
+      // For full MCP E2E, the stronger signal is that the real MCP call successfully read page data.
       log(
         `Firefox helper exited with code ${String(firefoxResult.code)}${firefoxResult.signal ? ` signal ${firefoxResult.signal}` : ''}; keeping MCP call success as source of truth.`,
       );

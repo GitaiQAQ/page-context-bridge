@@ -23,7 +23,7 @@ const FIREFOX_READONLY_METHODS = {
 
 describe('bg-page-context source boundary', () => {
   it('keeps MAIN world executeScript details only in backend file', () => {
-    // 这个断言直接卡住架构边界：bg-page-context 不能再出现 MAIN world 注入细节。
+    // This assertion guards the architecture boundary: bg-page-context must not contain MAIN world injection details.
     const contextSource = readFileSync(BG_PAGE_CONTEXT_FILE, 'utf8');
     const backendSource = readFileSync(BG_PAGE_ACCESS_BACKEND_FILE, 'utf8');
 
@@ -68,7 +68,7 @@ describe('bg-page-context backend delegation', () => {
 
     const pageContext = await import('./bg-page-context.js');
 
-    // 按真实对外 API 路径逐一调用，确保入口层只做转发。
+    // Call each public API path to ensure the entry layer only forwards requests.
     await pageContext.getRawPageContextManifest(1);
     await pageContext.readPageContextResource(2, 'resource-1');
     await pageContext.getPageContextSkill(3, 'skill-1', { topic: 'slice-c' });
@@ -181,7 +181,7 @@ describe('bg-page-context chromium behavior', () => {
     const pageContext = await import('./bg-page-context.js');
     const tabId = 21;
 
-    // 覆盖本 slice 要求的关键路径，确保 Chromium 语义不回归。
+    // Cover the key paths required by this slice so Chromium semantics do not regress.
     await expect(pageContext.getRawPageContextManifest(tabId)).resolves.toEqual(manifest);
     await expect(pageContext.readPageContextResource(tabId, 'resource-1')).resolves.toEqual({
       id: 'resource-1',

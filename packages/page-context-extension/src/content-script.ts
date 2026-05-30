@@ -11,7 +11,7 @@ import { storageLocalSet } from './extension-api';
 import { createRuntimeListener, sendRuntimeRequest } from './runtime-rpc';
 import { requestReadonlyFromMainWorld } from './content-script-readonly-broker';
 
-// 兼容 shared-protocol dist 未刷新时的运行态：method 字符串必须始终可用。
+// Runtime compatibility for stale shared-protocol dist: method strings must always be available.
 const CONTENT_READONLY_METHODS = {
   manifestGet:
     BRIDGE_METHODS.extensionContentContextManifestGet ?? 'extension.content.context.manifest.get',
@@ -26,6 +26,18 @@ const CONTENT_READONLY_METHODS = {
 
 const consoleEntries: ConsoleEntry[] = [];
 const EXTENSION_E2E_REPORT_METHOD = 'extension.e2e.report';
+
+function isReadonlyToolEntry(
+  entry: { namespace?: string; instanceId?: string; tools?: unknown[] } | null | undefined,
+): entry is { namespace: string; instanceId: string; tools: unknown[] } {
+  return Boolean(
+    entry &&
+    typeof entry.namespace === 'string' &&
+    typeof entry.instanceId === 'string' &&
+    Array.isArray(entry.tools) &&
+    entry.tools.length > 0,
+  );
+}
 
 function log(...args: unknown[]): void {
   if (process.env.NODE_ENV === 'development') {
@@ -317,14 +329,7 @@ async function registerFirefoxPageToolsFromReadonlyBridge(): Promise<FirefoxRead
       if (!Array.isArray(entries) || entries.length === 0) {
         continue;
       }
-      const validEntries = entries.filter(
-        (entry) =>
-          entry &&
-          typeof entry.namespace === 'string' &&
-          typeof entry.instanceId === 'string' &&
-          Array.isArray(entry.tools) &&
-          entry.tools.length > 0,
-      );
+      const validEntries = entries.filter(isReadonlyToolEntry);
       if (validEntries.length === 0) {
         continue;
       }
@@ -410,9 +415,9 @@ async function runFirefoxE2EProbeIfRequested(): Promise<void> {
     }
   }
 
-  // bootstrapOnly 只负责把扩展后台和 WS 链路先唤起来，
-  // 不在这个中转页上做真正的页面桥接断言，避免外部真实页还没跳转过去时
-  // 就被 demo 页的探针结果抢先覆盖。
+  // bootstrapOnly only wakes the extension background and WS path.
+  // Do not assert real page bridging on this transit page, otherwise demo probe results may overwrite
+  // external page results before navigation reaches the target.
   if (bootstrapOnly) {
     const wsUrl = searchParams.get('__pcE2EWs');
     if (!wsUrl) {
@@ -452,8 +457,8 @@ async function runFirefoxE2EProbeIfRequested(): Promise<void> {
       throw error;
     }
 
-    // 这里必须做一次真实调用，避免“只能发现不能执行”的假阳性。
-    // 但真实页面的工具名不固定，所以只在显式给出目标工具，或本地 demo 默认工具可用时执行。
+    // Make one real call to avoid false positives where discovery works but execution does not.
+    // Real page tool names vary, so execute only when a target tool is explicit or the local demo default is available.
     if (!skipReadonlyExecute) {
       try {
         const readonlyExecute = await requestReadonlyFromMainWorld<{
@@ -557,14 +562,17 @@ async function runFirefoxE2EProbeIfRequested(): Promise<void> {
     report.error = error instanceof Error ? error.message : String(error);
   }
 
-  // 真实 HTTPS 页面上，直接 fetch(http://127.0.0.1:...) 可能被浏览器按 mixed content 拦掉。
-  // 这里优先让扩展后台代发报告；后台同属扩展环境，更适合作为统一诊断出口。
+  // On real HTTPS pages, direct fetch(http://127.0.0.1:...) may be blocked as mixed content.
+  // Prefer proxying reports through the extension background as a unified diagnostics outlet.
   try {
     await sendRuntimeRequest(EXTENSION_E2E_REPORT_METHOD, {
       reportUrl,
       payload: report,
     });
   } catch (runtimeError) {
+    if (!reportUrl) {
+      return;
+    }
     try {
       await fetch(reportUrl, {
         method: 'POST',
@@ -583,8 +591,8 @@ function notifyFirefoxE2EContentScriptReady(win: Window): void {
     return;
   }
 
-  // Firefox 的临时扩展安装与首个 start-url 导航存在时序竞争。
-  // E2E fixture 页收到这个事件前会兜底自刷新几次，直到内容脚本真的注入成功。
+  // Firefox temporary extension installation races with the first start-url navigation.
+  // E2E fixture pages self-refresh a few times until this event confirms content script injection.
   win.dispatchEvent(new CustomEvent('page-context:e2e:content-script-ready'));
 }
 

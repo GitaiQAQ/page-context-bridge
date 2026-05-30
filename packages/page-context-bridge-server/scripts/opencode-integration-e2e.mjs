@@ -134,8 +134,8 @@ async function main() {
     log('created session', { sessionId });
 
     currentStep = 'register-mcp';
-    // opencode `GET /mcp` 只返回静态配置项，不会列出运行时动态 add 的；
-    // `POST /mcp` 的返回 body 是当前 mcp 全集（含动态项），里面会立即带上目标项的 status。
+    // opencode `GET /mcp` only returns static config and omits runtime additions;
+    // `POST /mcp` returns the full current MCP set, including dynamic entries and target status.
     const mcpStatus = await requestJson(`${OPENCODE_BASE_URL}/mcp`, {
       method: 'POST',
       body: {
@@ -183,10 +183,10 @@ async function main() {
       );
     }
 
-    // Note: 我们不在 e2e 里验证 idle cleanup —— opencode 的 MCP 是「全局生命周期」，
-    // 删除 session 不会触发 opencode 主动关闭 streamable HTTP 连接，bridge 的
-    // tenant 因此永远 serverCount>0、不会被回收。
-    // idle 回收逻辑已经由 tenant-manager.idle.test.ts 单元测试覆盖。
+    // Note: this E2E does not verify idle cleanup. opencode MCP has a global lifecycle;
+    // deleting a session does not make opencode proactively close the streamable HTTP connection,
+    // so the bridge tenant keeps serverCount > 0 and is not reclaimed.
+    // Idle cleanup is covered by tenant-manager.idle.test.ts.
     if (IDLE_WAIT_MS > 0) {
       log('idle cleanup wait skipped intentionally', {
         reason: 'opencode does not close the streamable HTTP transport on session delete',

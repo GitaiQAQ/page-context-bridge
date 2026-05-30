@@ -77,10 +77,10 @@ export function startSseServerWithHandle(
 }
 
 export function primeDynamicCapabilitiesForConnectedServer(mcpServer: McpServer): void {
-  // MCP SDK 会在第一次 registerTool/registerResource/registerPrompt 时懒初始化 capability。
-  // 如果这一步发生在 transport 已连接之后，SDK 会抛错，同时把半注册状态留在内部表里，
-  // 后续就会演变成 “already registered” 这类脏状态错误。
-  // 这里在 connect 之前预热三类 capability，后面真实的动态增删就只剩 list_changed 通知。
+  // The MCP SDK lazily initializes capabilities on the first registerTool/registerResource/registerPrompt call.
+  // If that happens after transport connection, the SDK throws and leaves partial registration state internally,
+  // which later turns into dirty-state errors such as "already registered".
+  // Prime all three capabilities before connect so later dynamic changes only emit list_changed notifications.
   const bootstrapTool = mcpServer.registerTool(
     MCP_BOOTSTRAP_TOOL,
     {
@@ -151,8 +151,8 @@ function createSseHttpServer(manager: TenantManager): HttpServer {
     Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }> // mcpSessionId -> entry
   >();
 
-  // tenant 被 manager 回收后，这里负责把还残留的 transport 一并关掉。
-  // manager 只负责生命周期判定，不应该知道 HTTP 层具体持有哪些连接。
+  // After manager reclaims a tenant, close any remaining transports here.
+  // The manager owns lifecycle decisions only and should not know HTTP-layer connection details.
   manager.onRemove((tenantId) => {
     const streamableSessions = streamablePerTenant.get(tenantId);
     if (streamableSessions) {

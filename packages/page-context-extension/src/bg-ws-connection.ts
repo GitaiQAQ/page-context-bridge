@@ -423,9 +423,9 @@ export function forceReconnect(
 }
 
 /**
- * 手动断开默认 bridge。
+ * Manually disconnect the default bridge.
  *
- * 这里要显式压住自动重连；否则 UI 点了 Disconnect，后台马上又自己连回去。
+ * Explicitly suppress auto-reconnect so the background does not reconnect immediately after UI Disconnect.
  */
 export function disconnectWebSocket(): void {
   manualDisconnect = true;

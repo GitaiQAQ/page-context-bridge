@@ -1,12 +1,12 @@
 /**
- * OpenCode 多 session WebSocket 管理器。
+ * OpenCode multi-session WebSocket manager.
  *
- * 设计目标：
- * 1. 不动现有 default tenant 单连接实现，避免把旧链路一起改坏。
- * 2. tenantId === opencode sessionId，一条 session 对应一条独立 ws。
- * 3. 只管理“按 session 建连/断连/查询状态”这一件事，不掺入业务路由。
+ * Design goals:
+ * 1. Leave the existing default-tenant single connection unchanged.
+ * 2. tenantId === opencode sessionId, with one independent ws per session.
+ * 3. Only manage per-session connect/disconnect/status, without business routing.
  *
- * 这符合 Linux 哲学：把“连接管理”和“业务处理”拆开，各自只做一件事。
+ * This follows the Unix philosophy: separate connection management from business handling.
  */
 
 import {
@@ -103,8 +103,8 @@ function upsertScopedBridgeDescriptor(
   });
 }
 
-// 这些方法必须和 default ws 链路保持一致；
-// 否则 bridge 走 tenant 专属 ws 时，会出现“默认链路可用、opencode 链路 method not found”的假接口问题。
+// These methods must match the default ws path; otherwise tenant-specific bridge calls may
+// hit false interface gaps where the default path works but the opencode path reports method not found.
 const WS_FORWARD_EXTENSION_METHODS = [
   BRIDGE_METHODS.extensionStatusGet,
   BRIDGE_METHODS.extensionReconnect,
@@ -159,8 +159,8 @@ function ensureHeartbeatTimer(connection: ScopedBridgeConnection): void {
     return;
   }
 
-  // scoped ws 和 default ws 一样，都要周期性上报 heartbeat；
-  // 否则 bridge 只知道“连接曾经建立过”，不知道 extension 还活着。
+  // Scoped ws connections need periodic heartbeats like the default ws connection;
+  // otherwise the bridge only knows a connection was once established, not that the extension is still alive.
   connection.heartbeatTimer = setInterval(() => {
     if (!connection.ready || !connection.rpcPeer || !connection.bridgeSessionId) {
       return;

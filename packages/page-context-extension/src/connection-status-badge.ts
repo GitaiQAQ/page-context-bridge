@@ -42,7 +42,7 @@ function connectionStatusBadgeClass(status?: string): string {
 @customElement('connection-status-badge')
 export class ConnectionStatusBadge extends LitElement {
   /**
-   * 不开 shadow root，直接复用 sidepanel 已注入的 Tailwind / DaisyUI 样式。
+   * Do not create a shadow root; reuse Tailwind / DaisyUI styles already injected by the sidepanel.
    */
   protected override createRenderRoot(): this {
     return this;

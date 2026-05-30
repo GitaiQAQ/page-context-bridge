@@ -1,10 +1,10 @@
 /**
- * Connections 面板的 endpoint 配置读写。
+ * Endpoint config reads/writes for the Connections panel.
  *
- * 规则：
- * - 新真相源是 `connections.endpoints.v1`
- * - 旧 `opencode.config.v1` 里的 endpoint 只做一次迁移
- * - session 相关历史字段继续留在旧 key，避免把既有恢复逻辑一起打坏
+ * Rules:
+ * - The new source of truth is `connections.endpoints.v1`.
+ * - Migrate endpoints from old `opencode.config.v1` only once.
+ * - Keep historical session fields in the old key to avoid breaking restore logic.
  */
 
 import { storageLocalGet, storageLocalSet } from './extension-api';
@@ -15,16 +15,19 @@ export const LEGACY_OPENCODE_CONFIG_STORAGE_KEY = 'opencode.config.v1';
 export interface ConnectionEndpointsConfig {
   opencodeBaseUrl: string;
   bridgeBaseUrl: string;
+  bridgeWsUrl: string;
 }
 
 interface LegacyOpenCodeConfig {
   opencodeBaseUrl?: string;
   bridgeBaseUrl?: string;
+  bridgeWsUrl?: string;
 }
 
 export const DEFAULT_CONNECTION_ENDPOINTS: ConnectionEndpointsConfig = {
   opencodeBaseUrl: 'http://localhost:4096',
   bridgeBaseUrl: 'http://localhost:22334',
+  bridgeWsUrl: 'ws://127.0.0.1:22335/default',
 };
 
 function normalizeEndpoint(value: unknown, fallback: string): string {
@@ -48,13 +51,14 @@ export async function loadConnectionEndpoints(): Promise<ConnectionEndpointsConf
       current?.bridgeBaseUrl,
       DEFAULT_CONNECTION_ENDPOINTS.bridgeBaseUrl,
     ),
+    bridgeWsUrl: normalizeEndpoint(current?.bridgeWsUrl, DEFAULT_CONNECTION_ENDPOINTS.bridgeWsUrl),
   };
 }
 
 /**
- * 首次启动迁移旧 endpoint。
+ * Migrate legacy endpoints on first startup.
  *
- * 只复制 endpoint 字段；不动 lastSessionId/sessionId，避免改变旧恢复语义。
+ * Copy only endpoint fields; leave lastSessionId/sessionId untouched to preserve legacy restore semantics.
  */
 export async function migrateLegacyConnectionEndpoints(): Promise<ConnectionEndpointsConfig> {
   const current = await storageLocalGet<{
@@ -79,6 +83,7 @@ export async function migrateLegacyConnectionEndpoints(): Promise<ConnectionEndp
       legacy?.bridgeBaseUrl,
       DEFAULT_CONNECTION_ENDPOINTS.bridgeBaseUrl,
     ),
+    bridgeWsUrl: normalizeEndpoint(legacy?.bridgeWsUrl, DEFAULT_CONNECTION_ENDPOINTS.bridgeWsUrl),
   };
 
   await storageLocalSet({
@@ -99,6 +104,7 @@ export async function saveConnectionEndpoints(
       endpoints.bridgeBaseUrl,
       DEFAULT_CONNECTION_ENDPOINTS.bridgeBaseUrl,
     ),
+    bridgeWsUrl: normalizeEndpoint(endpoints.bridgeWsUrl, DEFAULT_CONNECTION_ENDPOINTS.bridgeWsUrl),
   };
 
   await storageLocalSet({

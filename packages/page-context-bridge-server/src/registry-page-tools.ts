@@ -47,8 +47,8 @@ export function registerPageToolsOnServer(input: {
         registeredToolName,
         {
           description: tool.description || `Page tool from tab ${tabId}`,
-          // 页面工具没有声明 inputSchema 时，MCP 侧仍然应该保留原始入参。
-          // 否则 SDK 会把它当成空对象 schema，未知字段会被静默剥掉，真实调用拿到的 args 只剩 {}。
+          // If a page tool omits inputSchema, MCP should still preserve the original args.
+          // Otherwise the SDK treats it as an empty object schema, silently strips unknown fields, and calls receive only {}.
           inputSchema: tool.inputSchema
             ? buildZodSchema(tool.inputSchema as JsonSchemaLike | undefined)
             : z.object({}).catchall(z.any()),

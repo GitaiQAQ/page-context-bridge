@@ -19,8 +19,8 @@ function copyStaticFiles() {
   return {
     name: 'copy-static-files',
     closeBundle() {
-      // 构建目录由环境变量控制。
-      // 这样 Chromium / Firefox 可以各写各的产物目录，避免并行 E2E 互相踩文件。
+      // The build directory is controlled by an env var.
+      // Chromium / Firefox can write separate artifacts, avoiding parallel E2E collisions.
       const distDir = extensionOutputAbsDir;
       const files: Array<{ src: string; dest: string }> = [];
 
@@ -86,8 +86,8 @@ function patchSidepanelBuildTimeAttribute(distDir: string) {
       .replaceAll('__PAGE_CONTEXT_EXTENSION_BUILD_TIME__', extensionBuildTime);
 
     if (patchedHtml === html) {
-      // writeBundle 和 closeBundle 都会走到这里。
-      // 如果第一次已经补过，占位符自然就不存在了；这种情况不是错误，也不该污染日志。
+      // Both writeBundle and closeBundle reach this path.
+      // If the first pass already patched it, the placeholder is gone; that is not an error.
       return;
     }
 
@@ -264,8 +264,8 @@ export default defineConfig({
     // For easier debugging and avoiding behavioral differences in artifacts: disable minify for entire project
     minify: false,
     cssMinify: false,
-    // 这里允许外部显式指定目标目录。
-    // 默认仍然保留 dist，兼容 watch / dev-preview 等现有流程。
+    // Allow callers to set the target directory explicitly.
+    // Keep dist as the default for watch / dev-preview compatibility.
     outDir: extensionOutputDir,
     emptyOutDir: true,
     rollupOptions: {

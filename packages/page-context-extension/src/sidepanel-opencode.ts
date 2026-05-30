@@ -6,6 +6,7 @@ export interface OpenCodeConfig {
 export interface OpenCodeSession {
   id: string;
   directory?: string;
+  opencodeBaseUrl?: string;
 }
 
 interface OpenCodeMcpEntry {
@@ -35,8 +36,8 @@ function getNormalizedConfig(cfg: OpenCodeConfig): OpenCodeConfig {
 }
 
 /**
- * 统一按 URL API 组装地址，避免字符串拼接把 path/query 搅在一起。
- * 这里只做“在已有 base 后追加路径”这一件事，调用方再决定协议与端口。
+ * Build addresses through the URL API so string concatenation does not mix path/query.
+ * This only appends a path to an existing base; callers still decide protocol and port.
  */
 function appendPath(baseUrl: string, pathSuffix: string): URL {
   const parsed = new URL(baseUrl);
@@ -110,9 +111,9 @@ export async function deleteSession(cfg: OpenCodeConfig, id: string): Promise<vo
 }
 
 /**
- * 注意：opencode `GET /mcp` 只返回 config 文件里的静态 MCP，不会列出运行时动态 add 的；
- * 而 `POST /mcp` 的响应 body 是当前 MCP 全集（含动态项）。
- * 所以这里直接用 POST 的返回值判断目标是否已 connected，再决定是否需要再次注册。
+ * Note: opencode `GET /mcp` only returns static MCP entries from the config file and omits runtime adds.
+ * The `POST /mcp` response body is the current full MCP set, including dynamic entries.
+ * Use the POST response to decide whether the target is already connected before registering again.
  */
 export async function ensureMcpRegistered(
   cfg: OpenCodeConfig,
@@ -152,8 +153,8 @@ export async function ensureMcpRegistered(
 }
 
 function encodeOpencodeRouteSegment(value: string): string {
-  // opencode web 真实路由使用 base64url(worktree) 作为第一段 path。
-  // 这里单独封装编码，避免各处手写替换规则时把 + / = 漏掉。
+  // The real opencode web route uses base64url(worktree) as the first path segment.
+  // Keep encoding in one helper so replacements for + / = are not missed.
   const bytes = new TextEncoder().encode(value);
   let binary = '';
   for (const byte of bytes) {
@@ -167,8 +168,8 @@ export function buildIframeUrl(cfg: OpenCodeConfig, session: OpenCodeSession | s
   const sessionId = typeof session === 'string' ? session : session.id;
   const sessionDirectory = typeof session === 'string' ? '' : (session.directory?.trim() ?? '');
 
-  // 兼容旧数据：如果暂时拿不到 directory，先回退旧 query 形式，
-  // 至少不要把现有调用方直接打崩。真实联通路径则必须带 directory。
+  // Legacy-data compatibility: if directory is temporarily unavailable, fall back to the old query form
+  // so existing callers do not break immediately. Real connected paths must include directory.
   if (!sessionDirectory) {
     return `${appendPath(normalized.opencodeBaseUrl, '/').toString()}?session=${encodeURIComponent(sessionId)}`;
   }
@@ -180,7 +181,7 @@ export function buildIframeUrl(cfg: OpenCodeConfig, session: OpenCodeSession | s
   ).toString();
 }
 
-export function buildExtWsUrl(cfg: OpenCodeConfig, sessionId: string): string {
+export function buildExtWsUrl(cfg: OpenCodeConfig, channelId: string): string {
   const normalized = getNormalizedConfig(cfg);
   const parsed = new URL(normalized.bridgeBaseUrl);
 
@@ -192,9 +193,9 @@ export function buildExtWsUrl(cfg: OpenCodeConfig, sessionId: string): string {
     throw new Error('Bridge base URL must use http:// or https://');
   }
 
-  // 约定：sidepanel 填的是 MCP HTTP base。
-  // 如果用户显式给了端口，则默认 ws 走“相邻端口 +1”，对齐 bridge 默认 22334/22335。
-  // 没有显式端口时不擅自猜测，让反向代理/同端口部署继续成立。
+  // Convention: the sidepanel stores the MCP HTTP base.
+  // If the user explicitly provides a port, default ws uses the adjacent port +1 to match bridge defaults 22334/22335.
+  // Without an explicit port, do not guess so reverse-proxy or same-port deployments keep working.
   if (parsed.port) {
     const httpPort = Number(parsed.port);
     if (!Number.isFinite(httpPort) || httpPort <= 0) {
@@ -206,7 +207,18 @@ export function buildExtWsUrl(cfg: OpenCodeConfig, sessionId: string): string {
   parsed.pathname = '/';
   parsed.search = '';
   parsed.hash = '';
-  parsed.searchParams.set('tenantId', sessionId);
+  parsed.searchParams.set('tenantId', channelId);
+  return parsed.toString();
+}
+
+export function buildExtWsUrlFromDefaultBridgeWs(defaultWsUrl: string, channelId: string): string {
+  const parsed = new URL(defaultWsUrl);
+  if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+    throw new Error('Bridge default WS URL must use ws:// or wss://');
+  }
+  parsed.search = '';
+  parsed.hash = '';
+  parsed.searchParams.set('tenantId', channelId);
   return parsed.toString();
 }
 

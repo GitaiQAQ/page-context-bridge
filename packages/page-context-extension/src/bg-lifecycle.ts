@@ -49,16 +49,16 @@ export function registerLifecycleListeners(deps: RegisterLifecycleListenersDeps)
       deps.wsHandlers.onBridgeWsExtensionRequest,
     );
 
-    // WS 连接成功后必须按“当前内存态”再发一轮，避免 Firefox 在连接前注册的页面工具
-    // 只停留在扩展本地，而 bridge/MCP 端完全看不到。
+    // After WS connects, resend from current memory state so Firefox page tools registered
+    // before the connection do not remain extension-local and invisible to bridge/MCP.
     await ensurePageToolPreferencesLoaded(deps.pageToolState);
     publishBuiltinTools(deps.pageToolState);
     for (const tabId of deps.pageToolState.pageToolsByTab.keys()) {
       publishPageToolsForTab(deps.pageToolState, tabId);
     }
 
-    // Firefox 真实链路里，内容脚本注册和 bridge 建链存在时序竞争。
-    // 连接成功后主动重新发现当前活动 tab，保证 page tools 能重新对齐到 bridge/MCP 端。
+    // In real Firefox flows, content script registration races with bridge connection setup.
+    // Rediscover the active tab after connect so page tools can realign with bridge/MCP.
     const activeTabs = await tabsQuery({ active: true });
     await Promise.allSettled(
       activeTabs

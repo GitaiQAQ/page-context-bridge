@@ -1,7 +1,7 @@
 /**
- * 页面访问后端（Phase 4）。
- * 目标很单一：把 Chromium 专属的 MAIN world 执行细节集中到一个薄层，
- * 让上层只关心“读什么/调什么”，不关心“怎么注入”。
+ * Page access backend (Phase 4).
+ * Its single goal is to keep Chromium-specific MAIN world execution details in a thin layer,
+ * so upper layers only decide what to read or call, not how injection works.
  */
 
 import {
@@ -17,8 +17,8 @@ type JsonRecord = Record<string, unknown>;
 type UnknownRecord = Record<string, unknown>;
 
 /**
- * 兼容策略：就算 shared-protocol 的 dist 还没刷新，这里也能用字面量兜底。
- * 这样 Firefox 只读链路不会因为常量未同步而退化为 undefined method。
+ * Compatibility strategy: fall back to literals even if shared-protocol dist is stale.
+ * This keeps the Firefox readonly path from degrading to an undefined method when constants lag.
  */
 const FIREFOX_READONLY_METHODS = {
   manifestGet:
@@ -32,7 +32,7 @@ const FIREFOX_READONLY_METHODS = {
     BRIDGE_METHODS.extensionContentPageToolExecute ?? 'extension.content.pageTool.execute',
 } as const;
 
-/** 只保留运行时需要的最小桥接对象形状，避免在后台层绑死页面实现细节。 */
+/** Keep only the minimal bridge shape needed at runtime, avoiding page implementation coupling in background code. */
 type PageContextBridgeLike = Record<string, unknown>;
 
 export type PageAccessBackendKind = 'chromium-native-main-world' | 'firefox-probe' | 'unsupported';
@@ -98,8 +98,8 @@ export interface SelectedPageAccessBackend {
 }
 
 /**
- * 薄探测：只做“路由判定”，不承诺该路径已经可用。
- * Phase 6 的 Firefox 走只读 RPC fallback，避免再误走 Chromium MAIN world。
+ * Thin probe: only decides routing, without promising that the path is usable.
+ * Phase 6 Firefox uses the readonly RPC fallback to avoid incorrectly choosing Chromium MAIN world.
  */
 export function detectPageAccessBackend(probe?: {
   manifest?: unknown;
@@ -118,7 +118,7 @@ export function detectPageAccessBackend(probe?: {
   if (manifestTarget === 'firefox' || hasFirefoxUserAgent || hasBrowserRuntimeGetBrowserInfo) {
     return {
       kind: 'firefox-probe',
-      // Slice E / Phase 6: Firefox 仅打通只读 RPC，不承诺 discover/execute。
+      // Slice E / Phase 6: Firefox only supports readonly RPC and does not promise discover/execute.
       reason:
         'Firefox probe signal detected (manifest/browser API/userAgent). Readonly RPC fallback is available.',
     };
@@ -137,7 +137,7 @@ export function detectPageAccessBackend(probe?: {
   };
 }
 
-/** Chromium 继续走 MAIN world 注入执行。 */
+/** Chromium continues to execute through MAIN world injection. */
 export function createChromiumPageAccessBackend(): PageAccessBackend {
   return {
     async getRawManifest(tabId: number): Promise<PageContextManifest | null> {
@@ -210,8 +210,8 @@ export function createChromiumPageAccessBackend(): PageAccessBackend {
     },
 
     /**
-     * 本切片不改 host 安装链路，保持由现有调用方（bg-page-tools）负责安装。
-     * 这里保留空实现，仅为了把“是否需要 host”收口到 backend 接口。
+     * This slice does not change host installation; existing callers (bg-page-tools) still install it.
+     * Keep this no-op only to centralize the "host needed" decision in the backend interface.
      */
     async ensureBridgeHost(_tabId: number): Promise<void> {},
 
@@ -265,7 +265,7 @@ export function createChromiumPageAccessBackend(): PageAccessBackend {
                 };
               }
             } catch {
-              // manifest 只是补充信息，拿不到也不应该阻塞工具发现。
+              // Manifest is supplemental; failing to read it should not block tool discovery.
             }
           }
 
@@ -348,9 +348,9 @@ export function createChromiumPageAccessBackend(): PageAccessBackend {
       namespace: string,
       instanceId?: string,
     ): Promise<BackendPageToolExecutionResult> {
-      // Chrome 的 scripting.executeScript 不接受 `undefined` 作为注入参数。
-      // default instance 在上层常常表现为“未显式传 instanceId”，这里统一降成 null，
-      // 保证真实页面工具也能稳定走 MAIN world 执行。
+      // Chrome scripting.executeScript does not accept `undefined` injection args.
+      // The default instance often reaches this layer as "no explicit instanceId", so normalize to null
+      // to keep real page tools stable through MAIN world execution.
       const serializedInstanceId = instanceId ?? null;
       const results = await chrome.scripting.executeScript({
         target: { tabId },
@@ -432,7 +432,7 @@ export function createChromiumPageAccessBackend(): PageAccessBackend {
 }
 
 /**
- * Firefox backend：manifest/resource/skill/discover/execute 走 content-script main-world broker。
+ * Firefox backend: manifest/resource/skill/discover/execute go through the content-script main-world broker.
  */
 function createFirefoxProbePageAccessBackend(): PageAccessBackend {
   return {
@@ -542,8 +542,8 @@ function createUnsupportedPageAccessBackend(params: {
       return fail('getSkill');
     },
     /**
-     * 这里保持 no-op，避免把“后端不可用”错误提前到 host 安装步骤，
-     * 保证失败来源统一落在 5 个 page access 操作上。
+     * Keep this as no-op so "backend unavailable" is not raised during host installation.
+     * Failures should originate consistently from the five page access operations.
      */
     async ensureBridgeHost(): Promise<void> {},
     async discoverTools(): Promise<PageToolEntry[]> {
@@ -619,9 +619,9 @@ async function fallbackToMainWorldIfFirefoxReadonlyFailed<TResult>(
   operation: PageAccessOperation,
   runMainWorldFallback: () => Promise<TResult>,
 ): Promise<TResult> {
-  // Firefox 真实站点上的 readonly broker 仍然可能被 Xray/compartment 权限拦住。
-  // 这里仅在“明显是跨 realm 权限错误”时退回 MAIN world executeScript 路径，
-  // 这样既保留旧 Firefox 的 readonly fallback，又让新 Firefox 能走更稳定的主世界能力。
+  // Firefox readonly broker can still be blocked by Xray/compartment permissions on real sites.
+  // Fall back to MAIN world executeScript only for clear cross-realm permission errors,
+  // preserving the old readonly fallback while letting newer Firefox use the more stable main-world path.
   if (!shouldFallbackFirefoxReadonlyToMainWorld(error)) {
     throw error;
   }

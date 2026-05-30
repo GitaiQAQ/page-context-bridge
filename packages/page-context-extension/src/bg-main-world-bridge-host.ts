@@ -185,8 +185,8 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     };
 
     const callTool = (name: string, args?: Record<string, unknown>) => {
-      // Firefox MAIN world 调 legacy bridge 时，直接透传内容脚本对象容易触发
-      // “Permission denied to access object”。先做一次 JSON 克隆，把参数变成页面自己的 plain object。
+      // Passing content-script objects directly to the legacy bridge from Firefox MAIN world
+      // can trigger "Permission denied to access object". JSON-clone args into page-owned plain objects first.
       const clonedArgs = safe(
         () => JSON.parse(JSON.stringify(args ?? {})) as Record<string, unknown>,
         args ?? {},
@@ -237,18 +237,18 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
         return Array.isArray(manifest?.resources) ? manifest.resources : [];
       },
       readResource: (id: string) =>
-        safe(() => candidate.readResource?.(id), {
+        safe(() => candidate.readResource?.(id), undefined) ?? {
           id,
           mimeType: 'application/json',
           text: JSON.stringify({ error: `Unknown resource id: ${id}` }, null, 2),
-        }),
+        },
       listSkills: () => {
         const manifest = safe(() => candidate.getManifest?.(), null);
         return Array.isArray(manifest?.skills) ? manifest.skills : [];
       },
       getSkill: (id: string, input?: Record<string, unknown>) =>
         safe(() => candidate.getSkill?.(id, input), undefined),
-      getManifest: () => safe(() => candidate.getManifest?.(), null),
+      getManifest: () => safe(() => candidate.getManifest?.(), null) ?? null,
     };
   };
 
@@ -269,9 +269,9 @@ export const installPageContextBridgeHostInMainWorld: MainWorldBridgeHostInstall
     if (!normalizedBridge || candidate === hostBridge) {
       return;
     }
-    // Firefox readonly broker 不适合经 getter 读 host merge 后的 bridge。
-    // 这里额外保留一份原始 bridge 裸引用，供 content script 直接读取，
-    // 避免 wrappedJSObject + getter 组合再次触发 Xray 权限错误。
+    // Firefox readonly broker should not read the host-merged bridge through a getter.
+    // Keep an extra raw bridge reference for direct content-script reads,
+    // avoiding Xray permission errors from wrappedJSObject plus getter access.
     win[RAW_BRIDGE_KEY] = candidate;
     const bridge = candidate as object;
     let sourceId = bridgeSourceIdByRef.get(bridge);

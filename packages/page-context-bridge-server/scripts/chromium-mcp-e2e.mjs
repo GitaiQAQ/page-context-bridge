@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Chromium + bridge server + MCP client 真正端到端验证。
+ * Chromium + bridge server + MCP client full E2E validation.
  *
- * 目标：
- * 1. 启动 bridge server（SSE + WebSocket）。
- * 2. 启动真实 Chromium 扩展验证脚本，并让扩展连上 bridge server。
- * 3. 使用真实 MCP SSE client 枚举并调用页面工具。
- * 4. 用明确的 PASS / FAIL 证明“页面数据已被 MCP 消费”。
+ * Goals:
+ * 1. Start the bridge server (SSE + WebSocket).
+ * 2. Start the real Chromium extension E2E script and connect it to the bridge server.
+ * 3. Use a real MCP SSE client to list and call page tools.
+ * 4. Use explicit PASS / FAIL output to prove MCP consumed page data.
  */
 
 import { spawn } from 'node:child_process';
@@ -59,8 +59,8 @@ function isPlainObject(value) {
 }
 
 function assertJsonContains(actual, expected, trace = 'result') {
-  // 这里同样使用“子集断言”。
-  // 重点是验证页面数据确实进了 MCP，不把断言绑死在无关字段上。
+  // Use subset assertions here as well.
+  // Verify page data reaches MCP without pinning assertions to unrelated fields.
   if (typeof expected === 'string') {
     if (typeof actual !== 'string' || !actual.includes(expected)) {
       throw new Error(`${trace} expected to include "${expected}", got ${JSON.stringify(actual)}`);
@@ -135,8 +135,8 @@ async function callJsonTool(client, name, args = {}) {
 }
 
 async function callPageToolUntilReady(client, name, args, timeoutMs = 20_000) {
-  // 远端 tenant 可能残留旧注册。
-  // 这里和 Firefox 版本保持一致：只有拿到“可用结果”才算真正 ready。
+  // Remote tenants may retain stale registrations.
+  // Match the Firefox flow: only a usable result means the tool is ready.
   const deadline = Date.now() + timeoutMs;
   let lastText = '';
 

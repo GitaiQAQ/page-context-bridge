@@ -24,7 +24,7 @@ describe('popup-main launchConsoleUi', () => {
       pendingToolCalls: 0,
     });
 
-    // popup-main 顶层会注册轮询，这里拦截避免测试里产生真实定时器副作用。
+    // popup-main registers polling at module scope; intercept it to avoid real timer side effects in tests.
     vi.spyOn(globalThis, 'setInterval').mockReturnValue(
       1 as unknown as ReturnType<typeof setInterval>,
     );
@@ -36,7 +36,7 @@ describe('popup-main launchConsoleUi', () => {
     restoreChromeGlobal(originalChrome);
   });
 
-  it('有 sidePanel API 时，点击按钮调用 sidePanel.open({ windowId })', async () => {
+  it('calls sidePanel.open({ windowId }) on button click when sidePanel API exists', async () => {
     const sidePanelOpen = vi.fn().mockResolvedValue(undefined);
     const { tabsCreate, storageSet } = await mountPopup({
       activeTab: { id: 11, windowId: 22 },
@@ -53,7 +53,7 @@ describe('popup-main launchConsoleUi', () => {
     expect(tabsCreate).not.toHaveBeenCalled();
   });
 
-  it('有 sidePanel API 但 currentWindow.id 缺失时，回退到 fallback URL', async () => {
+  it('falls back to fallback URL when sidePanel API exists but currentWindow.id is missing', async () => {
     const sidePanelOpen = vi.fn().mockResolvedValue(undefined);
     const { tabsCreate } = await mountPopup({
       activeTab: { id: 61, windowId: 16 },
@@ -71,7 +71,7 @@ describe('popup-main launchConsoleUi', () => {
     expectNoInvalidQuery(fallbackUrl);
   });
 
-  it('无 sidePanel API 时，fallback 到 tabs.create，且 URL 带 boundTabId/windowId', async () => {
+  it('falls back to tabs.create with boundTabId/windowId when sidePanel API is missing', async () => {
     const { tabsCreate } = await mountPopup({
       activeTab: { id: 42, windowId: 7 },
     });
@@ -85,7 +85,7 @@ describe('popup-main launchConsoleUi', () => {
     expectNoInvalidQuery(fallbackUrl);
   });
 
-  it('active tab 缺少 id 时，不生成非法 boundTabId，仍可打开 fallback URL', async () => {
+  it('does not generate invalid boundTabId when active tab id is missing and still opens fallback URL', async () => {
     const { tabsCreate } = await mountPopup({
       activeTab: { windowId: 12 },
     });
@@ -99,7 +99,7 @@ describe('popup-main launchConsoleUi', () => {
     expectNoInvalidQuery(fallbackUrl);
   });
 
-  it('active tab 缺少 windowId 时，不生成非法 windowId，仍可打开 fallback URL', async () => {
+  it('does not generate invalid windowId when active tab windowId is missing and still opens fallback URL', async () => {
     const { tabsCreate } = await mountPopup({
       activeTab: { id: 73 },
     });
@@ -115,7 +115,7 @@ describe('popup-main launchConsoleUi', () => {
 });
 
 function renderPopupDom(): void {
-  // 只保留 popup-main 初始化所需的最小 DOM，避免测试夹带无关模板细节。
+  // Keep only the minimal DOM needed by popup-main initialization so tests do not depend on template details.
   document.body.innerHTML = `
     <span id="statusDot"></span>
     <div id="statusText"></div>

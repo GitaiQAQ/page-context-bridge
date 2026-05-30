@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * 给 sidepanel.html 注入构建时间。
+ * Inject build time into sidepanel.html.
  *
- * 这里单独拆成脚本而不是继续用 package.json 里的 `node -e`：
- * 1. 目标目录可以通过环境变量切换，适合并行构建不同浏览器产物。
- * 2. 逻辑有明确输入输出，失败信息也更容易读。
+ * This is a standalone script instead of a package.json `node -e` snippet:
+ * 1. The target directory can be changed by env var for parallel browser builds.
+ * 2. Inputs, outputs, and failure messages are easier to read.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -23,8 +23,8 @@ const patchedHtml = html
   .replaceAll('__PAGE_CONTEXT_EXTENSION_BUILD_TIME__', buildTime);
 
 if (patchedHtml === html) {
-  // Vite 插件阶段可能已经把占位符补掉了。
-  // 这里保持幂等：只要产物存在且内容已稳定，就不要因为“二次补丁”失败。
+  // A Vite plugin may have already patched the placeholder.
+  // Keep this idempotent: do not fail a second patch when the artifact is stable.
   console.warn(`Side-panel build time placeholder already patched: ${htmlPath}`);
   process.exit(0);
 }

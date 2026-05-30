@@ -15,8 +15,7 @@ describe('sidepanel-opencode', () => {
     bridgeBaseUrl: 'http://localhost:22334/',
   };
   const projectDirectory = '/home/user/project';
-  const projectSegment =
-    'L1VzZXJzL2J5dGVkYW5jZS93b3Jrc3BhY2Uvc2lkZXMvYnJvd3Nlci1kZWJ1Zy1leHRlbnNpb24';
+  const projectSegment = 'L2hvbWUvdXNlci9wcm9qZWN0';
 
   beforeEach(() => {
     vi.restoreAllMocks();

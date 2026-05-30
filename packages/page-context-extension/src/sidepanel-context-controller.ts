@@ -1,6 +1,6 @@
 /**
- * Context Tab 纯渲染函数（从 SidePanelApp 中抽离）。
- * 接收预计算好的状态，输出完整的 Page Capabilities 面板模板。
+ * Pure render function for the Context Tab, extracted from SidePanelApp.
+ * Receives precomputed state and returns the full Page Capabilities panel template.
  */
 
 import { html, type TemplateResult } from 'lit';
@@ -8,12 +8,12 @@ import { classMap } from 'lit/directives/class-map.js';
 
 export interface RenderContextTabInput {
   active: boolean;
-  // 页面身份
+  // Page identity
   contextAppValue: string;
   contextSceneValue: string;
   contextTabValue: string;
   contextRouteValue: string;
-  // 现有能力计数。这里只重排 manifest 已有数据，不额外做语义推理。
+  // Existing capability counts. This only reshapes manifest data without extra semantic inference.
   contextNamespaceCount: string;
   contextResourceCount: string;
   contextSkillCount: string;
@@ -43,12 +43,12 @@ export interface RenderContextTabInput {
   onSkillClick(event: Event): void;
 }
 
-/** 单复数格式化：count 为 1 时用 singular，否则用 plural */
+/** Plural formatting: use singular when count is 1, otherwise plural. */
 function pluralize(countText: string, singular: string, plural = `${singular}s`): string {
   return countText === '1' ? singular : plural;
 }
 
-/** 生成能力摘要文案：Bridge 当前能看到多少资源/技能/命名空间 */
+/** Generate capability summary text: how many resources/skills/namespaces the Bridge currently sees. */
 function buildCapabilityBriefing(input: RenderContextTabInput): string {
   return `Bridge sees ${input.contextResourceCount} ${pluralize(input.contextResourceCount, 'data resource')} and ${input.contextSkillCount} ${pluralize(input.contextSkillCount, 'runnable skill')} across ${input.contextNamespaceCount} ${pluralize(input.contextNamespaceCount, 'namespace')}.`;
 }

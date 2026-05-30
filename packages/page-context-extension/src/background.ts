@@ -190,8 +190,8 @@ connectionRegistry.registerDriver('agentation-main-world-host', {
 });
 
 void opencodeHttpDriver.start().catch(() => {
-  // 部分单测只验证模块装配，不会准备完整扩展 API。
-  // 探活 driver 在这类环境里静默跳过即可，不影响真正的 background 逻辑验证。
+  // Some unit tests only validate module wiring and do not provide the full extension API.
+  // The health driver can silently skip those environments without affecting background logic coverage.
 });
 
 // background.ts is the composition root: state is created here and explicitly injected into sub-modules.
