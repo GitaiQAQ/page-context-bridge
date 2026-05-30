@@ -63,7 +63,7 @@ describe('sidepanel-opencode', () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    await expect(ensureMcpRegistered(cfg, 'session-1')).resolves.toEqual({
+    await expect(ensureMcpRegistered(cfg, 'session-1', 'install-test')).resolves.toEqual({
       created: true,
       mcpName: 'page-context-session-1',
     });
@@ -77,7 +77,7 @@ describe('sidepanel-opencode', () => {
           name: 'page-context-session-1',
           config: {
             type: 'remote',
-            url: 'http://localhost:22334/session-1/mcp',
+            url: 'http://localhost:22334/install-test/mcp',
             enabled: true,
           },
         }),
@@ -105,7 +105,9 @@ describe('sidepanel-opencode', () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    await expect(ensureMcpRegistered(cfg, 'session-2')).rejects.toThrow(/SSE error/);
+    await expect(ensureMcpRegistered(cfg, 'session-2', 'install-test')).rejects.toThrow(
+      /SSE error/,
+    );
   });
 
   it('registers a remote mcp entry when opencode returns a connected status', async () => {
@@ -123,7 +125,7 @@ describe('sidepanel-opencode', () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    await expect(ensureMcpRegistered(cfg, 'session-2')).resolves.toEqual({
+    await expect(ensureMcpRegistered(cfg, 'session-2', 'install-test')).resolves.toEqual({
       created: true,
       mcpName: 'page-context-session-2',
     });
@@ -138,7 +140,7 @@ describe('sidepanel-opencode', () => {
           name: 'page-context-session-2',
           config: {
             type: 'remote',
-            url: 'http://localhost:22334/session-2/mcp',
+            url: 'http://localhost:22334/install-test/mcp',
             enabled: true,
           },
         }),
@@ -163,6 +165,8 @@ describe('sidepanel-opencode', () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    await expect(ensureMcpRegistered(cfg, 'session-3')).rejects.toThrow(/not connected yet/);
+    await expect(ensureMcpRegistered(cfg, 'session-3', 'install-test')).rejects.toThrow(
+      /not connected yet/,
+    );
   });
 });

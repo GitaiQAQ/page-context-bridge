@@ -702,7 +702,7 @@ export class SidePanelApp extends LitElement {
 
     this._opencodeMessage = `Registering MCP for ${sessionId}...`;
     this.requestUpdate();
-    await ensureMcpRegistered(cfg, sessionId);
+    await ensureMcpRegistered(cfg, sessionId, channelId);
 
     const sessionView = this._buildOpenCodeSessionView(session, descriptor, channelId);
     this._upsertOpenCodeSession(sessionView);
@@ -1840,7 +1840,7 @@ export class SidePanelApp extends LitElement {
     return html`
       <button
         type="button"
-        class="min-w-[13.5rem] flex-1 rounded-2xl border px-3 py-2.5 text-left shadow-sm transition-colors active:scale-[0.98] ${toneClass} ${input.active
+        class="min-w-[11.5rem] flex-1 rounded-2xl border px-3 py-2.5 text-left shadow-sm transition duration-150 active:scale-[0.98] ${toneClass} ${input.active
           ? 'ring-1 ring-primary/50'
           : 'hover:border-primary/50'}"
         @click=${() => this._handleTabClick(input.tab)}
@@ -1854,7 +1854,9 @@ export class SidePanelApp extends LitElement {
             : nothing}
         </div>
         <div class="mt-1 text-sm font-bold leading-snug">${input.title}</div>
-        <p class="mt-1 text-[11px] leading-relaxed opacity-60">${input.body}</p>
+        <p class="mt-1 truncate text-[11px] leading-relaxed opacity-60" title=${input.body}>
+          ${input.body}
+        </p>
         <div class="mt-2 text-[11px] font-semibold text-primary">${input.cta} →</div>
       </button>
     `;
@@ -1870,17 +1872,14 @@ export class SidePanelApp extends LitElement {
 
     return html`
       <section
-        class="border-b border-base-300 bg-base-200/50 px-3 py-2 shrink-0"
+        class="border-b border-base-300 bg-base-100/90 px-3 py-2 shrink-0"
         aria-label="Real user story shortcuts"
       >
         <div class="mb-2 flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50">
-              Product paths
-            </div>
+            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50">Workflow</div>
             <div class="text-xs opacity-60 truncate">
-              Use the real connection chain: configure endpoints first, connect OpenCode, verify
-              page capabilities, then collect feedback.
+              Setup → OpenCode → Tools → Feedback. Start where the status needs attention.
             </div>
           </div>
           <button
@@ -1895,7 +1894,7 @@ export class SidePanelApp extends LitElement {
           ${this._renderJourneyCard({
             eyebrow: '01 · Setup',
             title: attentionCount > 0 ? 'Fix external connections' : 'Check endpoint config',
-            body: 'Maintain OpenCode Base URL, Bridge Base URL, health checks, and diagnostics in one place.',
+            body: 'Endpoints, health checks, and diagnostics.',
             cta: 'Open config',
             tab: 'connections',
             active: this._activeTab === 'connections',
@@ -1905,7 +1904,7 @@ export class SidePanelApp extends LitElement {
           ${this._renderJourneyCard({
             eyebrow: '02 · AI workspace',
             title: readiness.title,
-            body: 'Create or restore multi-session OpenCode and register scoped bridge MCP.',
+            body: 'Start or resume an OpenCode session.',
             cta: 'Manage OpenCode',
             tab: 'opencode',
             active: this._activeTab === 'opencode',
@@ -1920,7 +1919,7 @@ export class SidePanelApp extends LitElement {
           ${this._renderJourneyCard({
             eyebrow: '03 · Page capability',
             title: 'Validate current page tools',
-            body: 'Debug callable tools in Tools tab; view resources, skills, and manifest diffs in Context tab.',
+            body: 'Inspect callable tools and context.',
             cta: 'Inspect tools',
             tab: 'tools',
             active: this._activeTab === 'tools' || this._activeTab === 'context',
@@ -1929,7 +1928,7 @@ export class SidePanelApp extends LitElement {
           ${this._renderJourneyCard({
             eyebrow: '04 · Feedback loop',
             title: 'Turn issues into actionable feedback',
-            body: 'Collect annotations, claim/reply/resolve, and push browser issues back into the collaboration pipeline.',
+            body: 'Capture, claim, reply, and resolve.',
             cta: 'Review feedback',
             tab: 'feedback',
             active: this._activeTab === 'feedback',
@@ -2021,7 +2020,7 @@ export class SidePanelApp extends LitElement {
       >
         <div class="flex flex-col gap-3 p-3 bg-base-200/40 flex-1 min-h-0 overflow-y-auto">
           <section
-            class="rounded-2xl border p-4 shadow-sm bg-base-100 ${readiness.tone === 'success'
+            class="rounded-3xl border p-4 shadow-sm bg-base-100 ${readiness.tone === 'success'
               ? 'border-success/40'
               : readiness.tone === 'warning'
                 ? 'border-warning/50'
@@ -2041,10 +2040,10 @@ export class SidePanelApp extends LitElement {
                   ></connection-status-badge>`
                 : html`<span class="badge badge-outline badge-sm">No session</span>`}
             </div>
-            <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+            <div class="mt-4 grid grid-cols-3 gap-2 text-xs">
               <div class="rounded-xl bg-base-200/70 px-3 py-2 min-w-0">
                 <div class="opacity-50">Sessions</div>
-                <div class="font-bold text-base">${this._opencodeSessions.length}</div>
+                <div class="font-bold text-base tabular-nums">${this._opencodeSessions.length}</div>
               </div>
               <div class="rounded-xl bg-base-200/70 px-3 py-2 min-w-0">
                 <div class="opacity-50">Active</div>
@@ -2066,28 +2065,37 @@ export class SidePanelApp extends LitElement {
                 </div>
               </div>
             </div>
+            <div class="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
+                @click=${() => void this._handleOpencodeConnect(!activeSession)}
+                ?disabled=${this._opencodeConnecting}
+              >
+                ${activeSession ? 'Connect session' : 'Start session'}
+              </button>
+              <button
+                class="btn btn-sm btn-ghost"
+                @click=${() => void this._handleOpencodeConnect(true)}
+                ?disabled=${this._opencodeConnecting}
+              >
+                New Session
+              </button>
+              <button
+                class="btn btn-sm btn-ghost"
+                @click=${() => this._handleTabClick('connections')}
+                title="Open endpoint config panel"
+              >
+                Endpoint config
+              </button>
+            </div>
           </section>
 
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <span class="text-xs opacity-60 leading-relaxed">
-              Endpoint config, health check, and all connection status are managed centrally in
-              Endpoint config; OpenCode panel no longer provides configuration editing.
-            </span>
-            <button
-              class="btn btn-xs btn-ghost"
-              @click=${() => this._handleTabClick('connections')}
-              title="Open endpoint config panel"
-            >
-              Open endpoint config
-            </button>
-          </div>
-
           <div
-            class="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm flex flex-col gap-2"
+            class="rounded-2xl border border-base-300 bg-base-100/80 p-3 shadow-sm flex flex-col gap-2"
           >
             <div class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
               <label class="form-control flex flex-col gap-1">
-                <span class="text-xs font-semibold opacity-70">Session ID (optional)</span>
+                <span class="text-xs font-semibold opacity-70">Reuse a session ID</span>
                 <input
                   type="text"
                   class="input input-sm input-bordered font-mono"
@@ -2098,23 +2106,16 @@ export class SidePanelApp extends LitElement {
                   placeholder="leave empty to create a new session"
                 />
               </label>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center justify-end gap-2">
                 <button
-                  class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
+                  class="btn btn-sm btn-outline"
                   @click=${() => void this._handleOpencodeConnect()}
                   ?disabled=${this._opencodeConnecting}
                 >
-                  Connect
+                  Use ID
                 </button>
                 <button
-                  class="btn btn-sm btn-secondary"
-                  @click=${() => void this._handleOpencodeConnect(true)}
-                  ?disabled=${this._opencodeConnecting}
-                >
-                  New Session
-                </button>
-                <button
-                  class="btn btn-sm btn-outline"
+                  class="btn btn-sm btn-ghost"
                   @click=${() => void this._handleOpencodeDisconnect()}
                   ?disabled=${this._opencodeConnecting || !activeSession}
                 >
@@ -2124,8 +2125,8 @@ export class SidePanelApp extends LitElement {
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs opacity-60 leading-relaxed">
-                New Session creates an OpenCode session; Disconnect only tears down the scoped
-                bridge, deleting a session requires the Delete action on the session card.
+                Leave blank for a fresh OpenCode session. Use Disconnect to close the bridge link;
+                Delete is available on each session card.
               </span>
               ${this._opencodeMessage
                 ? html`<span class="text-xs opacity-60" role="status"
@@ -2174,34 +2175,44 @@ export class SidePanelApp extends LitElement {
                           </div>
                           ${active
                             ? html`
-                                <div
-                                  class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-xl bg-base-200/70 px-3 py-2 text-[11px]"
-                                >
-                                  <span class="opacity-50">OpenCode URL</span>
-                                  <span class="font-mono truncate" title=${session.webUrl}
-                                    >${session.webUrl}</span
-                                  >
-                                  <span class="opacity-50">Bridge WS</span>
-                                  <span class="font-mono truncate" title=${session.wsUrl}
-                                    >${session.wsUrl}</span
-                                  >
-                                  <span class="opacity-50">Worktree</span>
-                                  <span class="font-mono truncate" title=${session.sessionDirectory}
-                                    >${session.sessionDirectory || 'legacy route'}</span
-                                  >
-                                  <span class="opacity-50">MCP</span>
-                                  <span class="font-mono truncate"
-                                    >page-context-${session.sessionId}</span
-                                  >
-                                </div>
                                 <p class="mt-2 text-[11px] leading-relaxed opacity-60">
-                                  Active is only the currently selected session. Clicking Sidebar
-                                  opens the iframe fullscreen, and connections remain after closing
-                                  it.
+                                  Selected session. Open it in the sidebar when you want an embedded
+                                  workspace; closing the iframe keeps the bridge connected.
                                 </p>
+                                <details
+                                  class="mt-2 rounded-xl bg-base-200/60 px-3 py-2 text-[11px]"
+                                >
+                                  <summary
+                                    class="cursor-pointer select-none font-semibold opacity-70"
+                                  >
+                                    Technical details
+                                  </summary>
+                                  <div
+                                    class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2"
+                                  >
+                                    <span class="opacity-50">OpenCode URL</span>
+                                    <span class="font-mono truncate" title=${session.webUrl}
+                                      >${session.webUrl}</span
+                                    >
+                                    <span class="opacity-50">Bridge WS</span>
+                                    <span class="font-mono truncate" title=${session.wsUrl}
+                                      >${session.wsUrl}</span
+                                    >
+                                    <span class="opacity-50">Worktree</span>
+                                    <span
+                                      class="font-mono truncate"
+                                      title=${session.sessionDirectory}
+                                      >${session.sessionDirectory || 'legacy route'}</span
+                                    >
+                                    <span class="opacity-50">MCP</span>
+                                    <span class="font-mono truncate"
+                                      >page-context-${session.sessionId}</span
+                                    >
+                                  </div>
+                                </details>
                               `
                             : nothing}
-                          <div class="mt-2 flex flex-wrap items-center gap-1">
+                          <div class="mt-3 flex flex-wrap items-center gap-1">
                             <button
                               class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
                               title="Copy session id"
@@ -2211,21 +2222,22 @@ export class SidePanelApp extends LitElement {
                               Copy
                             </button>
                             <button
-                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              class="btn btn-xs btn-primary min-h-0 h-7 px-2"
                               title="Open this OpenCode session fullscreen in the sidebar"
                               @click=${() => this._handleOpenOpenCodeIframe(session.sessionId)}
                             >
-                              Open in sidebar
+                              Sidebar
                             </button>
                             <button
-                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              class="btn btn-[10px] btn-ghost min-h-0 h-7 px-2"
                               title="Open this OpenCode session in a browser tab"
                               @click=${() => this._handleOpenOpenCodeSession(session)}
                             >
                               Open
                             </button>
+                            <span class="mx-1 h-4 w-px bg-base-300"></span>
                             <button
-                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              class="btn btn-[10px] btn-ghost min-h-0 h-7 px-2"
                               title="Disconnect this session bridge link"
                               ?disabled=${this._opencodeConnecting}
                               @click=${() => void this._handleOpencodeDisconnect(session.sessionId)}
@@ -2233,7 +2245,7 @@ export class SidePanelApp extends LitElement {
                               Disconnect
                             </button>
                             <button
-                              class="btn btn-[10px] btn-error btn-outline min-h-0 h-6 px-2"
+                              class="btn btn-[10px] btn-error btn-outline min-h-0 h-7 px-2"
                               title="Delete this OpenCode session"
                               ?disabled=${this._opencodeConnecting}
                               @click=${() =>
@@ -2256,8 +2268,8 @@ export class SidePanelApp extends LitElement {
                     <div class="text-3xl mb-2">⌘</div>
                     <div class="text-sm font-semibold">No OpenCode sessions yet</div>
                     <p class="text-xs opacity-60 mt-2 leading-relaxed">
-                      Clicking New Session creates an OpenCode session, connects scoped bridge WS,
-                      registers MCP, then embeds OpenCode directly in the current sidebar.
+                      Start one session to connect OpenCode, register MCP, and embed the workspace
+                      in this sidebar.
                     </p>
                     <button
                       class="btn btn-sm btn-primary mt-4 ${this._opencodeConnecting

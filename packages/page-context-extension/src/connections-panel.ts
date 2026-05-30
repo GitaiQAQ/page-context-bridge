@@ -562,7 +562,7 @@ export class ConnectionsPanel extends LitElement {
               ${this.renderJourneyStep({
                 index: 4,
                 title: 'Session MCP links',
-                body: `${scopedSessionCount}  OpenCode session links. Each should be independently connected.`,
+                body: `${scopedSessionCount} OpenCode session link${scopedSessionCount === 1 ? '' : 's'}. Each should be independently connected.`,
                 complete: scopedSessionCount > 0,
               })}
             </div>
@@ -645,7 +645,7 @@ ${this.diagnosisReport}</pre
                 value: this.endpoints.bridgeBaseUrl,
                 placeholder: 'http://localhost:22334',
                 protocols: ['http:', 'https:'],
-                check: `OpenCode MCP registration uses ${shortEndpoint(this.endpoints.bridgeBaseUrl)}/{sessionId}/mcp。`,
+                check: `OpenCode MCP registration uses ${shortEndpoint(this.endpoints.bridgeBaseUrl)}/{sessionId}/mcp.`,
                 helper: `This is the HTTP entry point for OpenCode to access each session's MCP server; it does not handle the persistent browser WS.`,
                 emptyStatusLabel: 'Used on registration',
               })}
@@ -674,9 +674,8 @@ ${this.diagnosisReport}</pre
 
             <div class="mt-3 flex items-center justify-between gap-2 border-t border-base-300 pt-3">
               <p class="text-xs opacity-60 leading-relaxed">
-                Save & Probe saves all three endpoints and immediately reconnects OpenCode health
-                check and Bridge Default WS and immediately reconnects OpenCode health check and
-                Bridge Default WS.
+                Save & Probe stores all three endpoints, then immediately checks OpenCode health and
+                reconnects Bridge Default WS.
               </p>
               <button
                 class="btn btn-sm btn-primary ${this.saving ? 'loading' : ''}"

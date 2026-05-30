@@ -118,6 +118,7 @@ export async function deleteSession(cfg: OpenCodeConfig, id: string): Promise<vo
 export async function ensureMcpRegistered(
   cfg: OpenCodeConfig,
   sessionId: string,
+  channelId: string,
 ): Promise<{ created: boolean; mcpName: string }> {
   const normalized = getNormalizedConfig(cfg);
   const mcpName = `page-context-${sessionId}`;
@@ -128,7 +129,7 @@ export async function ensureMcpRegistered(
       name: mcpName,
       config: {
         type: 'remote',
-        url: buildMcpUrl(normalized, sessionId),
+        url: buildMcpUrl(normalized, channelId),
         enabled: true,
       },
     },
@@ -222,7 +223,7 @@ export function buildExtWsUrlFromDefaultBridgeWs(defaultWsUrl: string, channelId
   return parsed.toString();
 }
 
-export function buildMcpUrl(cfg: OpenCodeConfig, sessionId: string): string {
+export function buildMcpUrl(cfg: OpenCodeConfig, channelId: string): string {
   const normalized = getNormalizedConfig(cfg);
-  return appendPath(normalized.bridgeBaseUrl, `/${encodeURIComponent(sessionId)}/mcp`).toString();
+  return appendPath(normalized.bridgeBaseUrl, `/${encodeURIComponent(channelId)}/mcp`).toString();
 }

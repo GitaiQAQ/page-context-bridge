@@ -973,6 +973,7 @@ describe('side-panel-app tools tree interactions', () => {
           bridgeBaseUrl: 'http://localhost:22334',
         },
         'session-alpha',
+        'install-test',
       );
     });
     expect(createOpenCodeSessionMock).toHaveBeenCalledWith({
