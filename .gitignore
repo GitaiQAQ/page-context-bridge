@@ -46,3 +46,8 @@ vendor/
 coverage/
 .cache/
 tmp/
+
+# Build artifacts (for open source)
+packages/*/dist-chromium/
+packages/*/dist-firefox/
+packages/*/dist-firefox-mv2/

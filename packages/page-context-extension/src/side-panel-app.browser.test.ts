@@ -17,13 +17,23 @@ import {
 } from '@page-context/tool-visibility';
 
 const sendRuntimeRequestMock = vi.fn();
+const createOpenCodeWorktreeMock = vi.fn();
 const createOpenCodeSessionMock = vi.fn();
 const deleteOpenCodeSessionMock = vi.fn();
 const ensureMcpRegisteredMock = vi.fn();
 const listOpenCodeSessionsMock = vi.fn();
-const opencodeProjectDirectory = '/Users/bytedance/workspace/sides/browser-debug-extension';
-const opencodeProjectSegment =
-  'L1VzZXJzL2J5dGVkYW5jZS93b3Jrc3BhY2Uvc2lkZXMvYnJvd3Nlci1kZWJ1Zy1leHRlbnNpb24';
+const opencodeProjectDirectory = '/home/user/project';
+const opencodeProjectSegment = encodeOpenCodeRouteSegment(opencodeProjectDirectory);
+const opencodeWorktreeDirectory = `${opencodeProjectDirectory}.worktrees/session-created`;
+
+function encodeOpenCodeRouteSegment(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
 
 function makeDefaultConnectionDescriptor() {
   return {
@@ -60,6 +70,7 @@ vi.mock('./sidepanel-opencode', async () => {
     await vi.importActual<typeof import('./sidepanel-opencode')>('./sidepanel-opencode');
   return {
     ...actual,
+    createIsolatedWorktree: createOpenCodeWorktreeMock,
     createSession: createOpenCodeSessionMock,
     deleteSession: deleteOpenCodeSessionMock,
     ensureMcpRegistered: ensureMcpRegisteredMock,
@@ -246,10 +257,18 @@ describe('side-panel-app tools tree interactions', () => {
       contextResourcePayloads,
       contextSkillPrompts,
     });
-    createOpenCodeSessionMock.mockResolvedValue({
-      id: 'session-created',
-      directory: opencodeProjectDirectory,
+    createOpenCodeWorktreeMock.mockResolvedValue({
+      sourceDirectory: opencodeProjectDirectory,
+      repositoryRoot: opencodeProjectDirectory,
+      directory: opencodeWorktreeDirectory,
+      branch: 'opencode/session-created',
+      opencodeBaseUrl: 'http://127.0.0.1:4100',
     });
+    createOpenCodeSessionMock.mockImplementation(async (cfg?: { opencodeBaseUrl?: string }) => ({
+      id: 'session-created',
+      directory: opencodeWorktreeDirectory,
+      opencodeBaseUrl: cfg?.opencodeBaseUrl,
+    }));
     deleteOpenCodeSessionMock.mockResolvedValue(undefined);
     ensureMcpRegisteredMock.mockResolvedValue({
       created: true,
@@ -279,7 +298,7 @@ describe('side-panel-app tools tree interactions', () => {
       expect(text).toContain('Built-in Tools');
       expect(
         element.shadowRoot?.querySelector('[data-testid="build-time-label"]')?.textContent ?? '',
-      ).toContain('构建时间：');
+      ).toContain('Build time:');
     });
 
     // Built-in structure should be rendered as a namespace/instance tree, not a flat list.
@@ -302,7 +321,7 @@ describe('side-panel-app tools tree interactions', () => {
     await vi.waitFor(() => {
       expect(
         element.shadowRoot?.querySelector('[data-testid="build-time-label"]')?.textContent ?? '',
-      ).toContain('构建时间：2026-04-28T10:11:12Z');
+      ).toContain('Build time: 2026-04-28T10:11:12Z');
     });
   });
 
@@ -836,17 +855,39 @@ describe('side-panel-app tools tree interactions', () => {
     document.body.appendChild(element);
 
     await vi.waitFor(() => {
-      const iframe = element.shadowRoot?.querySelector('iframe');
-      expect(iframe?.src).toContain('http://127.0.0.1:22336/');
+      expect(
+        storageGetMock.mock.calls.some(
+          ([arg]) =>
+            Array.isArray(arg) && arg[0] === 'sidePanelUrl:devtools' && arg[1] === 'sidePanelUrl',
+        ),
+      ).toBe(true);
+    });
+    expect(element.shadowRoot?.querySelector('iframe')).toBeNull();
+    expect(element.shadowRoot?.querySelector('[title="Diagnosis"]')).toBeNull();
+    expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('sidePanelUrl:devtools');
+  });
+
+  test('renders product journey shortcuts from real user workflows', async () => {
+    await import('./side-panel-app');
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => {
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('Product paths');
+      expect(text).toContain('Use the real connection chain');
+      expect(text).toContain('Check endpoint config');
+      expect(text).toContain('Manage OpenCode');
+      expect(text).toContain('Inspect tools');
+      expect(text).toContain('Review feedback');
+      expect(text).not.toContain('Delete session on disconnect');
     });
 
-    expect(
-      storageGetMock.mock.calls.some(
-        ([arg]) =>
-          Array.isArray(arg) && arg[0] === 'sidePanelUrl:devtools' && arg[1] === 'sidePanelUrl',
-      ),
-    ).toBe(true);
-    expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('sidePanelUrl:devtools');
+    findButtonByText(element, 'Endpoint config')?.click();
+    await vi.waitFor(() => {
+      expect(element.shadowRoot?.textContent ?? '').toContain('Connection Cockpit');
+    });
   });
 
   test('re-discovers page tools when current tab is missing from initial tree', async () => {
@@ -880,9 +921,18 @@ describe('side-panel-app tools tree interactions', () => {
   test('connects opencode session by wiring scoped ws before MCP registration', async () => {
     await import('./side-panel-app');
 
+    const sessionAlphaWorktree = `${opencodeProjectDirectory}.worktrees/session-alpha`;
+    createOpenCodeWorktreeMock.mockResolvedValueOnce({
+      sourceDirectory: opencodeProjectDirectory,
+      repositoryRoot: opencodeProjectDirectory,
+      directory: sessionAlphaWorktree,
+      branch: 'opencode/session-alpha',
+      opencodeBaseUrl: 'http://127.0.0.1:4101',
+    });
     createOpenCodeSessionMock.mockResolvedValueOnce({
       id: 'session-alpha',
-      directory: opencodeProjectDirectory,
+      directory: sessionAlphaWorktree,
+      opencodeBaseUrl: 'http://127.0.0.1:4101',
     });
     sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
       switch (method) {
@@ -890,10 +940,13 @@ describe('side-panel-app tools tree interactions', () => {
         case CONNECTION_METHODS.list:
           return {
             descriptors: [
-              makeDefaultConnectionDescriptor(),
+              {
+                ...makeDefaultConnectionDescriptor(),
+                endpoint: 'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox',
+              },
               makeScopedConnectionDescriptor(
                 'session-alpha',
-                'ws://localhost:22335/?tenantId=session-alpha',
+                'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox?tenantId=session-alpha',
               ),
             ],
           };
@@ -910,16 +963,28 @@ describe('side-panel-app tools tree interactions', () => {
     document.body.appendChild(element);
     await openOpencodeTab(element);
 
+    await vi.waitFor(() => {
+      const text = getOpenCodeTabText(element);
+      expect(text).toContain('OpenCode panel no longer provides configuration editing');
+      expect(text).not.toContain('OpenCode Base URL');
+      expect(text).not.toContain('Bridge Base URL');
+      expect(text).not.toContain('Delete session on disconnect');
+    });
+
     findButtonByText(element, 'Connect')?.click();
 
     await vi.waitFor(() => {
       expect(ensureMcpRegisteredMock).toHaveBeenCalledWith(
         {
-          opencodeBaseUrl: 'http://localhost:4096',
+          opencodeBaseUrl: 'http://127.0.0.1:4101',
           bridgeBaseUrl: 'http://localhost:22334',
         },
         'session-alpha',
       );
+    });
+    expect(createOpenCodeSessionMock).toHaveBeenCalledWith({
+      opencodeBaseUrl: 'http://127.0.0.1:4101',
+      bridgeBaseUrl: 'http://localhost:22334',
     });
 
     const reconnectCall = sendRuntimeRequestMock.mock.calls.find(
@@ -929,7 +994,7 @@ describe('side-panel-app tools tree interactions', () => {
       BRIDGE_METHODS.extensionReconnect,
       {
         sessionId: 'session-alpha',
-        wsUrl: 'ws://localhost:22335/?tenantId=session-alpha',
+        wsUrl: 'ws://10.37.9.81:22335/wangwenxiao.gitai-firefox?tenantId=session-alpha',
       },
     ]);
     expect(sendRuntimeRequestMock.mock.invocationCallOrder[1]).toBeLessThan(
@@ -937,21 +1002,57 @@ describe('side-panel-app tools tree interactions', () => {
     );
 
     await vi.waitFor(() => {
-      const iframe = element.shadowRoot?.querySelector(
-        'iframe[data-session-id="session-alpha"]',
-      ) as HTMLIFrameElement | null;
-      expect(iframe?.src).toContain(
-        `http://localhost:4096/${opencodeProjectSegment}/session/session-alpha`,
-      );
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('OpenCode sidebar iframe');
+    });
+    const iframe = element.shadowRoot?.querySelector<HTMLIFrameElement>(
+      'iframe[data-session-id="session-alpha"]',
+    );
+    expect(iframe).not.toBeNull();
+    expect(iframe?.src).toBe(
+      `http://127.0.0.1:4101/${encodeOpenCodeRouteSegment(sessionAlphaWorktree)}/session/session-alpha`,
+    );
+
+    closeOpenCodeIframe(element);
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]'),
+      ).toBeNull();
+      expect(element.shadowRoot?.textContent ?? '').toContain('Open in sidebar');
     });
   });
 
   test('creates a second opencode session without reconnecting the first one', async () => {
     await import('./side-panel-app');
 
+    const sessionAlphaWorktree = `${opencodeProjectDirectory}.worktrees/session-alpha`;
+    const sessionBetaWorktree = `${opencodeProjectDirectory}.worktrees/session-beta`;
+    createOpenCodeWorktreeMock
+      .mockResolvedValueOnce({
+        sourceDirectory: opencodeProjectDirectory,
+        repositoryRoot: opencodeProjectDirectory,
+        directory: sessionAlphaWorktree,
+        branch: 'opencode/session-alpha',
+        opencodeBaseUrl: 'http://127.0.0.1:4101',
+      })
+      .mockResolvedValueOnce({
+        sourceDirectory: sessionAlphaWorktree,
+        repositoryRoot: opencodeProjectDirectory,
+        directory: sessionBetaWorktree,
+        branch: 'opencode/session-beta',
+        opencodeBaseUrl: 'http://127.0.0.1:4102',
+      });
     createOpenCodeSessionMock
-      .mockResolvedValueOnce({ id: 'session-alpha', directory: opencodeProjectDirectory })
-      .mockResolvedValueOnce({ id: 'session-beta', directory: opencodeProjectDirectory });
+      .mockResolvedValueOnce({
+        id: 'session-alpha',
+        directory: sessionAlphaWorktree,
+        opencodeBaseUrl: 'http://127.0.0.1:4101',
+      })
+      .mockResolvedValueOnce({
+        id: 'session-beta',
+        directory: sessionBetaWorktree,
+        opencodeBaseUrl: 'http://127.0.0.1:4102',
+      });
     ensureMcpRegisteredMock.mockResolvedValue({
       created: true,
       mcpName: 'page-context-session',
@@ -993,17 +1094,21 @@ describe('side-panel-app tools tree interactions', () => {
 
     findButtonByText(element, 'Connect')?.click();
     await vi.waitFor(() => {
-      expect(
-        element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]'),
-      ).not.toBeNull();
+      expect(element.shadowRoot?.textContent ?? '').toContain('session-alpha');
+    });
+    closeOpenCodeIframe(element);
+    await vi.waitFor(() => {
+      expect(findButtonByText(element, 'New Session')).not.toBeNull();
     });
 
     findButtonByText(element, 'New Session')?.click();
 
     await vi.waitFor(() => {
-      expect(
-        element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]'),
-      ).not.toBeNull();
+      expect(element.shadowRoot?.textContent ?? '').toContain('session-beta');
+    });
+    closeOpenCodeIframe(element);
+    await vi.waitFor(() => {
+      expect(findButtonByText(element, 'New Session')).not.toBeNull();
     });
 
     expect(
@@ -1014,12 +1119,50 @@ describe('side-panel-app tools tree interactions', () => {
       ),
     ).toHaveLength(2);
     expect(connectedSessions.size).toBe(2);
+    expect(createOpenCodeWorktreeMock).toHaveBeenNthCalledWith(
+      1,
+      {
+        opencodeBaseUrl: 'http://localhost:4096',
+        bridgeBaseUrl: 'http://localhost:22334',
+      },
+      undefined,
+    );
+    expect(createOpenCodeWorktreeMock).toHaveBeenNthCalledWith(
+      2,
+      {
+        opencodeBaseUrl: 'http://localhost:4096',
+        bridgeBaseUrl: 'http://localhost:22334',
+      },
+      sessionAlphaWorktree,
+    );
+    expect(createOpenCodeSessionMock).toHaveBeenNthCalledWith(1, {
+      opencodeBaseUrl: 'http://127.0.0.1:4101',
+      bridgeBaseUrl: 'http://localhost:22334',
+    });
+    expect(createOpenCodeSessionMock).toHaveBeenNthCalledWith(2, {
+      opencodeBaseUrl: 'http://127.0.0.1:4102',
+      bridgeBaseUrl: 'http://localhost:22334',
+    });
 
     const sessionButtons = [
       ...(element.shadowRoot?.querySelectorAll('button[title^="ws://"]') ?? []),
     ].map((button) => button.textContent?.trim());
     expect(sessionButtons).toContain('session-alpha');
     expect(sessionButtons).toContain('session-beta');
+
+    expect(findButtonByText(element, 'Copy')).not.toBeNull();
+    expect(findButtonByText(element, 'Open')).not.toBeNull();
+    expect(findButtonByText(element, 'Delete')).not.toBeNull();
+    expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]')).toBeNull();
+    const openInSidebarButtons = [
+      ...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? []),
+    ].filter((button) => button.textContent?.trim() === 'Open in sidebar');
+    openInSidebarButtons.at(-1)?.click();
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]'),
+      ).not.toBeNull();
+    });
   });
 
   test('restores last live session without re-registering MCP', async () => {
@@ -1029,6 +1172,13 @@ describe('side-panel-app tools tree interactions', () => {
         return {
           'opencode.config.v1': {
             lastSessionId: 'session-restored',
+            sessions: [
+              {
+                sessionId: 'session-restored',
+                directory: opencodeProjectDirectory,
+                opencodeBaseUrl: 'http://127.0.0.1:4109',
+              },
+            ],
           },
         };
       }
@@ -1048,7 +1198,11 @@ describe('side-panel-app tools tree interactions', () => {
       return keyOrDefaults;
     });
     listOpenCodeSessionsMock.mockResolvedValueOnce([
-      { id: 'session-restored', directory: opencodeProjectDirectory },
+      {
+        id: 'session-restored',
+        directory: opencodeProjectDirectory,
+        opencodeBaseUrl: 'http://127.0.0.1:4109',
+      },
     ]);
 
     await import('./side-panel-app');
@@ -1084,10 +1238,22 @@ describe('side-panel-app tools tree interactions', () => {
     await openOpencodeTab(element);
 
     await vi.waitFor(() => {
-      const iframe = element.shadowRoot?.querySelector(
-        'iframe[data-session-id="session-restored"]',
-      ) as HTMLIFrameElement | null;
-      expect(iframe?.src).toContain(`${opencodeProjectSegment}/session/session-restored`);
+      const text = element.shadowRoot?.textContent ?? '';
+      expect(text).toContain('session-restored');
+      expect(text).toContain(`${opencodeProjectSegment}/session/session-restored`);
+    });
+    expect(listOpenCodeSessionsMock).toHaveBeenCalledWith({
+      opencodeBaseUrl: 'http://127.0.0.1:4109',
+      bridgeBaseUrl: 'http://localhost:22334',
+    });
+    expect(
+      element.shadowRoot?.querySelector('iframe[data-session-id="session-restored"]'),
+    ).toBeNull();
+    findButtonByText(element, 'Open in sidebar')?.click();
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('iframe[data-session-id="session-restored"]'),
+      ).not.toBeNull();
     });
 
     expect(ensureMcpRegisteredMock).not.toHaveBeenCalled();
@@ -1189,6 +1355,26 @@ function findButtonByText(element: Element, text: string): HTMLButtonElement | n
     [...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
       (button) => button.textContent?.trim() === text,
     ) ?? null
+  );
+}
+
+function closeOpenCodeIframe(element: Element): void {
+  const closeButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
+    'button[aria-label="Close OpenCode iframe"]',
+  );
+  if (!closeButton) {
+    throw new Error('Missing OpenCode iframe close button');
+  }
+  closeButton.click();
+}
+
+function getOpenCodeTabText(element: Element): string {
+  const activeTabContents = [
+    ...(element.shadowRoot?.querySelectorAll<HTMLElement>('.tab-content.active') ?? []),
+  ];
+  return (
+    activeTabContents.find((content) => content.textContent?.includes('Session ID (optional)'))
+      ?.textContent ?? ''
   );
 }
 

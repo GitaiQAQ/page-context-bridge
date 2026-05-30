@@ -45,7 +45,7 @@ function createDebounce<T extends unknown[]>(
 
 function formatBuildTimeLabel(buildTime: string): string {
   if (buildTime === 'dev') {
-    return '开发环境 / 未注入构建时间';
+    return 'Dev environment / build time not injected';
   }
 
   const parsed = new Date(buildTime);
@@ -67,8 +67,8 @@ function parseOptionalQueryNumber(searchParams: URLSearchParams, name: string): 
 }
 
 /**
- * 读取 sidepanel URL query 绑定。
- * 这里只解析 launcher/fallback 约定的字段，避免把 runtime payload 语义掺进来。
+ * Read sidepanel URL query bindings.
+ * Only parses launcher/fallback contract fields to avoid mixing runtime payload semantics.
  */
 function readSidepanelUrlTabBinding(): SidepanelUrlTabBinding {
   const searchParams = new URLSearchParams(window.location.search);
@@ -85,8 +85,8 @@ function readCurrentSidepanelSurface(): SidepanelSurface {
 }
 
 /**
- * 归一化 runtime 显式绑定。
- * 规则固定为 tabId > boundTabId，windowId 仅在存在时透传。
+ * Normalize runtime explicit bindings.
+ * Rule: tabId > boundTabId; windowId is passed through only if present.
  */
 function normalizeRuntimeExplicitTabBinding(
   input?: RuntimeExplicitTabBindingInput | null,
@@ -105,9 +105,7 @@ function normalizeRuntimeExplicitTabBinding(
   };
 }
 
-import { classMap } from 'lit/directives/class-map.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { when } from 'lit/directives/when.js';
 
 import type { ContextManifestFilterDebug } from './context-manifest-filter-debug';
 import {
@@ -151,11 +149,12 @@ import {
 import { renderToolsTab } from './sidepanel-tools-view';
 import { renderContextTab, type RenderContextTabInput } from './sidepanel-context-controller';
 import { initializeToolTestState, resetToolTestArgsState } from './sidepanel-tool-test-controller';
-import { normalizeUrl, createBoundMessageHandler, buildLoaderUrl } from './sidepanel-navigation';
 import './connections-panel';
 import {
   buildExtWsUrl as buildOpenCodeExtWsUrl,
-  buildIframeUrl as buildOpenCodeIframeUrl,
+  buildExtWsUrlFromDefaultBridgeWs,
+  buildIframeUrl as buildOpenCodeWebUrl,
+  createIsolatedWorktree as createOpenCodeIsolatedWorktree,
   createSession as createOpenCodeSession,
   deleteSession as deleteOpenCodeSession,
   ensureMcpRegistered,
@@ -186,19 +185,37 @@ import { getScopedBridgeDescriptorId } from './bg-scoped-ws-connection';
 import sidepanelCssUrl from './sidepanel.css?url';
 
 const OPENCODE_CONFIG_STORAGE_KEY = LEGACY_OPENCODE_CONFIG_STORAGE_KEY;
+const BRIDGE_INSTALL_ID_STORAGE_KEY = 'page-context.bridge-install-id.v1';
 
 interface StoredOpenCodeConfig {
   lastSessionId?: string;
   sessionId?: string;
+  sessions?: Array<{
+    sessionId: string;
+    channelId?: string;
+    directory?: string;
+    opencodeBaseUrl?: string;
+  }>;
 }
 
 interface OpenCodeSessionView {
   sessionId: string;
+  channelId: string;
   sessionDirectory: string;
-  iframeUrl: string;
+  opencodeBaseUrl: string;
+  webUrl: string;
   wsUrl: string;
   connected: boolean;
   bridgeSessionId: string | null;
+}
+
+type SidePanelTab = 'tools' | 'context' | 'feedback' | 'opencode' | 'connections';
+
+function shortenSessionId(sessionId: string): string {
+  if (sessionId.length <= 18) {
+    return sessionId;
+  }
+  return `${sessionId.slice(0, 10)}…${sessionId.slice(-6)}`;
 }
 
 // Custom sidepanel-specific rules that were previously in <style> in the HTML
@@ -221,12 +238,6 @@ const customRules = css`
   details summary::-webkit-details-marker {
     display: none;
   }
-  /* iframe fill */
-  .iframe-container iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-  }
   /* test panel toggle */
   .test-panel {
     display: none;
@@ -240,14 +251,6 @@ const customRules = css`
   }
   .tab-content.active {
     display: flex;
-  }
-  .opencode-session-frame {
-    display: none;
-    width: 100%;
-    height: 100%;
-  }
-  .opencode-session-frame.active {
-    display: block;
   }
 `;
 
@@ -263,7 +266,7 @@ export class SidePanelApp extends LitElement {
         flex-direction: column;
         flex: 1;
         min-height: 0;
-        overflow: hidden;
+        overflow: auto;
       }
     `,
   ];
@@ -278,10 +281,7 @@ export class SidePanelApp extends LitElement {
   @state() private _currentEffectiveContextManifest: PageContextManifest | null = null;
   @state() private _currentContextDebug: ContextManifestFilterDebug | null = null;
   @state()
-  private _activeTab: 'tools' | 'context' | 'feedback' | 'diagnosis' | 'opencode' | 'connections' =
-    'tools';
-  @state() private _urlBarVisible = true;
-  @state() private _currentUrl = '';
+  private _activeTab: SidePanelTab = 'tools';
   @state() private _manifestStatus = '';
   @state() private _manifestStatusClass = '';
   @state() private _manifestOutput = '(manifest not loaded)';
@@ -330,14 +330,11 @@ export class SidePanelApp extends LitElement {
   @state() private _opencodeSessions: OpenCodeSessionView[] = [];
   @state() private _opencodeConnecting = false;
   @state() private _opencodeMessage = '';
-  @state() private _opencodeDeleteSessionOnDisconnect = false;
+  @state() private _opencodeIframeOpen = false;
 
   // ─── Query references (shadowRoot is guaranteed when using default createRenderRoot) ──
-  @query('#iframeContainer') private _iframeContainer!: HTMLElement;
-
   // ─── Private state (non-reactive) ─────────────────────────────
   private readonly _connections = new ConnectionsController(this);
-  private _currentIframe: HTMLIFrameElement | null = null;
   private _feedbackPollIntervalId: ReturnType<typeof setInterval> | null = null;
   private _tabActivatedListener?: (activeInfo: { tabId: number; windowId: number }) => void;
   private _tabUpdatedListener?: (
@@ -350,7 +347,7 @@ export class SidePanelApp extends LitElement {
     this._currentFilter = value;
   }, 150);
   /**
-   * URL query 绑定和 runtime 显式绑定分开存，避免字段名（boundTabId/tabId）混用。
+   * URL query bindings and runtime explicit bindings are stored separately to avoid field name conflicts (boundTabId/tabId).
    */
   private readonly _urlTabBinding: SidepanelUrlTabBinding = readSidepanelUrlTabBinding();
   private readonly _runtimeTabBinding: RuntimeExplicitTabBinding =
@@ -358,6 +355,7 @@ export class SidePanelApp extends LitElement {
   private readonly _surface: SidepanelSurface = readCurrentSidepanelSurface();
   private readonly _boundTabId = this._runtimeTabBinding.tabId;
   private readonly _boundWindowId = this._runtimeTabBinding.windowId;
+  private _bridgeInstallId = '';
 
   // ─── Lifecycle ─────────────────────────────────────────────────
   override connectedCallback(): void {
@@ -374,7 +372,6 @@ export class SidePanelApp extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    window.removeEventListener('message', this._boundMessageHandler);
     if (this._feedbackPollIntervalId) {
       clearInterval(this._feedbackPollIntervalId);
       this._feedbackPollIntervalId = null;
@@ -392,9 +389,6 @@ export class SidePanelApp extends LitElement {
     if (changedProperties.has('_toolTreeResponse') || changedProperties.has('_currentFilter')) {
       this.updateComplete.then(() => this._syncIndeterminateCheckboxes());
     }
-    if (changedProperties.has('_currentUrl')) {
-      this.updateComplete.then(() => this._manageIframe());
-    }
   }
 
   // ─── Initialization ────────────────────────────────────────────
@@ -408,10 +402,7 @@ export class SidePanelApp extends LitElement {
     }, 10_000);
     await this._loadPageTools();
 
-    const launchUrl = await consumeLaunchUrlForSurface(this._surface);
-    const url = launchUrl ? String(launchUrl) : 'http://127.0.0.1:22338/';
-    this._navigateTo(url);
-    this.updateComplete.then(() => this._manageIframe());
+    await consumeLaunchUrlForSurface(this._surface);
     await this._restoreOpenCodeConfig();
     this._currentTabId = await this._getCurrentTabId();
 
@@ -463,12 +454,21 @@ export class SidePanelApp extends LitElement {
     session: OpenCodeSession,
     descriptor?: ConnectionDescriptor | null,
   ): OpenCodeSessionView {
-    const cfg = this._getOpenCodeConfig();
+    const cfg = {
+      ...this._getOpenCodeConfig(),
+      opencodeBaseUrl: session.opencodeBaseUrl?.trim() || this._opencodeBaseUrl,
+    };
+    const channelId =
+      session.channelId?.trim() ||
+      (typeof descriptor?.meta?.tenantId === 'string' ? descriptor.meta.tenantId : '') ||
+      session.id;
     return {
       sessionId: session.id,
+      channelId,
       sessionDirectory: session.directory?.trim() ?? '',
-      iframeUrl: buildOpenCodeIframeUrl(cfg, session),
-      wsUrl: descriptor?.endpoint ?? buildOpenCodeExtWsUrl(cfg, session.id),
+      opencodeBaseUrl: cfg.opencodeBaseUrl,
+      webUrl: buildOpenCodeWebUrl(cfg, session),
+      wsUrl: descriptor?.endpoint ?? this._getOpenCodeExtWsUrl(session.id),
       connected: descriptor?.status === 'connected',
       bridgeSessionId:
         typeof descriptor?.meta?.bridgeSessionId === 'string'
@@ -482,8 +482,8 @@ export class SidePanelApp extends LitElement {
   }
 
   /**
-   * session 列表是 sidepanel 里唯一的 iframe/runtime 真相源。
-   * 按 id 原地更新，避免切 tab 时 iframe 被整批重建。
+   * session 列表是 sidepanel 里唯一的 OpenCode session/runtime 真相源。
+   * 按 id 原地更新，避免切换 session 时丢掉已有 scoped ws 状态。
    */
   private _upsertOpenCodeSession(session: OpenCodeSessionView): void {
     const index = this._opencodeSessions.findIndex(
@@ -508,6 +508,7 @@ export class SidePanelApp extends LitElement {
   private async _selectOpenCodeSession(sessionId: string): Promise<void> {
     this._opencodeActiveSessionId = sessionId;
     this._opencodeDraftSessionId = sessionId;
+    this._opencodeIframeOpen = true;
     await this._persistOpenCodeConfig();
   }
 
@@ -518,9 +519,109 @@ export class SidePanelApp extends LitElement {
     return this._getOpenCodeSession(this._opencodeActiveSessionId) ?? null;
   }
 
+  private _getOpenCodeScopedDescriptor(sessionId: string): ConnectionDescriptor | null {
+    const session = this._getOpenCodeSession(sessionId);
+    return this._connections.getDescriptor(
+      getScopedBridgeDescriptorId(session?.channelId ?? sessionId),
+    );
+  }
+
+  private _getOpenCodeExtWsUrl(channelId: string): string {
+    const defaultBridge = this._connections.descriptors.find(
+      (descriptor) => descriptor.kind === 'bridge-default-ws' && descriptor.endpoint,
+    );
+    if (defaultBridge?.endpoint) {
+      try {
+        return buildExtWsUrlFromDefaultBridgeWs(defaultBridge.endpoint, channelId);
+      } catch (error) {
+        spLog(
+          `Failed to derive scoped OpenCode WS from default bridge endpoint ${defaultBridge.endpoint}: ${error instanceof Error ? error.message : String(error)}`,
+          'warn',
+        );
+      }
+    }
+
+    return buildOpenCodeExtWsUrl(this._getOpenCodeConfig(), channelId);
+  }
+
+  private async _getBridgeInstallId(): Promise<string> {
+    if (this._bridgeInstallId) {
+      return this._bridgeInstallId;
+    }
+
+    const result = await storageLocalGet<{ [BRIDGE_INSTALL_ID_STORAGE_KEY]?: string }>(
+      BRIDGE_INSTALL_ID_STORAGE_KEY,
+    );
+    const saved = result[BRIDGE_INSTALL_ID_STORAGE_KEY]?.trim();
+    if (saved) {
+      this._bridgeInstallId = saved;
+      return saved;
+    }
+
+    const generated =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `install-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    this._bridgeInstallId = generated;
+    await storageLocalSet({ [BRIDGE_INSTALL_ID_STORAGE_KEY]: generated });
+    return generated;
+  }
+
+  private async _buildBridgeChannelId(sessionId: string): Promise<string> {
+    const installId = await this._getBridgeInstallId();
+    return `${installId}:${sessionId}`;
+  }
+
+  private _getOpenCodeReadiness(): {
+    title: string;
+    detail: string;
+    tone: 'success' | 'warning' | 'neutral';
+  } {
+    const descriptors = this._connections.descriptors;
+    const bridge = descriptors.find((descriptor) => descriptor.kind === 'bridge-default-ws');
+    const opencodeHttp = descriptors.find((descriptor) => descriptor.kind === 'opencode-http');
+    const active = this._getActiveOpenCodeSession();
+    const scoped = active ? this._getOpenCodeScopedDescriptor(active.sessionId) : null;
+
+    if (active && scoped?.status === 'connected') {
+      return {
+        title: 'Ready for page-aware coding',
+        detail: 'OpenCode is connected to this extension; LLMs can call page tools via MCP.',
+        tone: 'success',
+      };
+    }
+
+    if (opencodeHttp?.status === 'unreachable' || opencodeHttp?.status === 'error') {
+      return {
+        title: 'OpenCode endpoint needs attention',
+        detail: opencodeHttp.statusReason ?? 'Check the OpenCode Base URL in Connections panel.',
+        tone: 'warning',
+      };
+    }
+
+    if (
+      bridge?.status === 'closed' ||
+      bridge?.status === 'error' ||
+      bridge?.status === 'unreachable'
+    ) {
+      return {
+        title: 'Bridge control plane is offline',
+        detail: bridge.statusReason ?? '请先在 Connections 面板重连 bridge。',
+        tone: 'warning',
+      };
+    }
+
+    return {
+      title: 'Create or restore an OpenCode session',
+      detail: '填写 sessionId 可复用已有会话，留空则创建带独立 git worktree 的新 session。',
+      tone: 'neutral',
+    };
+  }
+
   private async _disconnectOpenCodeBridgeSession(sessionId: string): Promise<void> {
+    const channelId = this._getOpenCodeSession(sessionId)?.channelId ?? sessionId;
     await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
-      sessionId,
+      sessionId: channelId,
       disconnect: true,
     });
   }
@@ -530,8 +631,8 @@ export class SidePanelApp extends LitElement {
    *
    * 这里不再读旧的 `extensionStatusGet`，统一改成等 registry descriptor。
    */
-  private async _waitForScopedConnection(sessionId: string): Promise<ConnectionDescriptor> {
-    const descriptorId = getScopedBridgeDescriptorId(sessionId);
+  private async _waitForScopedConnection(channelId: string): Promise<ConnectionDescriptor> {
+    const descriptorId = getScopedBridgeDescriptorId(channelId);
     const descriptor = await getConnectionsStore().waitForDescriptor(
       descriptorId,
       (current) =>
@@ -543,7 +644,7 @@ export class SidePanelApp extends LitElement {
 
     if (!descriptor || descriptor.status !== 'connected') {
       throw new Error(
-        descriptor?.statusReason || `Bridge WebSocket for session "${sessionId}" is not connected`,
+        descriptor?.statusReason || `Bridge WebSocket for channel "${channelId}" is not connected`,
       );
     }
     return descriptor;
@@ -552,7 +653,7 @@ export class SidePanelApp extends LitElement {
   private async _createOrReuseOpenCodeSession(forceNewSession = false): Promise<OpenCodeSession> {
     const desiredSessionId = forceNewSession ? '' : this._opencodeDraftSessionId.trim();
     if (!desiredSessionId) {
-      return createOpenCodeSession(this._getOpenCodeConfig());
+      return this._createOpenCodeSessionInIsolatedWorktree();
     }
 
     const sessions = await listOpenCodeSessions(this._getOpenCodeConfig());
@@ -561,27 +662,66 @@ export class SidePanelApp extends LitElement {
       return matched;
     }
 
-    return createOpenCodeSession(this._getOpenCodeConfig());
+    return this._createOpenCodeSessionInIsolatedWorktree();
+  }
+
+  private _getOpenCodeWorktreeSourceDirectory(): string | undefined {
+    const activeDirectory = this._getActiveOpenCodeSession()?.sessionDirectory.trim();
+    if (activeDirectory) {
+      return activeDirectory;
+    }
+
+    const knownDirectory = this._opencodeSessions.find((session) =>
+      Boolean(session.sessionDirectory.trim()),
+    )?.sessionDirectory;
+    return knownDirectory?.trim() || undefined;
+  }
+
+  private async _createOpenCodeSessionInIsolatedWorktree(): Promise<OpenCodeSession> {
+    const cfg = this._getOpenCodeConfig();
+    const sourceDirectory = this._getOpenCodeWorktreeSourceDirectory();
+    this._opencodeMessage = sourceDirectory
+      ? `Creating isolated git worktree from ${sourceDirectory}...`
+      : 'Creating isolated git worktree...';
+    this.requestUpdate();
+
+    const worktree = await createOpenCodeIsolatedWorktree(cfg, sourceDirectory);
+    const sessionCfg = {
+      ...cfg,
+      opencodeBaseUrl: worktree.opencodeBaseUrl?.trim() || cfg.opencodeBaseUrl,
+    };
+    this._opencodeMessage = `Creating OpenCode session in ${worktree.directory}...`;
+    this.requestUpdate();
+    const session = await createOpenCodeSession(sessionCfg);
+    return {
+      ...session,
+      directory: session.directory?.trim() || worktree.directory,
+      opencodeBaseUrl: sessionCfg.opencodeBaseUrl,
+    };
   }
 
   private async _connectOpenCodeSession(session: OpenCodeSession): Promise<OpenCodeSessionView> {
-    const cfg = this._getOpenCodeConfig();
+    const cfg = {
+      ...this._getOpenCodeConfig(),
+      opencodeBaseUrl: session.opencodeBaseUrl?.trim() || this._opencodeBaseUrl,
+    };
     const sessionId = session.id;
+    const channelId = session.channelId?.trim() || (await this._buildBridgeChannelId(sessionId));
 
-    this._opencodeMessage = `Connecting bridge session ${sessionId}...`;
+    this._opencodeMessage = `Connecting bridge channel ${channelId}...`;
     this.requestUpdate();
     await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
-      sessionId,
-      wsUrl: buildOpenCodeExtWsUrl(cfg, sessionId),
+      sessionId: channelId,
+      wsUrl: this._getOpenCodeExtWsUrl(channelId),
     });
 
-    const descriptor = await this._waitForScopedConnection(sessionId);
+    const descriptor = await this._waitForScopedConnection(channelId);
 
     this._opencodeMessage = `Registering MCP for ${sessionId}...`;
     this.requestUpdate();
-    await ensureMcpRegistered(cfg, sessionId);
+    await ensureMcpRegistered(cfg, sessionId, channelId);
 
-    const sessionView = this._buildOpenCodeSessionView(session, descriptor);
+    const sessionView = this._buildOpenCodeSessionView({ ...session, channelId }, descriptor);
     this._upsertOpenCodeSession(sessionView);
     await this._selectOpenCodeSession(sessionId);
     this._opencodeMessage = `Connected ${sessionId}`;
@@ -616,8 +756,36 @@ export class SidePanelApp extends LitElement {
         return;
       }
 
-      const cfg = this._getOpenCodeConfig();
-      const sessions = await listOpenCodeSessions(cfg);
+      const savedSessions = Array.isArray(saved.sessions)
+        ? saved.sessions.filter(
+            (
+              session,
+            ): session is { sessionId: string; directory?: string; opencodeBaseUrl?: string } =>
+              typeof session.sessionId === 'string' && Boolean(session.sessionId.trim()),
+          )
+        : [];
+      const savedSessionById = new Map(
+        savedSessions.map((session) => [session.sessionId.trim(), session] as const),
+      );
+      const lastSavedSession = savedSessionById.get(lastSessionId);
+      const baseCfg = this._getOpenCodeConfig();
+      const sessionListConfigs = Array.from(
+        new Map(
+          [
+            baseCfg,
+            ...savedSessions.map((session) => ({
+              ...baseCfg,
+              opencodeBaseUrl: session.opencodeBaseUrl?.trim() || baseCfg.opencodeBaseUrl,
+            })),
+          ].map((cfg) => [cfg.opencodeBaseUrl, cfg] as const),
+        ).values(),
+      );
+      const settledSessionLists = await Promise.allSettled(
+        sessionListConfigs.map((cfg) => listOpenCodeSessions(cfg)),
+      );
+      const sessions = settledSessionLists.flatMap((result) =>
+        result.status === 'fulfilled' ? result.value : [],
+      );
       await getConnectionsStore().refresh();
       const descriptors = this._connections.descriptors;
       const aliveSessionIds = new Set(sessions.map((session) => session.id));
@@ -650,6 +818,7 @@ export class SidePanelApp extends LitElement {
         this._opencodeSessions = [];
         this._opencodeActiveSessionId = '';
         this._opencodeDraftSessionId = '';
+        this._opencodeIframeOpen = false;
         this._opencodeMessage = 'Last session no longer exists. Cleared saved state.';
         await storageLocalRemove(OPENCODE_CONFIG_STORAGE_KEY);
         return;
@@ -664,12 +833,18 @@ export class SidePanelApp extends LitElement {
       );
       const sessionById = new Map(sessions.map((session) => [session.id, session] as const));
       this._opencodeSessions = aliveScopedDescriptors.map((descriptor) =>
-        this._buildOpenCodeSessionView(
-          sessionById.get(String(descriptor.meta?.tenantId ?? '')) ?? {
-            id: String(descriptor.meta?.tenantId ?? ''),
-          },
-          descriptor,
-        ),
+        (() => {
+          const tenantId = String(descriptor.meta?.tenantId ?? '');
+          const savedSession = savedSessionById.get(tenantId);
+          return this._buildOpenCodeSessionView(
+            sessionById.get(tenantId) ?? {
+              id: tenantId,
+              directory: savedSession?.directory,
+              opencodeBaseUrl: savedSession?.opencodeBaseUrl,
+            },
+            descriptor,
+          );
+        })(),
       );
 
       let restoredDescriptor = aliveScopedDescriptors.find(
@@ -678,14 +853,18 @@ export class SidePanelApp extends LitElement {
       if (!restoredDescriptor) {
         await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
           sessionId: lastSessionId,
-          wsUrl: buildOpenCodeExtWsUrl(cfg, lastSessionId),
+          wsUrl: this._getOpenCodeExtWsUrl(lastSessionId),
         });
         restoredDescriptor = await this._waitForScopedConnection(lastSessionId);
       }
 
       this._upsertOpenCodeSession(
         this._buildOpenCodeSessionView(
-          sessionById.get(lastSessionId) ?? { id: lastSessionId },
+          sessionById.get(lastSessionId) ?? {
+            id: lastSessionId,
+            directory: lastSavedSession?.directory,
+            opencodeBaseUrl: lastSavedSession?.opencodeBaseUrl,
+          },
           restoredDescriptor,
         ),
       );
@@ -701,11 +880,17 @@ export class SidePanelApp extends LitElement {
 
   private async _persistOpenCodeConfig(): Promise<void> {
     const lastSessionId = this._opencodeActiveSessionId.trim();
+    const sessions = this._opencodeSessions.map((session) => ({
+      sessionId: session.sessionId,
+      directory: session.sessionDirectory,
+      opencodeBaseUrl: session.opencodeBaseUrl,
+    }));
     await storageLocalSet({
       [OPENCODE_CONFIG_STORAGE_KEY]: {
         lastSessionId,
         // 兼容旧版本字段，避免用户升级后把已保存配置读丢。
         sessionId: lastSessionId,
+        sessions,
       } satisfies StoredOpenCodeConfig,
     });
   }
@@ -1361,54 +1546,10 @@ export class SidePanelApp extends LitElement {
       this._toolTestStatusClass = reset.toolTestStatusClass;
   }
 
-  // ─── Navigation / Iframe ───────────────────────────────────────
-  private _navigateTo(url: string): void {
-    this._currentUrl = normalizeUrl(url);
-    this._urlBarVisible = true;
-  }
-
-  private _manageIframe(): void {
-    const container =
-      this._iframeContainer ?? this.shadowRoot?.querySelector<HTMLElement>('#iframeContainer');
-    if (!container) {
-      spLog('_manageIframe: #iframeContainer not found in shadow DOM');
-      return;
-    }
-
-    // Clean up previous
-    window.removeEventListener('message', this._boundMessageHandler);
-    this._currentIframe?.remove();
-    this._currentIframe = null;
-
-    // Load extension's built-in loader page — it probes target and shows UI internally
-    const loaderUrl = buildLoaderUrl(this._currentUrl);
-
-    this._currentIframe = document.createElement('iframe');
-    this._currentIframe.src = loaderUrl;
-    this._currentIframe.allow = 'clipboard-read; clipboard-write';
-    this._urlBarVisible = false;
-
-    window.addEventListener('message', this._boundMessageHandler);
-    container.appendChild(this._currentIframe);
-  }
-
-  /** Handler for messages from the loader iframe */
-  private _boundMessageHandler = createBoundMessageHandler();
-
   // ─── Event Handlers ────────────────────────────────────────────
-  private _handleTabClick(
-    tab: 'tools' | 'context' | 'feedback' | 'diagnosis' | 'opencode' | 'connections',
-  ): void {
-    console.log(
-      '[side-panel] _handleTabClick called with:',
-      tab,
-      'current _activeTab:',
-      this._activeTab,
-    );
+  private _handleTabClick(tab: SidePanelTab): void {
     this._activeTab = tab;
-    console.log('[side-panel] _activeTab set to:', this._activeTab, 'about to requestUpdate');
     this.requestUpdate();
-    console.log('[side-panel] requestUpdate done');
     if (tab === 'tools') {
       void this._loadPageTools();
     } else if (tab === 'context') {
@@ -1417,22 +1558,6 @@ export class SidePanelApp extends LitElement {
       void this._loadFeedbackSnapshot();
     } else if (tab === 'connections') {
       void getConnectionsStore().refresh();
-    }
-  }
-
-  private _handleGoClick(): void {
-    const input = this.shadowRoot!.querySelector<HTMLInputElement>('#urlInput');
-    if (input) {
-      this._navigateTo(input.value.trim());
-      this.updateComplete.then(() => this._manageIframe());
-    }
-  }
-
-  private _handleUrlKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      const input = event.target as HTMLInputElement;
-      this._navigateTo(input.value.trim());
-      this.updateComplete.then(() => this._manageIframe());
     }
   }
 
@@ -1505,31 +1630,24 @@ export class SidePanelApp extends LitElement {
       return;
     }
 
-    const shouldDeleteSession = this._opencodeDeleteSessionOnDisconnect && sessionId !== '';
-
     this._opencodeConnecting = true;
-    this._opencodeMessage = shouldDeleteSession ? 'Deleting session...' : 'Disconnecting...';
+    this._opencodeMessage = 'Disconnecting...';
     this.requestUpdate();
 
     try {
       await this._disconnectOpenCodeBridgeSession(normalizedSessionId);
       await getConnectionsStore().refresh();
 
-      if (shouldDeleteSession) {
-        await deleteOpenCodeSession(this._getOpenCodeConfig(), normalizedSessionId);
-      }
-
       this._removeOpenCodeSession(normalizedSessionId);
       if (this._opencodeActiveSessionId === normalizedSessionId) {
         const nextActiveSession = this._opencodeSessions[0];
         this._opencodeActiveSessionId = nextActiveSession?.sessionId ?? '';
+        this._opencodeIframeOpen = false;
       }
-      this._opencodeDraftSessionId = shouldDeleteSession ? '' : normalizedSessionId;
+      this._opencodeDraftSessionId = normalizedSessionId;
       await this._persistOpenCodeConfig();
 
-      this._opencodeMessage = shouldDeleteSession
-        ? `Disconnected and deleted ${normalizedSessionId}`
-        : `Disconnected ${normalizedSessionId}`;
+      this._opencodeMessage = `Disconnected ${normalizedSessionId}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this._opencodeMessage = message;
@@ -1540,11 +1658,63 @@ export class SidePanelApp extends LitElement {
     }
   }
 
-  private _handleOpenTab(): void {
-    const input = this.shadowRoot!.querySelector<HTMLInputElement>('#urlInput');
-    const url = input?.value.trim();
-    if (url) {
-      void tabsCreate({ url });
+  private async _handleCopyOpenCodeSessionId(sessionId: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      this._opencodeMessage = `Copied ${shortenSessionId(sessionId)}`;
+    } catch (error) {
+      this._opencodeMessage = error instanceof Error ? error.message : String(error);
+    }
+    this.requestUpdate();
+  }
+
+  private _handleOpenOpenCodeIframe(sessionId = this._opencodeActiveSessionId): void {
+    if (!sessionId) {
+      return;
+    }
+    this._opencodeActiveSessionId = sessionId;
+    this._opencodeDraftSessionId = sessionId;
+    this._opencodeIframeOpen = true;
+  }
+
+  private _handleCloseOpenCodeIframe(): void {
+    this._opencodeIframeOpen = false;
+  }
+
+  private _handleOpenOpenCodeSession(session: OpenCodeSessionView): void {
+    if (session.webUrl) {
+      void tabsCreate({ url: session.webUrl });
+    }
+  }
+
+  private async _handleDeleteOpenCodeSession(sessionId: string): Promise<void> {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId || this._opencodeConnecting) {
+      return;
+    }
+
+    this._opencodeConnecting = true;
+    this._opencodeMessage = `Deleting ${shortenSessionId(normalizedSessionId)}...`;
+    this.requestUpdate();
+
+    try {
+      await this._disconnectOpenCodeBridgeSession(normalizedSessionId).catch(() => undefined);
+      await deleteOpenCodeSession(this._getOpenCodeConfig(), normalizedSessionId);
+      await getConnectionsStore().refresh();
+      this._removeOpenCodeSession(normalizedSessionId);
+      if (this._opencodeActiveSessionId === normalizedSessionId) {
+        const nextActiveSession = this._opencodeSessions[0];
+        this._opencodeActiveSessionId = nextActiveSession?.sessionId ?? '';
+        this._opencodeIframeOpen = false;
+      }
+      this._opencodeDraftSessionId = '';
+      await this._persistOpenCodeConfig();
+      this._opencodeMessage = `Deleted ${shortenSessionId(normalizedSessionId)}`;
+    } catch (error) {
+      this._opencodeMessage = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._opencodeConnecting = false;
+      this.requestUpdate();
     }
   }
 
@@ -1660,132 +1830,460 @@ export class SidePanelApp extends LitElement {
     `;
   }
 
+  private _getConnectionAttentionCount(): number {
+    return this._connections.descriptors.filter(
+      (descriptor) => descriptor.status === 'error' || descriptor.status === 'unreachable',
+    ).length;
+  }
+
+  private _renderJourneyCard(input: {
+    eyebrow: string;
+    title: string;
+    body: string;
+    cta: string;
+    tab: SidePanelTab;
+    active?: boolean;
+    tone?: 'primary' | 'warning' | 'neutral';
+    meta?: string;
+  }): TemplateResult {
+    const toneClass =
+      input.tone === 'primary'
+        ? 'border-primary/40 bg-primary/10'
+        : input.tone === 'warning'
+          ? 'border-warning/50 bg-warning/10'
+          : 'border-base-300 bg-base-100/80';
+    return html`
+      <button
+        type="button"
+        class="min-w-[13.5rem] flex-1 rounded-2xl border px-3 py-2.5 text-left shadow-sm transition-colors active:scale-[0.98] ${toneClass} ${input.active
+          ? 'ring-1 ring-primary/50'
+          : 'hover:border-primary/50'}"
+        @click=${() => this._handleTabClick(input.tab)}
+      >
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">
+            ${input.eyebrow}
+          </span>
+          ${input.meta
+            ? html`<span class="badge badge-ghost badge-xs font-mono">${input.meta}</span>`
+            : nothing}
+        </div>
+        <div class="mt-1 text-sm font-bold leading-snug">${input.title}</div>
+        <p class="mt-1 text-[11px] leading-relaxed opacity-60">${input.body}</p>
+        <div class="mt-2 text-[11px] font-semibold text-primary">${input.cta} →</div>
+      </button>
+    `;
+  }
+
+  private _renderProductJourney(): TemplateResult {
+    const readiness = this._getOpenCodeReadiness();
+    const attentionCount = this._getConnectionAttentionCount();
+    const enabledTools = this._toolTreeResponse?.enabledTools ?? 0;
+    const totalTools = this._toolTreeResponse?.totalTools ?? 0;
+    const openFeedbackCount = this._feedbackSnapshot?.annotations?.length ?? 0;
+    const settingsTone = attentionCount > 0 ? 'warning' : 'neutral';
+
+    return html`
+      <section
+        class="border-b border-base-300 bg-base-200/50 px-3 py-2 shrink-0"
+        aria-label="Real user story shortcuts"
+      >
+        <div class="mb-2 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50">
+              Product paths
+            </div>
+            <div class="text-xs opacity-60 truncate">
+              Use the real connection chain: configure endpoints first, connect OpenCode, verify
+              page capabilities, then collect feedback.
+            </div>
+          </div>
+          <button
+            class="btn btn-xs btn-ghost shrink-0"
+            @click=${() => this._handleTabClick('connections')}
+            title="Open endpoint config"
+          >
+            Endpoint config
+          </button>
+        </div>
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          ${this._renderJourneyCard({
+            eyebrow: '01 · Setup',
+            title: attentionCount > 0 ? '修复外部连接' : '检查 endpoint config',
+            body: '统一维护 OpenCode Base URL、Bridge Base URL、health check 与诊断报告。',
+            cta: 'Open config',
+            tab: 'connections',
+            active: this._activeTab === 'connections',
+            tone: settingsTone,
+            meta: attentionCount > 0 ? `${attentionCount} issue` : 'ready',
+          })}
+          ${this._renderJourneyCard({
+            eyebrow: '02 · AI workspace',
+            title: readiness.title,
+            body: 'Create or restore multi-session OpenCode; new sessions use an independent git worktree and register scoped bridge MCP.',
+            cta: 'Manage OpenCode',
+            tab: 'opencode',
+            active: this._activeTab === 'opencode',
+            tone:
+              readiness.tone === 'warning'
+                ? 'warning'
+                : readiness.tone === 'success'
+                  ? 'primary'
+                  : 'neutral',
+            meta: `${this._opencodeSessions.length} session`,
+          })}
+          ${this._renderJourneyCard({
+            eyebrow: '03 · Page capability',
+            title: '验证当前页面工具',
+            body: 'Debug callable tools in Tools tab; view resources, skills, and manifest diffs in Context tab.',
+            cta: 'Inspect tools',
+            tab: 'tools',
+            active: this._activeTab === 'tools' || this._activeTab === 'context',
+            meta: totalTools > 0 ? `${enabledTools}/${totalTools}` : 'loading',
+          })}
+          ${this._renderJourneyCard({
+            eyebrow: '04 · Feedback loop',
+            title: '把问题转成可处理反馈',
+            body: 'Collect annotations, claim/reply/resolve, and push browser issues back into the collaboration pipeline.',
+            cta: 'Review feedback',
+            tab: 'feedback',
+            active: this._activeTab === 'feedback',
+            meta: `${openFeedbackCount}`,
+          })}
+        </div>
+      </section>
+    `;
+  }
+
+  private _renderOpenCodeIframeFullscreen(
+    activeSession: OpenCodeSessionView,
+    activeScopedDescriptor: ConnectionDescriptor | null,
+  ): TemplateResult {
+    return html`
+      <section
+        class="relative flex h-full min-h-0 flex-1 overflow-hidden bg-neutral text-neutral-content"
+      >
+        <iframe
+          class="block h-full min-h-0 w-full flex-1 border-0 bg-base-100"
+          data-session-id=${activeSession.sessionId}
+          title=${`OpenCode session ${activeSession.sessionId}`}
+          src=${activeSession.webUrl}
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals allow-pointer-lock allow-presentation"
+          referrerpolicy="no-referrer"
+        ></iframe>
+
+        <div
+          class="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-3"
+        >
+          <div
+            class="pointer-events-auto min-w-0 max-w-[calc(100%-4rem)] rounded-2xl bg-neutral/80 px-3 py-2 text-neutral-content shadow-2xl backdrop-blur-md"
+          >
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">
+              OpenCode sidebar iframe
+            </p>
+            <div class="mt-0.5 flex items-center gap-2 min-w-0">
+              <span
+                class="font-mono text-xs font-semibold truncate"
+                title=${activeSession.sessionId}
+              >
+                ${shortenSessionId(activeSession.sessionId)}
+              </span>
+              ${activeScopedDescriptor
+                ? html`<connection-status-badge
+                    connection-id=${activeScopedDescriptor.id}
+                  ></connection-status-badge>`
+                : html`<span class="badge badge-outline badge-xs">pending</span>`}
+            </div>
+          </div>
+
+          <button
+            class="btn btn-sm btn-circle pointer-events-auto border-base-100/20 bg-neutral/80 text-neutral-content shadow-2xl backdrop-blur-md transition-transform duration-150 active:scale-[0.96] hover:bg-neutral"
+            aria-label="Close OpenCode iframe"
+            title="Close OpenCode iframe"
+            @click=${() => this._handleCloseOpenCodeIframe()}
+          >
+            <svg
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </section>
+    `;
+  }
+
   private _renderOpencodeTab(): TemplateResult {
     const activeSession = this._getActiveOpenCodeSession();
+    const readiness = this._getOpenCodeReadiness();
+    const activeScopedDescriptor = activeSession
+      ? this._getOpenCodeScopedDescriptor(activeSession.sessionId)
+      : null;
 
     return html`
       <div
-        class="tab-content ${classMap({
-          active: this._activeTab === 'opencode',
-        })} flex flex-col flex-1 min-h-0"
+        class="tab-content ${this._activeTab === 'opencode'
+          ? 'active'
+          : ''} flex flex-col flex-1 min-h-0"
       >
-        <div class="flex flex-col gap-2 p-3 border-b border-base-300 bg-base-100 shrink-0">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-xs opacity-60">
-              Endpoint 与连接状态已统一收口到 Connections 面板。
+        <div class="flex flex-col gap-3 p-3 bg-base-200/40 flex-1 min-h-0 overflow-y-auto">
+          <section
+            class="rounded-2xl border p-4 shadow-sm bg-base-100 ${readiness.tone === 'success'
+              ? 'border-success/40'
+              : readiness.tone === 'warning'
+                ? 'border-warning/50'
+                : 'border-base-300'}"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-xs font-bold uppercase tracking-[0.18em] opacity-50">
+                  OpenCode workspace
+                </p>
+                <h2 class="text-lg font-bold leading-tight">${readiness.title}</h2>
+                <p class="text-xs opacity-60 mt-1 leading-relaxed">${readiness.detail}</p>
+              </div>
+              ${activeScopedDescriptor
+                ? html`<connection-status-badge
+                    connection-id=${activeScopedDescriptor.id}
+                  ></connection-status-badge>`
+                : html`<span class="badge badge-outline badge-sm">No session</span>`}
+            </div>
+            <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+              <div class="rounded-xl bg-base-200/70 px-3 py-2 min-w-0">
+                <div class="opacity-50">Sessions</div>
+                <div class="font-bold text-base">${this._opencodeSessions.length}</div>
+              </div>
+              <div class="rounded-xl bg-base-200/70 px-3 py-2 min-w-0">
+                <div class="opacity-50">Active</div>
+                <div
+                  class="font-mono font-semibold truncate"
+                  title=${activeSession?.sessionId ?? ''}
+                >
+                  ${activeSession ? shortenSessionId(activeSession.sessionId) : '—'}
+                </div>
+              </div>
+              <div class="rounded-xl bg-base-200/70 px-3 py-2 min-w-0">
+                <div class="opacity-50">Bridge</div>
+                <div class="truncate">
+                  ${activeScopedDescriptor
+                    ? html`<connection-status-badge
+                        connection-id=${activeScopedDescriptor.id}
+                      ></connection-status-badge>`
+                    : html`<span class="opacity-60">waiting</span>`}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-xs opacity-60 leading-relaxed">
+              Endpoint config, health check, and all connection status are managed centrally in
+              Endpoint config; OpenCode panel no longer provides configuration editing.
             </span>
             <button
               class="btn btn-xs btn-ghost"
               @click=${() => this._handleTabClick('connections')}
-              title="Open Connections panel"
+              title="Open endpoint config panel"
             >
-              Open Connections
+              Open endpoint config
             </button>
           </div>
-          <label class="form-control flex flex-col gap-1">
-            <span class="text-xs font-semibold opacity-70">Session ID (optional)</span>
-            <input
-              type="text"
-              class="input input-sm input-bordered font-mono"
-              .value=${this._opencodeDraftSessionId}
-              @input=${(event: Event) => {
-                this._opencodeDraftSessionId = (event.target as HTMLInputElement).value;
-              }}
-              placeholder="leave empty to create a new session"
-            />
-          </label>
-          <label class="label cursor-pointer justify-start gap-2 p-0">
-            <input
-              type="checkbox"
-              class="checkbox checkbox-xs"
-              .checked=${this._opencodeDeleteSessionOnDisconnect}
-              @change=${(event: Event) => {
-                this._opencodeDeleteSessionOnDisconnect = (
-                  event.target as HTMLInputElement
-                ).checked;
-              }}
-            />
-            <span class="label-text text-xs">Delete session on disconnect</span>
-          </label>
-          <div class="flex items-center gap-2">
-            <button
-              class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
-              @click=${() => void this._handleOpencodeConnect()}
-              ?disabled=${this._opencodeConnecting}
-            >
-              Connect
-            </button>
-            <button
-              class="btn btn-sm btn-secondary"
-              @click=${() => void this._handleOpencodeConnect(true)}
-              ?disabled=${this._opencodeConnecting}
-            >
-              New Session
-            </button>
-            <button
-              class="btn btn-sm btn-outline"
-              @click=${() => void this._handleOpencodeDisconnect()}
-              ?disabled=${this._opencodeConnecting || !activeSession}
-            >
-              Disconnect
-            </button>
-            ${this._opencodeMessage
-              ? html`<span class="text-xs opacity-60">${this._opencodeMessage}</span>`
-              : nothing}
+
+          <div
+            class="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm flex flex-col gap-2"
+          >
+            <div class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
+              <label class="form-control flex flex-col gap-1">
+                <span class="text-xs font-semibold opacity-70">Session ID (optional)</span>
+                <input
+                  type="text"
+                  class="input input-sm input-bordered font-mono"
+                  .value=${this._opencodeDraftSessionId}
+                  @input=${(event: Event) => {
+                    this._opencodeDraftSessionId = (event.target as HTMLInputElement).value;
+                  }}
+                  placeholder="leave empty to create a new session"
+                />
+              </label>
+              <div class="flex items-center gap-2">
+                <button
+                  class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
+                  @click=${() => void this._handleOpencodeConnect()}
+                  ?disabled=${this._opencodeConnecting}
+                >
+                  Connect
+                </button>
+                <button
+                  class="btn btn-sm btn-secondary"
+                  @click=${() => void this._handleOpencodeConnect(true)}
+                  ?disabled=${this._opencodeConnecting}
+                >
+                  New Session
+                </button>
+                <button
+                  class="btn btn-sm btn-outline"
+                  @click=${() => void this._handleOpencodeDisconnect()}
+                  ?disabled=${this._opencodeConnecting || !activeSession}
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-xs opacity-60 leading-relaxed">
+                New Session creates an independent git worktree first, then creates an OpenCode
+                session; Disconnect only tears down the scoped bridge, deleting a session requires
+                the Delete action on the session card.
+              </span>
+              ${this._opencodeMessage
+                ? html`<span class="text-xs opacity-60" role="status"
+                    >${this._opencodeMessage}</span
+                  >`
+                : nothing}
+            </div>
           </div>
+
           ${this._opencodeSessions.length > 0
             ? html`
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="grid grid-cols-1 gap-2 xl:grid-cols-2">
                   ${repeat(
                     this._opencodeSessions,
                     (session) => session.sessionId,
-                    (session) => html`
-                      <button
-                        class=${classMap({
-                          'btn btn-xs': true,
-                          'btn-primary': session.sessionId === this._opencodeActiveSessionId,
-                          'btn-outline': session.sessionId !== this._opencodeActiveSessionId,
-                        })}
-                        title=${session.wsUrl}
-                        @click=${() => void this._selectOpenCodeSession(session.sessionId)}
-                      >
-                        ${session.sessionId}
-                      </button>
-                    `,
+                    (session) => {
+                      const descriptor = this._getOpenCodeScopedDescriptor(session.sessionId);
+                      const active = session.sessionId === this._opencodeActiveSessionId;
+                      return html`
+                        <div
+                          class="rounded-2xl border bg-base-100 p-3 shadow-sm transition-colors ${active
+                            ? 'border-primary ring-1 ring-primary/40 xl:col-span-2'
+                            : 'border-base-300 hover:border-primary/50'}"
+                        >
+                          <div class="flex items-center justify-between gap-2">
+                            <button
+                              class="font-mono text-xs font-semibold truncate text-left hover:underline"
+                              title=${session.wsUrl}
+                              @click=${() => void this._selectOpenCodeSession(session.sessionId)}
+                            >
+                              ${shortenSessionId(session.sessionId)}
+                            </button>
+                            <div class="flex items-center gap-2">
+                              ${active
+                                ? html`<span class="badge badge-primary badge-xs">Active</span>`
+                                : nothing}
+                              ${descriptor
+                                ? html`<connection-status-badge
+                                    connection-id=${descriptor.id}
+                                  ></connection-status-badge>`
+                                : html`<span class="badge badge-outline badge-xs">pending</span>`}
+                            </div>
+                          </div>
+                          <div class="text-[11px] opacity-50 truncate mt-1">
+                            ${session.sessionDirectory || 'legacy route'}
+                          </div>
+                          ${active
+                            ? html`
+                                <div
+                                  class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-xl bg-base-200/70 px-3 py-2 text-[11px]"
+                                >
+                                  <span class="opacity-50">OpenCode URL</span>
+                                  <span class="font-mono truncate" title=${session.webUrl}
+                                    >${session.webUrl}</span
+                                  >
+                                  <span class="opacity-50">Bridge WS</span>
+                                  <span class="font-mono truncate" title=${session.wsUrl}
+                                    >${session.wsUrl}</span
+                                  >
+                                  <span class="opacity-50">Worktree</span>
+                                  <span class="font-mono truncate" title=${session.sessionDirectory}
+                                    >${session.sessionDirectory || 'legacy route'}</span
+                                  >
+                                  <span class="opacity-50">MCP</span>
+                                  <span class="font-mono truncate"
+                                    >page-context-${session.sessionId}</span
+                                  >
+                                </div>
+                                <p class="mt-2 text-[11px] leading-relaxed opacity-60">
+                                  Active 只是当前选中的 session；新建 session 默认拥有独立 git
+                                  worktree。点击 Sidebar 会全屏打开 iframe，关闭后连接仍保持。
+                                </p>
+                              `
+                            : nothing}
+                          <div class="mt-2 flex flex-wrap items-center gap-1">
+                            <button
+                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              title="Copy session id"
+                              @click=${() =>
+                                void this._handleCopyOpenCodeSessionId(session.sessionId)}
+                            >
+                              Copy
+                            </button>
+                            <button
+                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              title="Open this OpenCode session fullscreen in the sidebar"
+                              @click=${() => this._handleOpenOpenCodeIframe(session.sessionId)}
+                            >
+                              Open in sidebar
+                            </button>
+                            <button
+                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              title="Open this OpenCode session in a browser tab"
+                              @click=${() => this._handleOpenOpenCodeSession(session)}
+                            >
+                              Open
+                            </button>
+                            <button
+                              class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                              title="Disconnect this session bridge link"
+                              ?disabled=${this._opencodeConnecting}
+                              @click=${() => void this._handleOpencodeDisconnect(session.sessionId)}
+                            >
+                              Disconnect
+                            </button>
+                            <button
+                              class="btn btn-[10px] btn-error btn-outline min-h-0 h-6 px-2"
+                              title="Delete this OpenCode session"
+                              ?disabled=${this._opencodeConnecting}
+                              @click=${() =>
+                                void this._handleDeleteOpenCodeSession(session.sessionId)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      `;
+                    },
                   )}
                 </div>
               `
-            : nothing}
-        </div>
-
-        <div class="flex-1 min-h-0 bg-base-100">
-          ${this._opencodeSessions.length > 0 && activeSession
-            ? html`
-                ${repeat(
-                  this._opencodeSessions,
-                  (session) => session.sessionId,
-                  (session) => html`
-                    <div
-                      class=${classMap({
-                        'opencode-session-frame': true,
-                        active: session.sessionId === this._opencodeActiveSessionId,
-                      })}
-                    >
-                      <iframe
-                        class="w-full h-full border-0"
-                        data-session-id=${session.sessionId}
-                        sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
-                        src=${session.iframeUrl}
-                      ></iframe>
-                    </div>
-                  `,
-                )}
-              `
             : html`
-                <div
-                  class="flex h-full items-center justify-center px-6 text-center text-sm opacity-60"
-                >
-                  Connect to OpenCode to render the embedded session UI.
+                <div class="flex flex-1 items-center justify-center px-6 py-8 text-center">
+                  <div
+                    class="max-w-sm rounded-3xl border border-dashed border-base-300 bg-base-100/80 p-6 shadow-sm"
+                  >
+                    <div class="text-3xl mb-2">⌘</div>
+                    <div class="text-sm font-semibold">No OpenCode sessions yet</div>
+                    <p class="text-xs opacity-60 mt-2 leading-relaxed">
+                      点击 New Session 会创建独立 git worktree、创建 OpenCode session、建立 scoped
+                      bridge WS、注册 MCP，随后把 OpenCode 直接嵌入当前 sidebar。
+                    </p>
+                    <button
+                      class="btn btn-sm btn-primary mt-4 ${this._opencodeConnecting
+                        ? 'loading'
+                        : ''}"
+                      @click=${() => void this._handleOpencodeConnect(true)}
+                      ?disabled=${this._opencodeConnecting}
+                    >
+                      Start a session
+                    </button>
+                  </div>
                 </div>
               `}
         </div>
@@ -1813,14 +2311,20 @@ export class SidePanelApp extends LitElement {
   }
 
   private _renderContent(): TemplateResult {
-    spLog(`render() called, _activeTab = ${this._activeTab}`);
     const buildTimeLabel = formatBuildTimeLabel(
       this.getAttribute('data-build-time')?.trim() || 'dev',
     );
-    const buildTimeText = `构建时间：${buildTimeLabel}`;
+    const buildTimeText = `Build time: ${buildTimeLabel}`;
     const toolsCount = this._toolTreeResponse
       ? `(${this._toolTreeResponse.enabledTools}/${this._toolTreeResponse.totalTools} enabled) · ${buildTimeText}`
       : buildTimeText;
+    const activeOpenCodeSession = this._getActiveOpenCodeSession();
+    if (this._opencodeIframeOpen && activeOpenCodeSession) {
+      return this._renderOpenCodeIframeFullscreen(
+        activeOpenCodeSession,
+        this._getOpenCodeScopedDescriptor(activeOpenCodeSession.sessionId),
+      );
+    }
 
     return html`
       <!-- Header: status-dot (clickable refresh) / title / icon-nav (right) -->
@@ -1859,7 +2363,7 @@ export class SidePanelApp extends LitElement {
         <div role="tablist" class="tabs tabs-boxed ml-auto bg-transparent border-none gap-0.5">
           <button
             role="tab"
-            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'tools' })}"
+            class="tab tab-xs gap-1 px-2 ${this._activeTab === 'tools' ? 'tab-active' : ''}"
             @click=${() => this._handleTabClick('tools')}
             title="Tools"
           >
@@ -1876,10 +2380,11 @@ export class SidePanelApp extends LitElement {
                 d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
               />
             </svg>
+            <span class="hidden xl:inline">Tools</span>
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'context' })}"
+            class="tab tab-xs gap-1 px-2 ${this._activeTab === 'context' ? 'tab-active' : ''}"
             @click=${() => this._handleTabClick('context')}
             title="Context"
           >
@@ -1897,10 +2402,11 @@ export class SidePanelApp extends LitElement {
               <line x1="16" y1="13" x2="8" y2="13" />
               <line x1="16" y1="17" x2="8" y2="17" />
             </svg>
+            <span class="hidden xl:inline">Context</span>
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'feedback' })}"
+            class="tab tab-xs gap-1 px-2 ${this._activeTab === 'feedback' ? 'tab-active' : ''}"
             @click=${() => this._handleTabClick('feedback')}
             title="Feedback"
           >
@@ -1915,32 +2421,13 @@ export class SidePanelApp extends LitElement {
             >
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
+            <span class="hidden xl:inline">Feedback</span>
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'diagnosis' })}"
-            @click=${() => this._handleTabClick('diagnosis')}
-            title="Diagnosis"
-          >
-            <svg
-              class="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-          </button>
-          <button
-            role="tab"
-            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'connections' })}"
+            class="tab tab-xs gap-1 px-2 ${this._activeTab === 'connections' ? 'tab-active' : ''}"
             @click=${() => this._handleTabClick('connections')}
-            title="Connections"
+            title="Endpoint config"
           >
             <svg
               class="w-3.5 h-3.5"
@@ -1956,10 +2443,11 @@ export class SidePanelApp extends LitElement {
               <line x1="8" y1="12" x2="16" y2="12" />
               <line x1="12" y1="9" x2="12" y2="15" />
             </svg>
+            <span class="hidden xl:inline">Config</span>
           </button>
           <button
             role="tab"
-            class="tab tab-xs px-2 ${classMap({ 'tab-active': this._activeTab === 'opencode' })}"
+            class="tab tab-xs gap-1 px-2 ${this._activeTab === 'opencode' ? 'tab-active' : ''}"
             @click=${() => this._handleTabClick('opencode')}
             title="OpenCode"
           >
@@ -1975,10 +2463,12 @@ export class SidePanelApp extends LitElement {
               <path d="M16 18l6-6-6-6" />
               <path d="M8 6l-6 6 6 6" />
             </svg>
+            <span class="hidden xl:inline">OpenCode</span>
           </button>
         </div>
       </div>
 
+      ${this._renderProductJourney()}
       ${renderToolsTab({
         active: this._activeTab === 'tools',
         toolsCount,
@@ -2058,33 +2548,6 @@ export class SidePanelApp extends LitElement {
             onDismiss: (annotationId) => void this._dismissFeedbackAnnotation(annotationId),
           })
         : html`<div class="tab-content flex flex-col flex-1 min-h-0"></div>`}
-
-      <!-- Diagnosis Tab -->
-      <div
-        class="tab-content ${classMap({
-          active: this._activeTab === 'diagnosis',
-        })} flex flex-col flex-1 min-h-0"
-      >
-        ${when(
-          this._urlBarVisible,
-          () => html`
-            <div
-              class="flex items-center gap-1.5 px-3 py-1.5 bg-base-100 border-b border-base-300 shrink-0"
-            >
-              <input
-                type="text"
-                id="urlInput"
-                .value=${this._currentUrl}
-                @keydown=${this._handleUrlKeydown}
-                placeholder="Enter URL to embed..."
-                class="input input-sm input-bordered flex-1 font-mono"
-              />
-              <button class="btn btn-sm btn-primary" @click=${this._handleGoClick}>Go</button>
-            </div>
-          `,
-        )}
-        <div class="iframe-container flex-1 relative bg-base-100" id="iframeContainer"></div>
-      </div>
 
       <connections-panel
         ?hidden=${this._activeTab !== 'connections'}

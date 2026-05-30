@@ -14,7 +14,7 @@ describe('sidepanel-opencode', () => {
     opencodeBaseUrl: 'http://localhost:4096/',
     bridgeBaseUrl: 'http://localhost:22334/',
   };
-  const projectDirectory = '/Users/bytedance/workspace/sides/browser-debug-extension';
+  const projectDirectory = '/home/user/project';
   const projectSegment =
     'L1VzZXJzL2J5dGVkYW5jZS93b3Jrc3BhY2Uvc2lkZXMvYnJvd3Nlci1kZWJ1Zy1leHRlbnNpb24';
 

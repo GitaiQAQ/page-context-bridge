@@ -25,19 +25,14 @@
       <div class="text-sm" id="statusText">Disconnected</div>
     </div>
 
-    <!-- WebSocket URL -->
-    <div class="mb-2.5">
-      <label
-        class="label text-[10px] font-bold uppercase tracking-wide opacity-50 mb-0.5"
-        for="wsUrlInput"
-        >WebSocket URL</label
-      >
-      <input
-        type="text"
-        id="wsUrlInput"
-        placeholder="ws://127.0.0.1:22335/default"
-        class="input input-sm input-bordered w-full font-mono"
-      />
+    <div class="mb-2.5 rounded-xl border border-base-300 bg-base-200/50 p-3">
+      <div class="text-[10px] font-bold uppercase tracking-wide opacity-50 mb-1">
+        Endpoint config
+      </div>
+      <p class="leading-relaxed opacity-70">
+        OpenCode Base, Bridge MCP Base, and Bridge Default WS are all managed centrally in the Side
+        Panel's Endpoint config.
+      </p>
     </div>
 
     <!-- Pending Tool Calls -->
@@ -50,12 +45,11 @@
 
     <!-- Actions -->
     <div class="flex gap-2">
-      <button class="btn btn-sm btn-primary flex-1" id="saveBtn">Save &amp; Reconnect</button>
+      <button class="btn btn-sm btn-primary flex-1" id="openSidePanelBtn">Endpoint config</button>
       <button class="btn btn-sm btn-ghost flex-1" id="reconnectBtn">Reconnect</button>
     </div>
     <div class="flex gap-2 mt-2">
       <button class="btn btn-sm btn-ghost flex-1" id="openExampleBtn">Context Test Page</button>
-      <button class="btn btn-sm btn-ghost flex-1" id="openSidePanelBtn">Side Panel</button>
     </div>
 
     <!-- Toast -->
