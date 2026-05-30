@@ -141,13 +141,13 @@ describe('connections-panel', () => {
     await element.updateComplete;
 
     const text = element.textContent ?? '';
-    expect(text).toContain('Connection Cockpit');
+    expect(text).toContain('Connection readiness');
+    expect(text).toContain('Needs attention');
     expect(text).toContain('Endpoint config');
-    expect(text).toContain('single source of truth for configuration');
+    expect(text).toContain('The only place to edit OpenCode HTTP');
     expect(text).toContain('OpenCode Base URL');
     expect(text).toContain('Bridge Base URL');
     expect(text).toContain('Bridge Default WS URL');
-    expect(text).toContain('single source of truth');
     expect(text).toContain('OpenCode control plane');
     expect(text).toContain('Session MCP transport');
     expect(text).toContain('Browser bridge control link');

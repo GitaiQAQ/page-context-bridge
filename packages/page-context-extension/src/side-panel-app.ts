@@ -2066,13 +2066,24 @@ export class SidePanelApp extends LitElement {
               </div>
             </div>
             <div class="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
-                @click=${() => void this._handleOpencodeConnect(!activeSession)}
-                ?disabled=${this._opencodeConnecting}
-              >
-                ${activeSession ? 'Connect session' : 'Start session'}
-              </button>
+              ${activeSession
+                ? html`
+                    <button
+                      class="btn btn-sm btn-primary"
+                      @click=${() => this._handleOpenOpenCodeIframe(activeSession.sessionId)}
+                    >
+                      Open sidebar
+                    </button>
+                  `
+                : html`
+                    <button
+                      class="btn btn-sm btn-primary ${this._opencodeConnecting ? 'loading' : ''}"
+                      @click=${() => void this._handleOpencodeConnect(true)}
+                      ?disabled=${this._opencodeConnecting}
+                    >
+                      Start session
+                    </button>
+                  `}
               <button
                 class="btn btn-sm btn-ghost"
                 @click=${() => void this._handleOpencodeConnect(true)}

@@ -503,23 +503,35 @@ export class ConnectionsPanel extends LitElement {
     const scopedSessionCount = descriptors.filter(
       (descriptor) => descriptor.kind === 'opencode-bridge-ws',
     ).length;
+    const configured = Boolean(
+      this.endpoints.opencodeBaseUrl && this.endpoints.bridgeBaseUrl && this.endpoints.bridgeWsUrl,
+    );
+    const readinessTitle =
+      attentionCount > 0
+        ? 'Needs attention'
+        : configured
+          ? 'Ready to connect'
+          : 'Configuration incomplete';
+    const readinessBody =
+      attentionCount > 0
+        ? 'Run diagnosis or open the affected endpoint card to see the next action.'
+        : configured
+          ? 'Endpoints are configured. Use OpenCode to start or resume a session.'
+          : 'Add the OpenCode HTTP, Bridge MCP, and Bridge WS endpoints before starting a session.';
 
     return html`
       <div class="tab-content active flex flex-col flex-1 min-h-0">
         <div class="border-b border-base-300 bg-base-200/40 p-3 shrink-0 flex flex-col gap-3">
           <section
-            class="rounded-2xl border border-base-300 bg-gradient-to-br from-base-100 to-base-200/80 p-4 shadow-sm"
+            class="rounded-3xl border border-base-300 bg-gradient-to-br from-base-100 to-base-200/80 p-4 shadow-sm"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <p class="text-xs font-bold uppercase tracking-[0.18em] opacity-50">
-                  Connection cockpit
+                  Connection readiness
                 </p>
-                <h2 class="text-lg font-bold leading-tight">Connection Cockpit</h2>
-                <p class="text-xs opacity-60 mt-1 leading-relaxed">
-                  Configure OpenCode and bridge here, and use unified status to check whether page
-                  capabilities are actually connected to AI.
-                </p>
+                <h2 class="text-lg font-bold leading-tight">${readinessTitle}</h2>
+                <p class="text-xs opacity-60 mt-1 leading-relaxed">${readinessBody}</p>
               </div>
               <div class="stats stats-vertical shadow bg-base-100 border border-base-300 shrink-0">
                 <div class="stat py-2 px-3">
@@ -540,23 +552,19 @@ export class ConnectionsPanel extends LitElement {
               ${this.renderJourneyStep({
                 index: 1,
                 title: 'Endpoint config',
-                body: 'Maintain OpenCode Base, Bridge MCP Base, and Bridge Default WS here; this is the single source of truth for configuration.',
-                complete: Boolean(
-                  this.endpoints.opencodeBaseUrl &&
-                  this.endpoints.bridgeBaseUrl &&
-                  this.endpoints.bridgeWsUrl,
-                ),
+                body: 'The only place to edit OpenCode HTTP, Bridge MCP, and Bridge WS endpoints.',
+                complete: configured,
               })}
               ${this.renderJourneyStep({
                 index: 2,
                 title: 'Bridge control plane',
-                body: 'Ensure the extension persistent WS is online, otherwise scoped sessions cannot route tool requests back to the browser.',
+                body: 'Keeps the browser extension connected to the bridge service.',
                 descriptor: bridgeDescriptor,
               })}
               ${this.renderJourneyStep({
                 index: 3,
                 title: 'OpenCode endpoint',
-                body: 'Ensure OpenCode REST is reachable so Connect/New Session can create sessions and register MCP.',
+                body: 'Lets the extension create sessions and register MCP with OpenCode.',
                 descriptor: opencodeHttpDescriptor,
               })}
               ${this.renderJourneyStep({
@@ -607,8 +615,8 @@ ${this.diagnosisReport}</pre
                   <span class="badge badge-outline badge-xs">single source of truth</span>
                 </div>
                 <p class="mt-1 text-xs opacity-60 leading-relaxed">
-                  Configuration, status checks, failure reasons, and usage instructions are
-                  consolidated in their respective cards; other panels consume these results.
+                  Edit only what changed. Status, failure reasons, and retry actions stay attached
+                  to each endpoint.
                 </p>
               </div>
               ${this.message

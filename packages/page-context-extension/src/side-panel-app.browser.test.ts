@@ -865,8 +865,8 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       const text = element.shadowRoot?.textContent ?? '';
-      expect(text).toContain('Product paths');
-      expect(text).toContain('Use the real connection chain');
+      expect(text).toContain('Workflow');
+      expect(text).toContain('Setup → OpenCode → Tools → Feedback');
       expect(text).toContain('Check endpoint config');
       expect(text).toContain('Manage OpenCode');
       expect(text).toContain('Inspect tools');
@@ -876,7 +876,7 @@ describe('side-panel-app tools tree interactions', () => {
 
     findButtonByText(element, 'Endpoint config')?.click();
     await vi.waitFor(() => {
-      expect(element.shadowRoot?.textContent ?? '').toContain('Connection Cockpit');
+      expect(element.shadowRoot?.textContent ?? '').toContain('Connection readiness');
     });
   });
 
@@ -958,13 +958,13 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       const text = getOpenCodeTabText(element);
-      expect(text).toContain('OpenCode panel no longer provides configuration editing');
+      expect(text).toContain('Reuse a session ID');
       expect(text).not.toContain('OpenCode Base URL');
       expect(text).not.toContain('Bridge Base URL');
       expect(text).not.toContain('Delete session on disconnect');
     });
 
-    findButtonByText(element, 'Connect')?.click();
+    findButtonByText(element, 'Start session')?.click();
 
     await vi.waitFor(() => {
       expect(ensureMcpRegisteredMock).toHaveBeenCalledWith(
@@ -1012,7 +1012,7 @@ describe('side-panel-app tools tree interactions', () => {
       expect(
         element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]'),
       ).toBeNull();
-      expect(element.shadowRoot?.textContent ?? '').toContain('Open in sidebar');
+      expect(element.shadowRoot?.textContent ?? '').toContain('Sidebar');
     });
   });
 
@@ -1081,7 +1081,7 @@ describe('side-panel-app tools tree interactions', () => {
     document.body.appendChild(element);
     await openOpencodeTab(element);
 
-    findButtonByText(element, 'Connect')?.click();
+    findButtonByText(element, 'Start session')?.click();
     await vi.waitFor(() => {
       expect(element.shadowRoot?.textContent ?? '').toContain('session-alpha');
     });
@@ -1130,10 +1130,10 @@ describe('side-panel-app tools tree interactions', () => {
     expect(findButtonByText(element, 'Open')).not.toBeNull();
     expect(findButtonByText(element, 'Delete')).not.toBeNull();
     expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]')).toBeNull();
-    const openInSidebarButtons = [
+    const sidebarButtons = [
       ...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? []),
-    ].filter((button) => button.textContent?.trim() === 'Open in sidebar');
-    openInSidebarButtons.at(-1)?.click();
+    ].filter((button) => button.textContent?.trim() === 'Sidebar');
+    sidebarButtons.at(-1)?.click();
     await vi.waitFor(() => {
       expect(
         element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]'),
@@ -1228,7 +1228,7 @@ describe('side-panel-app tools tree interactions', () => {
     expect(
       element.shadowRoot?.querySelector('iframe[data-session-id="session-restored"]'),
     ).toBeNull();
-    findButtonByText(element, 'Open in sidebar')?.click();
+    findButtonByText(element, 'Open sidebar')?.click();
     await vi.waitFor(() => {
       expect(
         element.shadowRoot?.querySelector('iframe[data-session-id="session-restored"]'),
@@ -1328,7 +1328,7 @@ async function openOpencodeTab(element: Element): Promise<void> {
   });
   (element.shadowRoot?.querySelector('[title="OpenCode"]') as HTMLButtonElement | null)?.click();
   await vi.waitFor(() => {
-    expect(element.shadowRoot?.textContent ?? '').toContain('Session ID (optional)');
+    expect(element.shadowRoot?.textContent ?? '').toContain('Reuse a session ID');
   });
 }
 
@@ -1355,7 +1355,7 @@ function getOpenCodeTabText(element: Element): string {
     ...(element.shadowRoot?.querySelectorAll<HTMLElement>('.tab-content.active') ?? []),
   ];
   return (
-    activeTabContents.find((content) => content.textContent?.includes('Session ID (optional)'))
+    activeTabContents.find((content) => content.textContent?.includes('Reuse a session ID'))
       ?.textContent ?? ''
   );
 }
