@@ -15,6 +15,7 @@ import {
   type RpcProtocolError,
   RPC_ERROR_CODES,
 } from '@page-context/shared-protocol';
+import { getConnectionRegistry } from './bg-connection-registry';
 
 interface SessionRegisterResult {
   sessionId: string;
@@ -47,6 +48,59 @@ export interface ScopedBridgeStatus {
   wsUrl: string | null;
   connected: boolean;
   bridgeSessionId: string | null;
+}
+
+export function getScopedBridgeDescriptorId(tenantId: string): string {
+  return `opencode-bridge-ws:${tenantId}`;
+}
+
+function upsertScopedBridgeDescriptor(
+  tenantId: string,
+  patch: {
+    endpoint: string | null;
+    status: 'connected' | 'connecting' | 'closed' | 'error';
+    statusReason?: string | null;
+    bridgeSessionId?: string | null;
+  },
+): void {
+  const registry = getConnectionRegistry();
+  const descriptorId = getScopedBridgeDescriptorId(tenantId);
+  const current = registry.get(descriptorId);
+
+  if (current) {
+    registry.update(descriptorId, {
+      endpoint: patch.endpoint,
+      status: patch.status,
+      statusReason: patch.statusReason ?? null,
+      meta: {
+        ...(current.meta ?? {}),
+        tenantId,
+        bridgeSessionId: patch.bridgeSessionId ?? null,
+      },
+      capabilities: {
+        reconnect: true,
+        disconnect: true,
+      },
+    });
+    return;
+  }
+
+  registry.register({
+    id: descriptorId,
+    kind: 'opencode-bridge-ws',
+    label: `OpenCode Bridge WS · ${tenantId}`,
+    endpoint: patch.endpoint,
+    status: patch.status,
+    statusReason: patch.statusReason ?? null,
+    capabilities: {
+      reconnect: true,
+      disconnect: true,
+    },
+    meta: {
+      tenantId,
+      bridgeSessionId: patch.bridgeSessionId ?? null,
+    },
+  });
 }
 
 // 这些方法必须和 default ws 链路保持一致；
@@ -134,6 +188,12 @@ function closeScopedConnection(connection: ScopedBridgeConnection, reason: strin
   if (connection.ws && connection.ws.readyState < WebSocket.CLOSING) {
     connection.ws.close();
   }
+  upsertScopedBridgeDescriptor(connection.tenantId, {
+    endpoint: connection.wsUrl ?? null,
+    status: 'closed',
+    statusReason: reason,
+    bridgeSessionId: null,
+  });
   connection.ws = null;
   connection.rpcPeer = null;
 }
@@ -195,6 +255,12 @@ export function createScopedBridgeWsManager() {
   ): Promise<void> {
     const connection = getOrCreateConnection(tenantId, wsUrl);
     connection.handlers = handlers;
+    upsertScopedBridgeDescriptor(tenantId, {
+      endpoint: wsUrl,
+      status: 'connecting',
+      statusReason: 'connecting',
+      bridgeSessionId: null,
+    });
 
     if (connection.connectPromise) {
       return await connection.connectPromise;
@@ -273,6 +339,12 @@ export function createScopedBridgeWsManager() {
           connection.bridgeSessionId = null;
           clearHeartbeatTimer(connection);
           peer.failAllPending(`Scoped bridge transport closed for "${tenantId}"`);
+          upsertScopedBridgeDescriptor(tenantId, {
+            endpoint: connection.wsUrl ?? null,
+            status: 'error',
+            statusReason: `closed-before-reconnect:${event.code}`,
+            bridgeSessionId: null,
+          });
           connection.ws = null;
           connection.rpcPeer = null;
           connection.connectPromise = null;
@@ -301,7 +373,19 @@ export function createScopedBridgeWsManager() {
         connection.reconnectAttempts = 0;
         clearReconnectTimer(connection);
         ensureHeartbeatTimer(connection);
+        upsertScopedBridgeDescriptor(tenantId, {
+          endpoint: wsUrl,
+          status: 'connected',
+          statusReason: 'ready',
+          bridgeSessionId: result.sessionId,
+        });
       } catch (error) {
+        upsertScopedBridgeDescriptor(tenantId, {
+          endpoint: wsUrl,
+          status: 'error',
+          statusReason: error instanceof Error ? error.message : String(error),
+          bridgeSessionId: null,
+        });
         socket.close();
         throw error;
       }
@@ -317,6 +401,12 @@ export function createScopedBridgeWsManager() {
   async function disconnect(tenantId: string): Promise<void> {
     const connection = connections.get(tenantId);
     if (!connection) {
+      upsertScopedBridgeDescriptor(tenantId, {
+        endpoint: null,
+        status: 'closed',
+        statusReason: 'not-found',
+        bridgeSessionId: null,
+      });
       return;
     }
     closeScopedConnection(connection, `Scoped bridge session "${tenantId}" disconnected`);

@@ -325,6 +325,20 @@ var BRIDGE_METHODS = {
   extensionFeedbackAnnotationDismiss: 'extension.feedback.annotation.dismiss',
 };
 //#endregion
+//#region ../shared-protocol/dist/connections.js
+/**
+ * 连接面板共享协议。
+ *
+ * 这里只有“连接长什么样、允许做什么动作、走哪些 RPC”这三件事。
+ * UI 不在这里拼文案，driver 也不在这里写业务逻辑。
+ */
+var CONNECTION_METHODS = {
+  list: 'connections.list',
+  subscribe: 'connections.subscribe',
+  action: 'connections.action',
+  changed: 'connections.changed',
+};
+//#endregion
 //#region src/runtime-rpc.ts
 async function sendRuntimeRequest(method, params) {
   return unwrapRpcResponse(await runtimeSendMessage(createRequest(method, params)));
@@ -368,11 +382,14 @@ function hasRequestId(message) {
 }
 //#endregion
 export {
-  RPC_ERROR_CODES as a,
-  BRIDGE_METHODS as i,
+  BRIDGE_METHODS as a,
+  RpcProtocolError as c,
+  CONNECTION_METHODS as i,
+  createNotification as l,
   sendRuntimeRequest as n,
-  RpcPeer as o,
+  RPC_ERROR_CODES as o,
   sendTabRequest as r,
-  RpcProtocolError as s,
+  RpcPeer as s,
   createRuntimeListener as t,
+  isRpcNotification as u,
 };

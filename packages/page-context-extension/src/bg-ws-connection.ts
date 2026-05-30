@@ -10,12 +10,14 @@ import {
   RpcProtocolError,
 } from '@page-context/shared-protocol';
 import { storageLocalGet, storageLocalSet } from './extension-api';
+import { getConnectionRegistry } from './bg-connection-registry';
 
 const DEFAULT_MCP_WS_URL = 'ws://127.0.0.1:22335/default';
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const MCP_WS_URL_KEY = 'mcpWsUrl';
+export const DEFAULT_BRIDGE_DESCRIPTOR_ID = 'bridge-default-ws';
 
 export interface SessionRegisterResult {
   sessionId: string;
@@ -57,8 +59,46 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let wsEpoch = 0;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let reconnectHandlers: BridgeWsHandlers | null = null;
+let manualDisconnect = false;
 
 const queuedNotifications: Array<{ method: string; params?: unknown }> = [];
+
+function registerDefaultBridgeDescriptor(
+  status: 'connected' | 'connecting' | 'closed' | 'error',
+  patch: Partial<{
+    endpoint: string | null;
+    statusReason: string | null;
+  }> = {},
+): void {
+  const registry = getConnectionRegistry();
+  const current = registry.get(DEFAULT_BRIDGE_DESCRIPTOR_ID);
+  const next = {
+    id: DEFAULT_BRIDGE_DESCRIPTOR_ID,
+    kind: 'bridge-default-ws' as const,
+    label: 'Bridge Default WS',
+    endpoint: patch.endpoint ?? current?.endpoint ?? null,
+    status,
+    statusReason: patch.statusReason ?? current?.statusReason ?? null,
+    capabilities: {
+      reconnect: true,
+      disconnect: true,
+    },
+    meta: {},
+  };
+
+  if (current) {
+    registry.update(DEFAULT_BRIDGE_DESCRIPTOR_ID, {
+      endpoint: next.endpoint,
+      status: next.status,
+      statusReason: next.statusReason,
+      capabilities: next.capabilities,
+      meta: next.meta,
+    });
+    return;
+  }
+
+  registry.register(next);
+}
 
 export function getWsState() {
   return { ws, rpcPeer, wsReady, sessionId, connectPromise };
@@ -123,6 +163,14 @@ function clearReconnectTimer(): void {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+}
+
+function clearHeartbeatTimer(): void {
+  if (!heartbeatTimer) {
+    return;
+  }
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
 }
 
 function ensureHeartbeatTimer(): void {
@@ -204,6 +252,7 @@ export async function connectWebSocket(
   ) => Promise<unknown> = defaultOnExtensionRequest,
 ): Promise<void> {
   reconnectHandlers = { onToolCall, onToolsList, onTabsList, onExtensionRequest };
+  manualDisconnect = false;
 
   if (connectPromise) {
     return await connectPromise;
@@ -216,6 +265,10 @@ export async function connectWebSocket(
   connectPromise = (async () => {
     const url = await getWsUrl();
     log('Connecting to WebSocket:', url);
+    registerDefaultBridgeDescriptor('connecting', {
+      endpoint: url,
+      statusReason: 'connecting',
+    });
 
     const socket = new WebSocket(url);
     const epoch = ++wsEpoch;
@@ -298,9 +351,18 @@ export async function connectWebSocket(
         }
         wsReady = false;
         sessionId = null;
+        clearHeartbeatTimer();
         rpcPeer?.failAllPending('Bridge transport closed');
         ws = null;
-        scheduleReconnect();
+        registerDefaultBridgeDescriptor(manualDisconnect ? 'closed' : 'error', {
+          endpoint: url,
+          statusReason: manualDisconnect
+            ? 'disconnected-by-user'
+            : `closed-before-reconnect:${event.code}`,
+        });
+        if (!manualDisconnect) {
+          scheduleReconnect();
+        }
       };
     });
 
@@ -319,9 +381,17 @@ export async function connectWebSocket(
       clearReconnectTimer();
       ensureHeartbeatTimer();
       await flushQueuedNotifications();
+      registerDefaultBridgeDescriptor('connected', {
+        endpoint: url,
+        statusReason: 'ready',
+      });
       log('Bridge session ready', sessionId);
     } catch (error: unknown) {
       log('Bridge session register failed', error);
+      registerDefaultBridgeDescriptor('error', {
+        endpoint: url,
+        statusReason: error instanceof Error ? error.message : String(error),
+      });
       socket.close();
     }
   })();
@@ -343,15 +413,48 @@ export function forceReconnect(
   ) => Promise<unknown> = defaultOnExtensionRequest,
 ): Promise<void> {
   clearReconnectTimer();
+  clearHeartbeatTimer();
   reconnectAttempts = 0;
   wsReady = false;
   connectPromise = null;
+  manualDisconnect = false;
   ws?.close();
   return connectWebSocket(onToolCall, onToolsList, onTabsList, onExtensionRequest);
 }
 
+/**
+ * 手动断开默认 bridge。
+ *
+ * 这里要显式压住自动重连；否则 UI 点了 Disconnect，后台马上又自己连回去。
+ */
+export function disconnectWebSocket(): void {
+  manualDisconnect = true;
+  clearReconnectTimer();
+  clearHeartbeatTimer();
+  reconnectAttempts = 0;
+  wsReady = false;
+  connectPromise = null;
+  sessionId = null;
+  rpcPeer?.failAllPending('Bridge transport closed by user');
+  registerDefaultBridgeDescriptor('closed', {
+    endpoint: ws?.url ?? null,
+    statusReason: 'disconnected-by-user',
+  });
+  ws?.close();
+  ws = null;
+  rpcPeer = null;
+}
+
 export function initDefaultWsUrl(): Promise<void> {
   return storageLocalGet<Record<string, unknown>>(MCP_WS_URL_KEY).then((data) => {
+    const currentUrl =
+      typeof data[MCP_WS_URL_KEY] === 'string' && data[MCP_WS_URL_KEY]
+        ? String(data[MCP_WS_URL_KEY])
+        : DEFAULT_MCP_WS_URL;
+    registerDefaultBridgeDescriptor('closed', {
+      endpoint: currentUrl,
+      statusReason: 'idle',
+    });
     if (!data[MCP_WS_URL_KEY]) {
       return storageLocalSet({ [MCP_WS_URL_KEY]: DEFAULT_MCP_WS_URL });
     }

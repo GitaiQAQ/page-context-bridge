@@ -41,6 +41,18 @@ export {
 } from './context-manifest';
 
 export {
+  CONNECTION_METHODS,
+  type ConnectionAction,
+  type ConnectionActionParams,
+  type ConnectionCapabilities,
+  type ConnectionDescriptor,
+  type ConnectionKind,
+  type ConnectionStatus,
+  type ConnectionsListResult,
+  type ConnectionsSubscribeResult,
+} from './connections';
+
+export {
   FEEDBACK_METHODS,
   type FeedbackAnnotationStatus,
   type FeedbackPriority,

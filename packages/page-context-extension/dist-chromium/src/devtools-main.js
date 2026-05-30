@@ -2,7 +2,7 @@ import {
   a as setLaunchUrlForSurface,
   n as SIDEPANEL_SURFACE,
   t as DEFAULT_CONSOLE_URL,
-} from '../sidepanel-launch-state.BKy_bs2K.js';
+} from '../sidepanel-launch-state.B4UHsvBw.js';
 //#region src/devtools-main.ts
 function getDevtoolsApi() {
   const globalApi = globalThis;

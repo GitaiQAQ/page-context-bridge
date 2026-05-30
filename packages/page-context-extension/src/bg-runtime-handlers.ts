@@ -5,6 +5,7 @@
  */
 import {
   BRIDGE_METHODS,
+  CONNECTION_METHODS,
   type FeedbackAnnotationClaimParams,
   type FeedbackAnnotationDismissParams,
   type FeedbackAnnotationReplyParams,
@@ -41,6 +42,7 @@ import {
 } from '@page-context/tool-visibility';
 import type { ExtensionControlHandlers } from './bg-ws-handlers';
 import type { RuntimeExplicitTabBinding, RuntimeExplicitTabBindingInput } from './sidepanel-types';
+import { getConnectionRegistry } from './bg-connection-registry';
 
 type JsonRecord = Record<string, unknown>;
 const EXTENSION_E2E_REPORT_METHOD = 'extension.e2e.report';
@@ -134,6 +136,17 @@ export function createRuntimeMessageHandler(deps: CreateRuntimeMessageHandlerDep
         return await postFirefoxE2EReport(message.params);
       case BRIDGE_METHODS.extensionStatusGet:
         return deps.extensionControlHandlers.buildExtensionStatusResponse(message.params);
+      case CONNECTION_METHODS.list:
+        return await getConnectionRegistry().handleList();
+      case CONNECTION_METHODS.subscribe:
+        return await getConnectionRegistry().handleSubscribe();
+      case CONNECTION_METHODS.action:
+        return await getConnectionRegistry().handleAction(
+          message.params as {
+            descriptorId: string;
+            action: 'reconnect' | 'disconnect';
+          },
+        );
       case BRIDGE_METHODS.extensionReconnect:
         return await deps.extensionControlHandlers.handleExtensionReconnect(message.params);
       case BRIDGE_METHODS.extensionPageToolsGet:

@@ -6,7 +6,12 @@
 import './browser-polyfill';
 
 import {
+  ensureAgentationMainOnTab,
+  ensureMainWorldBridgeHostOnTab,
+} from '@page-context/agentation';
+import {
   connectWebSocket,
+  disconnectWebSocket,
   forceReconnect,
   getWsReady,
   getSessionId,
@@ -16,16 +21,21 @@ import {
   requestBridge,
 } from './bg-ws-connection';
 import { createPageToolState } from './bg-page-tools';
+import { discoverPageToolsForTab } from './bg-page-tools';
 import { createWsHandlers } from './bg-ws-handlers';
 import { createRuntimeMessageHandler } from './bg-runtime-handlers';
 import { registerLifecycleListeners } from './bg-lifecycle';
 import { installPageContextBridgeHostInMainWorld } from './bg-main-world-bridge-host';
 import { tabsQuery } from './extension-api';
 import { createScopedBridgeWsManager } from './bg-scoped-ws-connection';
+import { getConnectionRegistry } from './bg-connection-registry';
+import { createOpencodeHttpConnectionDriver } from './bg-opencode-http-connection';
 
 const inFlightToolCalls = new Map<string, string>();
 const pageToolState = createPageToolState();
 const scopedBridgeWsManager = createScopedBridgeWsManager();
+const connectionRegistry = getConnectionRegistry();
+const opencodeHttpDriver = createOpencodeHttpConnectionDriver();
 
 // ── Tab helpers ──
 
@@ -63,6 +73,125 @@ const runtimeMessageHandler = createRuntimeMessageHandler({
   extensionControlHandlers: wsHandlers,
   requestBridgeMethod,
   queueNotification,
+});
+
+connectionRegistry.registerDriver('bridge-default-ws', {
+  async action(action) {
+    if (action === 'disconnect') {
+      disconnectWebSocket();
+      return { ok: true };
+    }
+
+    await forceReconnect(
+      wsHandlers.onToolCall,
+      wsHandlers.onToolsList,
+      wsHandlers.onTabsList,
+      wsHandlers.onBridgeWsExtensionRequest,
+    );
+    return { ok: true };
+  },
+});
+
+connectionRegistry.registerDriver('opencode-bridge-ws', {
+  async action(action, descriptor) {
+    const tenantId =
+      typeof descriptor.meta?.tenantId === 'string' ? descriptor.meta.tenantId : undefined;
+    if (!tenantId) {
+      throw new Error(`Missing tenantId for descriptor "${descriptor.id}"`);
+    }
+
+    if (action === 'disconnect') {
+      await scopedBridgeWsManager.disconnect(tenantId);
+      return { ok: true };
+    }
+
+    if (!descriptor.endpoint) {
+      throw new Error(`Missing endpoint for descriptor "${descriptor.id}"`);
+    }
+
+    await scopedBridgeWsManager.connect(tenantId, descriptor.endpoint, {
+      onToolCall: wsHandlers.onToolCall,
+      onToolsList: wsHandlers.onToolsList,
+      onTabsList: wsHandlers.onTabsList,
+      onExtensionRequest: wsHandlers.onBridgeWsExtensionRequest,
+    });
+    return { ok: true };
+  },
+});
+
+connectionRegistry.registerDriver('opencode-http', {
+  async action(action) {
+    if (action === 'disconnect') {
+      throw new Error('OpenCode HTTP health probe does not support disconnect');
+    }
+    await opencodeHttpDriver.probeNow();
+    return { ok: true };
+  },
+});
+
+connectionRegistry.registerDriver('page-tools', {});
+connectionRegistry.registerDriver('page-tools', {
+  async action(action, descriptor) {
+    if (action === 'disconnect') {
+      throw new Error('Page tools discovery does not support disconnect');
+    }
+
+    const tabId = Number(descriptor.meta?.tabId);
+    if (!Number.isInteger(tabId)) {
+      throw new Error(`Missing tabId for descriptor "${descriptor.id}"`);
+    }
+
+    await discoverPageToolsForTab(
+      pageToolState,
+      tabId,
+      installPageContextBridgeHostInMainWorld,
+      true,
+    );
+    return { ok: true };
+  },
+});
+
+connectionRegistry.registerDriver('main-world-host', {
+  async action(action, descriptor) {
+    if (action === 'disconnect') {
+      throw new Error('Main world host does not support disconnect');
+    }
+
+    const tabId = Number(descriptor.meta?.tabId);
+    const frameId = descriptor.meta?.frameId;
+    if (!Number.isInteger(tabId)) {
+      throw new Error(`Missing tabId for descriptor "${descriptor.id}"`);
+    }
+
+    await ensureMainWorldBridgeHostOnTab(
+      tabId,
+      installPageContextBridgeHostInMainWorld,
+      typeof frameId === 'number' ? frameId : undefined,
+    );
+    return { ok: true };
+  },
+});
+
+connectionRegistry.registerDriver('agentation-main-world-host', {
+  async action(action, descriptor) {
+    if (action === 'disconnect') {
+      throw new Error('Agentation main world host does not support disconnect');
+    }
+
+    const tabId = Number(descriptor.meta?.tabId);
+    const frameId = descriptor.meta?.frameId;
+    if (!Number.isInteger(tabId)) {
+      throw new Error(`Missing tabId for descriptor "${descriptor.id}"`);
+    }
+
+    await ensureAgentationMainOnTab(tabId, typeof frameId === 'number' ? frameId : undefined);
+    return { ok: true };
+  },
+});
+
+void opencodeHttpDriver.start().catch(() => {
+  // 部分单测只验证模块装配，不会准备完整扩展 API。
+  // 探活 driver 在这类环境里静默跳过即可，不影响真正的 background 逻辑验证。
 });
 
 // background.ts is the composition root: state is created here and explicitly injected into sub-modules.

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   BRIDGE_METHODS,
+  CONNECTION_METHODS,
   type ContextResourcePayload,
   type ContextSkillPrompt,
   type PageContextManifest,
@@ -23,6 +24,32 @@ const listOpenCodeSessionsMock = vi.fn();
 const opencodeProjectDirectory = '/Users/bytedance/workspace/sides/browser-debug-extension';
 const opencodeProjectSegment =
   'L1VzZXJzL2J5dGVkYW5jZS93b3Jrc3BhY2Uvc2lkZXMvYnJvd3Nlci1kZWJ1Zy1leHRlbnNpb24';
+
+function makeDefaultConnectionDescriptor() {
+  return {
+    id: 'bridge-default-ws',
+    kind: 'bridge-default-ws' as const,
+    label: 'Bridge Default WS',
+    endpoint: 'ws://127.0.0.1:22335/default',
+    status: 'connected' as const,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function makeScopedConnectionDescriptor(sessionId: string, wsUrl: string) {
+  return {
+    id: `opencode-bridge-ws:${sessionId}`,
+    kind: 'opencode-bridge-ws' as const,
+    label: `OpenCode Bridge WS · ${sessionId}`,
+    endpoint: wsUrl,
+    status: 'connected' as const,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    meta: {
+      tenantId: sessionId,
+      bridgeSessionId: `bridge-${sessionId}`,
+    },
+  };
+}
 
 vi.mock('./runtime-rpc', () => ({
   sendRuntimeRequest: sendRuntimeRequestMock,
@@ -722,7 +749,7 @@ describe('side-panel-app tools tree interactions', () => {
     document.body.appendChild(element);
 
     await vi.waitFor(() => {
-      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionStatusGet);
+      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(CONNECTION_METHODS.subscribe);
       expect(sendRuntimeRequestMock).toHaveBeenCalledWith(BRIDGE_METHODS.extensionPageToolsTreeGet);
     });
 
@@ -813,7 +840,12 @@ describe('side-panel-app tools tree interactions', () => {
       expect(iframe?.src).toContain('http://127.0.0.1:22336/');
     });
 
-    expect(storageGetMock.mock.calls[0]?.[0]).toEqual(['sidePanelUrl:devtools', 'sidePanelUrl']);
+    expect(
+      storageGetMock.mock.calls.some(
+        ([arg]) =>
+          Array.isArray(arg) && arg[0] === 'sidePanelUrl:devtools' && arg[1] === 'sidePanelUrl',
+      ),
+    ).toBe(true);
     expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('sidePanelUrl:devtools');
   });
 
@@ -854,23 +886,17 @@ describe('side-panel-app tools tree interactions', () => {
     });
     sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
       switch (method) {
-        case BRIDGE_METHODS.extensionStatusGet: {
-          const payload = params as { sessionId?: string } | undefined;
-          if (payload?.sessionId === 'session-alpha') {
-            return {
-              connected: true,
-              scopedSessions: [
-                {
-                  tenantId: 'session-alpha',
-                  wsUrl: 'ws://localhost:22335/?tenantId=session-alpha',
-                  connected: true,
-                  bridgeSessionId: 'bridge-alpha',
-                },
-              ],
-            };
-          }
-          return { connected: true, scopedSessions: [] };
-        }
+        case CONNECTION_METHODS.subscribe:
+        case CONNECTION_METHODS.list:
+          return {
+            descriptors: [
+              makeDefaultConnectionDescriptor(),
+              makeScopedConnectionDescriptor(
+                'session-alpha',
+                'ws://localhost:22335/?tenantId=session-alpha',
+              ),
+            ],
+          };
         case BRIDGE_METHODS.extensionReconnect:
           return { ok: true };
         case BRIDGE_METHODS.extensionPageToolsTreeGet:
@@ -944,34 +970,16 @@ describe('side-panel-app tools tree interactions', () => {
           }
           return { ok: true };
         }
-        case BRIDGE_METHODS.extensionStatusGet: {
-          const payload = params as { sessionId?: string } | undefined;
-          if (payload?.sessionId) {
-            const wsUrl = connectedSessions.get(payload.sessionId);
-            return {
-              connected: Boolean(wsUrl),
-              scopedSessions: wsUrl
-                ? [
-                    {
-                      tenantId: payload.sessionId,
-                      wsUrl,
-                      connected: true,
-                      bridgeSessionId: `bridge-${payload.sessionId}`,
-                    },
-                  ]
-                : [],
-            };
-          }
+        case CONNECTION_METHODS.subscribe:
+        case CONNECTION_METHODS.list:
           return {
-            connected: true,
-            scopedSessions: Array.from(connectedSessions.entries()).map(([tenantId, wsUrl]) => ({
-              tenantId,
-              wsUrl,
-              connected: true,
-              bridgeSessionId: `bridge-${tenantId}`,
-            })),
+            descriptors: [
+              makeDefaultConnectionDescriptor(),
+              ...Array.from(connectedSessions.entries()).map(([tenantId, wsUrl]) =>
+                makeScopedConnectionDescriptor(tenantId, wsUrl),
+              ),
+            ],
           };
-        }
         case BRIDGE_METHODS.extensionPageToolsTreeGet:
           return buildToolTree(tabs, pageEntries, builtinTools, {});
         default:
@@ -1020,9 +1028,20 @@ describe('side-panel-app tools tree interactions', () => {
       if (typeof keyOrDefaults === 'string') {
         return {
           'opencode.config.v1': {
+            lastSessionId: 'session-restored',
+          },
+        };
+      }
+      if (
+        keyOrDefaults &&
+        typeof keyOrDefaults === 'object' &&
+        'connections.endpoints.v1' in keyOrDefaults
+      ) {
+        return {
+          ...keyOrDefaults,
+          'connections.endpoints.v1': {
             opencodeBaseUrl: 'http://localhost:4096',
             bridgeBaseUrl: 'http://localhost:22334',
-            lastSessionId: 'session-restored',
           },
         };
       }
@@ -1036,33 +1055,23 @@ describe('side-panel-app tools tree interactions', () => {
 
     sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
       switch (method) {
-        case BRIDGE_METHODS.extensionStatusGet: {
-          const payload = params as { sessionId?: string } | undefined;
-          if (payload?.sessionId === 'session-restored') {
-            return {
-              connected: true,
-              scopedSessions: [
-                {
+        case CONNECTION_METHODS.subscribe:
+        case CONNECTION_METHODS.list:
+          return {
+            descriptors: [
+              makeDefaultConnectionDescriptor(),
+              {
+                ...makeScopedConnectionDescriptor(
+                  'session-restored',
+                  'ws://localhost:22335/?tenantId=session-restored',
+                ),
+                meta: {
                   tenantId: 'session-restored',
-                  wsUrl: 'ws://localhost:22335/?tenantId=session-restored',
-                  connected: true,
                   bridgeSessionId: 'bridge-restored',
                 },
-              ],
-            };
-          }
-          return {
-            connected: true,
-            scopedSessions: [
-              {
-                tenantId: 'session-restored',
-                wsUrl: 'ws://localhost:22335/?tenantId=session-restored',
-                connected: true,
-                bridgeSessionId: 'bridge-restored',
               },
             ],
           };
-        }
         case BRIDGE_METHODS.extensionPageToolsTreeGet:
           return buildToolTree(tabs, pageEntries, builtinTools, {});
         default:
@@ -1096,9 +1105,20 @@ describe('side-panel-app tools tree interactions', () => {
       if (typeof keyOrDefaults === 'string') {
         return {
           'opencode.config.v1': {
+            lastSessionId: 'session-dead',
+          },
+        };
+      }
+      if (
+        keyOrDefaults &&
+        typeof keyOrDefaults === 'object' &&
+        'connections.endpoints.v1' in keyOrDefaults
+      ) {
+        return {
+          ...keyOrDefaults,
+          'connections.endpoints.v1': {
             opencodeBaseUrl: 'http://localhost:4096',
             bridgeBaseUrl: 'http://localhost:22334',
-            lastSessionId: 'session-dead',
           },
         };
       }
@@ -1108,15 +1128,20 @@ describe('side-panel-app tools tree interactions', () => {
 
     sendRuntimeRequestMock.mockImplementation(async (method: string) => {
       switch (method) {
-        case BRIDGE_METHODS.extensionStatusGet:
+        case CONNECTION_METHODS.subscribe:
+        case CONNECTION_METHODS.list:
           return {
-            connected: true,
-            scopedSessions: [
+            descriptors: [
+              makeDefaultConnectionDescriptor(),
               {
-                tenantId: 'session-dead',
-                wsUrl: 'ws://localhost:22335/?tenantId=session-dead',
-                connected: true,
-                bridgeSessionId: 'bridge-dead',
+                ...makeScopedConnectionDescriptor(
+                  'session-dead',
+                  'ws://localhost:22335/?tenantId=session-dead',
+                ),
+                meta: {
+                  tenantId: 'session-dead',
+                  bridgeSessionId: 'bridge-dead',
+                },
               },
             ],
           };
@@ -1155,7 +1180,7 @@ async function openOpencodeTab(element: Element): Promise<void> {
   });
   (element.shadowRoot?.querySelector('[title="OpenCode"]') as HTMLButtonElement | null)?.click();
   await vi.waitFor(() => {
-    expect(element.shadowRoot?.textContent ?? '').toContain('OpenCode Base URL');
+    expect(element.shadowRoot?.textContent ?? '').toContain('Session ID (optional)');
   });
 }
 
@@ -1182,8 +1207,20 @@ function installRuntimeRequestMock(input: {
 
   sendRuntimeRequestMock.mockImplementation(async (method: string, params?: unknown) => {
     switch (method) {
-      case BRIDGE_METHODS.extensionStatusGet:
-        return { connected: true };
+      case CONNECTION_METHODS.subscribe:
+      case CONNECTION_METHODS.list:
+        return {
+          descriptors: [
+            {
+              id: 'bridge-default-ws',
+              kind: 'bridge-default-ws',
+              label: 'Bridge Default WS',
+              endpoint: 'ws://127.0.0.1:22335/default',
+              status: 'connected',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        };
       case BRIDGE_METHODS.extensionPageToolsTreeGet:
         return buildToolTree(input.tabs, input.pageEntries, input.builtinTools, preferences);
       case BRIDGE_METHODS.extensionPageToolsDiscover: {

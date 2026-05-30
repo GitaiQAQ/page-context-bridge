@@ -1,4 +1,4 @@
-import { i as BRIDGE_METHODS, n as sendRuntimeRequest } from '../runtime-rpc.hjw2lJPe.js';
+import { a as BRIDGE_METHODS, n as sendRuntimeRequest } from '../runtime-rpc.Bw2tfxVR.js';
 import {
   d as windowsGetCurrent,
   i as storageLocalGet,
@@ -12,7 +12,7 @@ import {
   a as setLaunchUrlForSurface,
   n as SIDEPANEL_SURFACE,
   t as DEFAULT_CONSOLE_URL,
-} from '../sidepanel-launch-state.BKy_bs2K.js';
+} from '../sidepanel-launch-state.B4UHsvBw.js';
 //#region src/popup-main.ts
 var DEFAULT_WS_URL = 'ws://127.0.0.1:22335/default';
 var FALLBACK_CONSOLE_UI_PATH = 'sidepanel.html';

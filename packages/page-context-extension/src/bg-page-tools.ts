@@ -24,6 +24,10 @@ import {
   setScopeEnabled,
   type PageToolPreferences,
 } from '@page-context/tool-visibility';
+import {
+  updateMainWorldHostDescriptor,
+  updatePageToolsDescriptor,
+} from './bg-connection-descriptors';
 
 const PAGE_TOOL_PREFERENCES_KEY = 'pageToolPreferences';
 
@@ -190,11 +194,20 @@ export async function discoverPageToolsForTab(
   const discoveryPromise = (async () => {
     const existingEntries = state.pageToolsByTab.get(tabId) ?? [];
 
-    await ensureMainWorldBridgeHostOnTab(tabId, installPageContextBridgeHostInMainWorld).catch(
-      (error: unknown) => {
+    updateMainWorldHostDescriptor(tabId, undefined, 'connecting', 'ensuring-host');
+    await ensureMainWorldBridgeHostOnTab(tabId, installPageContextBridgeHostInMainWorld)
+      .then(() => {
+        updateMainWorldHostDescriptor(tabId, undefined, 'connected', 'host-ready');
+      })
+      .catch((error: unknown) => {
+        updateMainWorldHostDescriptor(
+          tabId,
+          undefined,
+          'error',
+          error instanceof Error ? error.message : String(error),
+        );
         log('Ensure MAIN world host failed before discovery', tabId, error);
-      },
-    );
+      });
 
     const delays = [0, 500, 1_500, 3_000];
     for (const delay of delays) {
@@ -205,14 +218,25 @@ export async function discoverPageToolsForTab(
       try {
         const rawEntries = await discoverPageToolsInTab(tabId);
         if (rawEntries.length === 0) {
+          updatePageToolsDescriptor(tabId, 'closed', 'no-tools-discovered');
           continue;
         }
 
         const normalized = normalizePageToolEntries(rawEntries);
         state.pageToolsByTab.set(tabId, normalized);
+        updatePageToolsDescriptor(
+          tabId,
+          'connected',
+          `tools=${flattenPageTools(normalized).length}`,
+        );
         publishPageToolsForTab(state, tabId);
         return normalized;
       } catch (error) {
+        updatePageToolsDescriptor(
+          tabId,
+          'error',
+          error instanceof Error ? error.message : String(error),
+        );
         // 主动刷新需要把 backend 不可用抛给上层；生命周期自动探测则只记录，
         // 避免测试/受限运行时因 unsupported backend 产生未处理 rejection。
         if (failOnBackendError && isPageAccessBackendError(error)) {
@@ -235,6 +259,7 @@ export async function discoverPageToolsForTab(
     }
 
     state.pageToolsByTab.delete(tabId);
+    updatePageToolsDescriptor(tabId, 'closed', 'cleared-after-empty-discovery');
     return [];
   })();
 
@@ -248,6 +273,7 @@ export async function discoverPageToolsForTab(
 
 export function clearPageTools(state: PageToolState, tabId: number): void {
   state.pageToolsByTab.delete(tabId);
+  updatePageToolsDescriptor(tabId, 'closed', 'tab-cleared');
   queueNotification(BRIDGE_METHODS.bridgePageToolsUnregistered, { tabId });
 }
 

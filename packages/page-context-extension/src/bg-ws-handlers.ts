@@ -2,7 +2,12 @@
  * WS entry point and extension control method aggregator.
  * Handles only routing and orchestration; holds no implicit global state outside this module.
  */
-import { BRIDGE_METHODS, RpcProtocolError, RPC_ERROR_CODES } from '@page-context/shared-protocol';
+import {
+  BRIDGE_METHODS,
+  CONNECTION_METHODS,
+  RpcProtocolError,
+  RPC_ERROR_CODES,
+} from '@page-context/shared-protocol';
 
 import {
   ensureAgentationMainOnTab,
@@ -40,6 +45,13 @@ import {
 } from '@page-context/tool-visibility';
 import { sendTabRequest } from './runtime-rpc';
 import type { ScopedBridgeStatus } from './bg-scoped-ws-connection';
+import { getConnectionRegistry } from './bg-connection-registry';
+import { DEFAULT_BRIDGE_DESCRIPTOR_ID } from './bg-ws-connection';
+import { getScopedBridgeDescriptorId } from './bg-scoped-ws-connection';
+import {
+  updateAgentationDescriptor,
+  updateMainWorldHostDescriptor,
+} from './bg-connection-descriptors';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -115,6 +127,32 @@ interface CreateWsHandlersDeps {
 }
 
 export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
+  function isConnectedStatus(status: string | undefined): boolean {
+    return status === 'connected' || status === 'reachable';
+  }
+
+  function descriptorToScopedStatus(descriptorId: string): ScopedBridgeStatus | null {
+    const descriptor = getConnectionRegistry().get(descriptorId);
+    if (!descriptor) {
+      return null;
+    }
+
+    const tenantId =
+      typeof descriptor.meta?.tenantId === 'string'
+        ? descriptor.meta.tenantId
+        : descriptor.id.replace(/^opencode-bridge-ws:/, '');
+
+    return {
+      tenantId,
+      wsUrl: descriptor.endpoint,
+      connected: isConnectedStatus(descriptor.status),
+      bridgeSessionId:
+        typeof descriptor.meta?.bridgeSessionId === 'string'
+          ? descriptor.meta.bridgeSessionId
+          : null,
+    };
+  }
+
   function assertToolEnabledForExecution(toolName: string, tabId?: number): string {
     const effectiveBuiltinToolName = resolveBuiltinToolNameAlias(toolName);
     if (effectiveBuiltinToolName) {
@@ -208,10 +246,13 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
   }
 
   function buildExtensionStatusResponse(params?: unknown) {
+    const registry = getConnectionRegistry();
     const payload = params as { sessionId?: string } | undefined;
     const sessionId = payload?.sessionId?.trim();
     if (sessionId) {
-      const scopedStatus = deps.scopedBridgeConnection.getStatus(sessionId);
+      const scopedStatus =
+        descriptorToScopedStatus(getScopedBridgeDescriptorId(sessionId)) ??
+        deps.scopedBridgeConnection.getStatus(sessionId);
       return {
         connected: scopedStatus.connected,
         wsUrl: null,
@@ -221,12 +262,22 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
       };
     }
 
+    const defaultDescriptor = registry.get(DEFAULT_BRIDGE_DESCRIPTOR_ID);
+    const scopedSessions = registry
+      .list()
+      .filter((descriptor) => descriptor.kind === 'opencode-bridge-ws')
+      .map((descriptor) => descriptorToScopedStatus(descriptor.id))
+      .filter((status): status is ScopedBridgeStatus => status !== null);
+
     return {
-      connected: deps.bridgeConnection.getWsReady(),
+      connected:
+        defaultDescriptor != null
+          ? isConnectedStatus(defaultDescriptor.status)
+          : deps.bridgeConnection.getWsReady(),
       wsUrl: null,
       pendingToolCalls: deps.inFlightToolCalls.size,
       sessionId: deps.bridgeConnection.getSessionId(),
-      scopedSessions: deps.scopedBridgeConnection.listStatuses(),
+      scopedSessions,
     };
   }
 
@@ -436,15 +487,41 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
         return await handleExtensionPageToolsSetEnabled(params);
       case BRIDGE_METHODS.extensionMainWorldHostEnsure: {
         const target = getMainWorldInjectionTarget(params);
-        return await ensureMainWorldBridgeHostOnTab(
-          target.tabId,
-          deps.installPageContextBridgeHostInMainWorld,
-          target.frameId,
-        );
+        updateMainWorldHostDescriptor(target.tabId, target.frameId, 'connecting', 'ensuring-host');
+        try {
+          const result = await ensureMainWorldBridgeHostOnTab(
+            target.tabId,
+            deps.installPageContextBridgeHostInMainWorld,
+            target.frameId,
+          );
+          updateMainWorldHostDescriptor(target.tabId, target.frameId, 'connected', 'host-ready');
+          return result;
+        } catch (error) {
+          updateMainWorldHostDescriptor(
+            target.tabId,
+            target.frameId,
+            'error',
+            error instanceof Error ? error.message : String(error),
+          );
+          throw error;
+        }
       }
       case BRIDGE_METHODS.extensionAgentationMainEnsure: {
         const target = getMainWorldInjectionTarget(params);
-        return await ensureAgentationMainOnTab(target.tabId, target.frameId);
+        updateAgentationDescriptor(target.tabId, target.frameId, 'connecting', 'injecting');
+        try {
+          const result = await ensureAgentationMainOnTab(target.tabId, target.frameId);
+          updateAgentationDescriptor(target.tabId, target.frameId, 'connected', 'ready');
+          return result;
+        } catch (error) {
+          updateAgentationDescriptor(
+            target.tabId,
+            target.frameId,
+            'error',
+            error instanceof Error ? error.message : String(error),
+          );
+          throw error;
+        }
       }
       case BRIDGE_METHODS.extensionContextManifestGet:
         return await handleExtensionContextManifestGet(params);
@@ -454,6 +531,17 @@ export function createWsHandlers(deps: CreateWsHandlersDeps): WsHandlers {
         return await handleExtensionContextSkillGet(params);
       case BRIDGE_METHODS.extensionToolDebugCall:
         return await handleExtensionToolDebugCall(params);
+      case CONNECTION_METHODS.list:
+        return await getConnectionRegistry().handleList();
+      case CONNECTION_METHODS.subscribe:
+        return await getConnectionRegistry().handleSubscribe();
+      case CONNECTION_METHODS.action:
+        return await getConnectionRegistry().handleAction(
+          params as {
+            descriptorId: string;
+            action: 'reconnect' | 'disconnect';
+          },
+        );
       default:
         throw new RpcProtocolError(
           RPC_ERROR_CODES.methodNotFound,

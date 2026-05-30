@@ -4016,6 +4016,12 @@
       margin-inline-end: -0.75rem;
     }
 
+    .btn-square {
+      width: var(--size);
+      height: var(--size);
+      padding-inline: 0;
+    }
+
     .badge-ghost {
       border-color: var(--color-base-200);
       background-color: var(--color-base-200);
@@ -4474,12 +4480,20 @@
     list-style-type: disc;
   }
 
+  .grid-cols-1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
   .grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .grid-cols-\[minmax\(0\,1\.4fr\)_minmax\(0\,1\.8fr\)_auto_auto_auto\] {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.8fr) auto auto auto;
   }
 
   .grid-cols-\[minmax\(240px\,320px\)_1fr\] {
@@ -4536,6 +4550,10 @@
 
   .gap-3 {
     gap: calc(var(--spacing) * 3);
+  }
+
+  .gap-4 {
+    gap: calc(var(--spacing) * 4);
   }
 
   .truncate {
@@ -4777,10 +4795,6 @@
     color: var(--color-success);
   }
 
-  .text-warning {
-    color: var(--color-warning);
-  }
-
   .text-white {
     color: var(--color-white);
   }
@@ -5015,6 +5029,12 @@
 
     .hover\:opacity-80:hover {
       opacity: 0.8;
+    }
+  }
+
+  @media (min-width: 48rem) {
+    .md\:grid-cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 }

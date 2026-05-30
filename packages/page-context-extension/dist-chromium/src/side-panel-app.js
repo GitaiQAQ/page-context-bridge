@@ -1,4 +1,9 @@
-import { i as BRIDGE_METHODS, n as sendRuntimeRequest } from '../runtime-rpc.hjw2lJPe.js';
+import {
+  a as BRIDGE_METHODS,
+  i as CONNECTION_METHODS,
+  n as sendRuntimeRequest,
+  u as isRpcNotification,
+} from '../runtime-rpc.Bw2tfxVR.js';
 import {
   a as storageLocalRemove,
   i as storageLocalGet,
@@ -6,11 +11,19 @@ import {
   n as runtimeGetUrl,
   o as storageLocalSet,
   s as tabsCreate,
+  t as getExtensionApi,
 } from '../extension-api.BMHS3pcA.js';
+import {
+  i as saveConnectionEndpoints,
+  n as loadConnectionEndpoints,
+  o as getScopedBridgeDescriptorId,
+  r as migrateLegacyConnectionEndpoints,
+  t as LEGACY_OPENCODE_CONFIG_STORAGE_KEY,
+} from '../connections-endpoints.YwFSX-t6.js';
 import {
   i as readSidepanelSurface,
   r as consumeLaunchUrlForSurface,
-} from '../sidepanel-launch-state.BKy_bs2K.js';
+} from '../sidepanel-launch-state.B4UHsvBw.js';
 //#region ../../node_modules/.pnpm/@lit+reactive-element@2.1.2/node_modules/@lit/reactive-element/css-tag.js
 /**
  * @license
@@ -2718,6 +2731,428 @@ function buildLoaderUrl(currentUrl) {
   return runtimeGetUrl('loader.html') + '#' + currentUrl;
 }
 //#endregion
+//#region src/connections-controller.ts
+/**
+ * sidepanel 连接状态控制器。
+ *
+ * 目标：
+ * - 所有组件共用一份连接快照
+ * - 监听 background 的 `connections.changed` 广播后自动刷新
+ * - 不再让每个组件各自轮询 RPC
+ */
+var ConnectionsStore = class {
+  constructor() {
+    this.descriptors = [];
+    this.listeners = /* @__PURE__ */ new Set();
+    this.subscribed = false;
+    this.subscribePromise = null;
+    this.refreshPromise = null;
+    this.runtimeListener = (message) => {
+      if (isRpcNotification(message) && message.method === CONNECTION_METHODS.changed)
+        this.refresh();
+      return false;
+    };
+  }
+  emit() {
+    for (const listener of this.listeners) listener();
+  }
+  attachRuntimeListener() {
+    getExtensionApi().runtime.onMessage.addListener(this.runtimeListener);
+  }
+  detachRuntimeListener() {
+    getExtensionApi().runtime.onMessage.removeListener?.(this.runtimeListener);
+  }
+  async ensureSubscribed() {
+    if (this.subscribed) return;
+    if (this.subscribePromise) return await this.subscribePromise;
+    this.subscribePromise = (async () => {
+      const result = (await sendRuntimeRequest(CONNECTION_METHODS.subscribe).catch(() => null)) ?? {
+        descriptors: [],
+      };
+      this.descriptors = Array.isArray(result.descriptors) ? result.descriptors : [];
+      this.subscribed = true;
+      this.attachRuntimeListener();
+      this.emit();
+    })();
+    try {
+      await this.subscribePromise;
+    } finally {
+      this.subscribePromise = null;
+    }
+  }
+  getSnapshot() {
+    return this.descriptors;
+  }
+  getById(descriptorId) {
+    return this.descriptors.find((descriptor) => descriptor.id === descriptorId) ?? null;
+  }
+  subscribe(listener) {
+    this.listeners.add(listener);
+    this.ensureSubscribed();
+    return () => {
+      this.listeners.delete(listener);
+      if (this.listeners.size === 0 && this.subscribed) {
+        this.detachRuntimeListener();
+        this.subscribed = false;
+      }
+    };
+  }
+  async refresh() {
+    if (this.refreshPromise) return await this.refreshPromise;
+    this.refreshPromise = (async () => {
+      const result = (await sendRuntimeRequest(CONNECTION_METHODS.list).catch(() => null)) ?? {
+        descriptors: [],
+      };
+      this.descriptors = Array.isArray(result.descriptors) ? result.descriptors : [];
+      this.emit();
+    })();
+    try {
+      await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+  async performAction(descriptorId, action) {
+    await sendRuntimeRequest(CONNECTION_METHODS.action, {
+      descriptorId,
+      action,
+    });
+    await this.refresh();
+  }
+  /**
+   * 等待某条连接满足条件。
+   *
+   * 这里用短轮询，而不是把一次性流程绑到 UI 订阅回调里，
+   * 能让 connect/restore 这类命令式流程保持简单。
+   */
+  async waitForDescriptor(descriptorId, predicate, timeoutMs = 5e3, intervalMs = 250) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() <= deadline) {
+      await this.refresh();
+      const descriptor = this.getById(descriptorId);
+      if (predicate(descriptor)) return descriptor;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    return this.getById(descriptorId);
+  }
+};
+var connectionsStore = new ConnectionsStore();
+function getConnectionsStore() {
+  return connectionsStore;
+}
+var ConnectionsController = class {
+  constructor(host) {
+    this.host = host;
+    this.unsubscribe = null;
+    host.addController(this);
+  }
+  hostConnected() {
+    this.unsubscribe = connectionsStore.subscribe(() => {
+      this.host.requestUpdate();
+    });
+  }
+  hostDisconnected() {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+  }
+  get descriptors() {
+    return connectionsStore.getSnapshot();
+  }
+  getDescriptor(descriptorId) {
+    return connectionsStore.getById(descriptorId);
+  }
+};
+//#endregion
+//#region src/connection-status-badge.ts
+function connectionStatusLabel(status) {
+  switch (status) {
+    case 'connected':
+      return 'Connected';
+    case 'connecting':
+      return 'Connecting';
+    case 'reachable':
+      return 'Reachable';
+    case 'unreachable':
+      return 'Unreachable';
+    case 'error':
+      return 'Error';
+    case 'closed':
+      return 'Closed';
+    default:
+      return 'Unknown';
+  }
+}
+function connectionStatusBadgeClass(status) {
+  switch (status) {
+    case 'connected':
+    case 'reachable':
+      return 'badge badge-success badge-sm';
+    case 'connecting':
+      return 'badge badge-warning badge-sm';
+    case 'error':
+    case 'unreachable':
+      return 'badge badge-error badge-sm';
+    case 'closed':
+      return 'badge badge-ghost badge-sm';
+    default:
+      return 'badge badge-outline badge-sm';
+  }
+}
+var ConnectionStatusBadge = class ConnectionStatusBadge extends i$2 {
+  constructor(..._args) {
+    super(..._args);
+    this.connections = new ConnectionsController(this);
+  }
+  /**
+   * 不开 shadow root，直接复用 sidepanel 已注入的 Tailwind / DaisyUI 样式。
+   */
+  createRenderRoot() {
+    return this;
+  }
+  #_connectionId_accessor_storage = '';
+  get connectionId() {
+    return this.#_connectionId_accessor_storage;
+  }
+  set connectionId(value) {
+    this.#_connectionId_accessor_storage = value;
+  }
+  render() {
+    if (!this.connectionId) return A;
+    const descriptor = this.connections.getDescriptor(this.connectionId);
+    const label = connectionStatusLabel(descriptor?.status);
+    const reason = descriptor?.statusReason?.trim();
+    return b`
+      <span
+        class=${connectionStatusBadgeClass(descriptor?.status)}
+        title=${reason ? `${label} · ${reason}` : label}
+      >
+        ${label}
+      </span>
+    `;
+  }
+};
+__decorate(
+  [
+    n$2({
+      type: String,
+      attribute: 'connection-id',
+    }),
+  ],
+  ConnectionStatusBadge.prototype,
+  'connectionId',
+  null,
+);
+ConnectionStatusBadge = __decorate([t$2('connection-status-badge')], ConnectionStatusBadge);
+//#endregion
+//#region src/connections-panel.ts
+function isUnsupportedConnectionsActionError(error) {
+  if (!(error instanceof Error)) return false;
+  const message = error.message;
+  return (
+    message.includes('Unhandled runtime method: connections.action') ||
+    message.includes('Expected JSON-RPC response envelope')
+  );
+}
+function connectionKindTitle(kind) {
+  switch (kind) {
+    case 'bridge-default-ws':
+      return 'Bridge Default WS';
+    case 'opencode-http':
+      return 'OpenCode HTTP';
+    case 'opencode-bridge-ws':
+      return 'OpenCode Bridge WS';
+    case 'page-tools':
+      return 'Page Tools';
+    case 'main-world-host':
+      return 'Main World Host';
+    case 'agentation-main-world-host':
+      return 'Agentation Main World Host';
+    default:
+      return kind;
+  }
+}
+var ConnectionsPanel = class ConnectionsPanel extends i$2 {
+  constructor(..._args) {
+    super(..._args);
+    this.connections = new ConnectionsController(this);
+    this.endpoints = {
+      opencodeBaseUrl: 'http://localhost:4096',
+      bridgeBaseUrl: 'http://localhost:22334',
+    };
+    this.saving = false;
+    this.message = '';
+  }
+  createRenderRoot() {
+    return this;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this.loadEndpoints();
+  }
+  async loadEndpoints() {
+    this.endpoints = await loadConnectionEndpoints();
+  }
+  groupDescriptors() {
+    const groups = /* @__PURE__ */ new Map();
+    for (const descriptor of this.connections.descriptors) {
+      const current = groups.get(descriptor.kind) ?? [];
+      current.push(descriptor);
+      groups.set(descriptor.kind, current);
+    }
+    return Array.from(groups.entries()).map(([kind, descriptors]) => ({
+      kind,
+      title: connectionKindTitle(kind),
+      descriptors,
+    }));
+  }
+  async handleSaveEndpoints() {
+    this.saving = true;
+    this.message = 'Saving endpoints...';
+    try {
+      this.endpoints = await saveConnectionEndpoints(this.endpoints);
+      this.dispatchEvent(
+        new CustomEvent('connections-endpoints-changed', {
+          detail: this.endpoints,
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      try {
+        await getConnectionsStore().performAction('opencode-http', 'reconnect');
+      } catch (error) {
+        if (!isUnsupportedConnectionsActionError(error)) throw error;
+        await getConnectionsStore().refresh();
+      }
+      this.message = 'Endpoints saved';
+    } catch (error) {
+      this.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.saving = false;
+    }
+  }
+  async handleAction(descriptorId, action) {
+    try {
+      this.message = action === 'reconnect' ? 'Reconnecting...' : 'Disconnecting...';
+      await getConnectionsStore().performAction(descriptorId, action);
+      this.message = '';
+    } catch (error) {
+      this.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+  renderRow(descriptor) {
+    const reconnectEnabled = Boolean(descriptor.capabilities?.reconnect);
+    const disconnectEnabled = Boolean(descriptor.capabilities?.disconnect);
+    return b`
+      <div
+        class="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.8fr)_auto_auto_auto] gap-2 items-center rounded-lg border border-base-300 bg-base-100 px-3 py-2"
+      >
+        <div class="min-w-0">
+          <div class="text-sm font-semibold truncate">${descriptor.label}</div>
+          <div class="text-xs opacity-60 truncate" title=${descriptor.id}>${descriptor.id}</div>
+        </div>
+        <div class="text-xs font-mono opacity-70 truncate" title=${descriptor.endpoint ?? ''}>
+          ${descriptor.endpoint ?? '-'}
+        </div>
+        <connection-status-badge connection-id=${descriptor.id}></connection-status-badge>
+        <button
+          class="btn btn-xs btn-outline"
+          ?disabled=${!reconnectEnabled}
+          @click=${() => void this.handleAction(descriptor.id, 'reconnect')}
+        >
+          Reconnect
+        </button>
+        <button
+          class="btn btn-xs btn-outline"
+          ?disabled=${!disconnectEnabled}
+          @click=${() => void this.handleAction(descriptor.id, 'disconnect')}
+        >
+          Disconnect
+        </button>
+      </div>
+    `;
+  }
+  render() {
+    const groups = this.groupDescriptors();
+    return b`
+      <div class="tab-content active flex flex-col flex-1 min-h-0">
+        <div class="border-b border-base-300 bg-base-100 p-3 shrink-0">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs font-bold uppercase tracking-wide opacity-60">Endpoints</span>
+            ${this.message ? b`<span class="text-xs opacity-60">${this.message}</span>` : A}
+          </div>
+          <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+            <label class="form-control flex flex-col gap-1">
+              <span class="text-xs font-semibold opacity-70">OpenCode Base URL</span>
+              <input
+                type="text"
+                class="input input-sm input-bordered font-mono"
+                .value=${this.endpoints.opencodeBaseUrl}
+                @input=${(event) => {
+                  this.endpoints = {
+                    ...this.endpoints,
+                    opencodeBaseUrl: event.target.value,
+                  };
+                }}
+              />
+            </label>
+            <label class="form-control flex flex-col gap-1">
+              <span class="text-xs font-semibold opacity-70">Bridge Base URL</span>
+              <input
+                type="text"
+                class="input input-sm input-bordered font-mono"
+                .value=${this.endpoints.bridgeBaseUrl}
+                @input=${(event) => {
+                  this.endpoints = {
+                    ...this.endpoints,
+                    bridgeBaseUrl: event.target.value,
+                  };
+                }}
+              />
+            </label>
+          </div>
+          <div class="mt-2">
+            <button
+              class="btn btn-sm btn-primary ${this.saving ? 'loading' : ''}"
+              ?disabled=${this.saving}
+              @click=${() => void this.handleSaveEndpoints()}
+            >
+              Save Endpoints
+            </button>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
+          ${
+            groups.length === 0
+              ? b`<div class="text-sm opacity-60">No connections registered.</div>`
+              : c(
+                  groups,
+                  (group) => group.kind,
+                  (group) => b`
+                  <section class="flex flex-col gap-2">
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-xs font-bold uppercase tracking-wide opacity-60">
+                        ${group.title}
+                      </h3>
+                      <span class="badge badge-ghost badge-xs">${group.descriptors.length}</span>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      ${group.descriptors.map((descriptor) => this.renderRow(descriptor))}
+                    </div>
+                  </section>
+                `,
+                )
+          }
+        </div>
+      </div>
+    `;
+  }
+};
+__decorate([r$1()], ConnectionsPanel.prototype, 'endpoints', void 0);
+__decorate([r$1()], ConnectionsPanel.prototype, 'saving', void 0);
+__decorate([r$1()], ConnectionsPanel.prototype, 'message', void 0);
+ConnectionsPanel = __decorate([t$2('connections-panel')], ConnectionsPanel);
+//#endregion
 //#region src/sidepanel-opencode.ts
 var REQUEST_TIMEOUT_MS = 1e4;
 function trimTrailingSlashes(value) {
@@ -2869,7 +3304,7 @@ function buildMcpUrl(cfg, sessionId) {
 }
 //#endregion
 //#region src/sidepanel.css?url
-var sidepanel_default = '/sidepanel.DQZpVP27.css';
+var sidepanel_default = '/sidepanel.Bx7bPjj0.css';
 //#endregion
 //#region src/side-panel-app.ts
 /**
@@ -2937,7 +3372,7 @@ function normalizeRuntimeExplicitTabBinding(input) {
     ...(input.windowId != null ? { windowId: input.windowId } : {}),
   };
 }
-var OPENCODE_CONFIG_STORAGE_KEY = 'opencode.config.v1';
+var OPENCODE_CONFIG_STORAGE_KEY = LEGACY_OPENCODE_CONFIG_STORAGE_KEY;
 var customRules = i$5`
   /* tree indentation */
   .tree-indent-1 {
@@ -2989,7 +3424,6 @@ var customRules = i$5`
 var SidePanelApp = class SidePanelApp extends i$2 {
   constructor(..._args) {
     super(..._args);
-    this._connected = false;
     this._refreshing = false;
     this._currentTabId = null;
     this._toolTreeResponse = null;
@@ -3039,19 +3473,16 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     this._feedbackError = '';
     this._feedbackActionStateByAnnotationId = {};
     this._agentationInjecting = false;
-    this._agentationInjectStatus = '';
-    this._agentationInjectStatusClass = 'text-xs opacity-60';
     this._opencodeBaseUrl = 'http://localhost:4096';
     this._bridgeBaseUrl = 'http://localhost:22334';
     this._opencodeDraftSessionId = '';
     this._opencodeActiveSessionId = '';
     this._opencodeSessions = [];
     this._opencodeConnecting = false;
-    this._opencodeStatus = '';
-    this._opencodeStatusClass = 'text-xs opacity-60';
+    this._opencodeMessage = '';
     this._opencodeDeleteSessionOnDisconnect = false;
+    this._connections = new ConnectionsController(this);
     this._currentIframe = null;
-    this._statusIntervalId = null;
     this._feedbackPollIntervalId = null;
     this._debouncedFilterInput = createDebounce((value) => {
       this._currentFilter = value;
@@ -3091,10 +3522,6 @@ var SidePanelApp = class SidePanelApp extends i$2 {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('message', this._boundMessageHandler);
-    if (this._statusIntervalId) {
-      clearInterval(this._statusIntervalId);
-      this._statusIntervalId = null;
-    }
     if (this._feedbackPollIntervalId) {
       clearInterval(this._feedbackPollIntervalId);
       this._feedbackPollIntervalId = null;
@@ -3110,8 +3537,8 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     if (changedProperties.has('_currentUrl')) this.updateComplete.then(() => this._manageIframe());
   }
   async _init() {
-    await this._refreshStatus();
-    this._statusIntervalId = setInterval(() => this._refreshStatus(), 5e3);
+    await getConnectionsStore().ensureSubscribed();
+    await getConnectionsStore().refresh();
     this._feedbackPollIntervalId = setInterval(() => {
       if (this._activeTab === 'feedback') this._loadFeedbackSnapshot();
     }, 1e4);
@@ -3121,10 +3548,12 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     this._navigateTo(url);
     this.updateComplete.then(() => this._manageIframe());
     await this._restoreOpenCodeConfig();
+    this._currentTabId = await this._getCurrentTabId();
     this._tabActivatedListener = (activeInfo) => {
       if (this._boundTabId != null && activeInfo.tabId !== this._boundTabId) return;
-      if (activeInfo.tabId !== this._currentTabId && this._activeTab === 'tools')
-        this._loadPageTools();
+      const previousTabId = this._currentTabId;
+      this._currentTabId = activeInfo.tabId;
+      if (activeInfo.tabId !== previousTabId && this._activeTab === 'tools') this._loadPageTools();
       if (this._activeTab === 'context') this._loadContextManifest();
       if (this._activeTab === 'feedback') this._loadFeedbackSnapshot();
     };
@@ -3145,15 +3574,18 @@ var SidePanelApp = class SidePanelApp extends i$2 {
       bridgeBaseUrl: this._bridgeBaseUrl,
     };
   }
-  _buildOpenCodeSessionView(session, runtimeStatus) {
+  _buildOpenCodeSessionView(session, descriptor) {
     const cfg = this._getOpenCodeConfig();
     return {
       sessionId: session.id,
       sessionDirectory: session.directory?.trim() ?? '',
       iframeUrl: buildIframeUrl(cfg, session),
-      wsUrl: runtimeStatus?.wsUrl ?? buildExtWsUrl(cfg, session.id),
-      connected: runtimeStatus?.connected ?? false,
-      bridgeSessionId: runtimeStatus?.bridgeSessionId ?? null,
+      wsUrl: descriptor?.endpoint ?? buildExtWsUrl(cfg, session.id),
+      connected: descriptor?.status === 'connected',
+      bridgeSessionId:
+        typeof descriptor?.meta?.bridgeSessionId === 'string'
+          ? descriptor.meta.bridgeSessionId
+          : null,
     };
   }
   _getOpenCodeSession(sessionId) {
@@ -3196,15 +3628,25 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     });
   }
   /**
-   * 这里只接受 bridge 明确回报 connected 的状态。
-   * 如果 transport 还没 ready，宁可提前失败，也不要把半连通状态暴露给 iframe。
+   * 等待 scoped ws descriptor 进入稳定状态。
+   *
+   * 这里不再读旧的 `extensionStatusGet`，统一改成等 registry descriptor。
    */
-  async _getScopedRuntimeStatus(sessionId) {
-    const status = await sendRuntimeRequest(BRIDGE_METHODS.extensionStatusGet, { sessionId });
-    const scopedStatus = status.scopedSessions?.[0];
-    if (!status.connected || !scopedStatus?.connected)
-      throw new Error(`Bridge WebSocket for session "${sessionId}" is not connected`);
-    return scopedStatus;
+  async _waitForScopedConnection(sessionId) {
+    const descriptorId = getScopedBridgeDescriptorId(sessionId);
+    const descriptor = await getConnectionsStore().waitForDescriptor(
+      descriptorId,
+      (current) =>
+        current?.status === 'connected' ||
+        current?.status === 'error' ||
+        current?.status === 'closed',
+      5e3,
+    );
+    if (!descriptor || descriptor.status !== 'connected')
+      throw new Error(
+        descriptor?.statusReason || `Bridge WebSocket for session "${sessionId}" is not connected`,
+      );
+    return descriptor;
   }
   async _createOrReuseOpenCodeSession(forceNewSession = false) {
     const desiredSessionId = forceNewSession ? '' : this._opencodeDraftSessionId.trim();
@@ -3218,23 +3660,20 @@ var SidePanelApp = class SidePanelApp extends i$2 {
   async _connectOpenCodeSession(session) {
     const cfg = this._getOpenCodeConfig();
     const sessionId = session.id;
-    this._opencodeStatus = `Connecting bridge session ${sessionId}...`;
-    this._opencodeStatusClass = 'text-xs opacity-60';
+    this._opencodeMessage = `Connecting bridge session ${sessionId}...`;
     this.requestUpdate();
     await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
       sessionId,
       wsUrl: buildExtWsUrl(cfg, sessionId),
     });
-    const scopedStatus = await this._getScopedRuntimeStatus(sessionId);
-    this._opencodeStatus = `Registering MCP for ${sessionId}...`;
-    this._opencodeStatusClass = 'text-xs opacity-60';
+    const descriptor = await this._waitForScopedConnection(sessionId);
+    this._opencodeMessage = `Registering MCP for ${sessionId}...`;
     this.requestUpdate();
     await ensureMcpRegistered(cfg, sessionId);
-    const sessionView = this._buildOpenCodeSessionView(session, scopedStatus);
+    const sessionView = this._buildOpenCodeSessionView(session, descriptor);
     this._upsertOpenCodeSession(sessionView);
     await this._selectOpenCodeSession(sessionId);
-    this._opencodeStatus = `Connected ${sessionId}`;
-    this._opencodeStatusClass = 'text-xs text-success';
+    this._opencodeMessage = `Connected ${sessionId}`;
     return sessionView;
   }
   /**
@@ -3243,14 +3682,13 @@ var SidePanelApp = class SidePanelApp extends i$2 {
    */
   async _restoreOpenCodeConfig() {
     try {
+      const endpoints = await migrateLegacyConnectionEndpoints();
+      this._opencodeBaseUrl = endpoints.opencodeBaseUrl;
+      this._bridgeBaseUrl = endpoints.bridgeBaseUrl;
       const saved = (await storageLocalGet(OPENCODE_CONFIG_STORAGE_KEY))[
         OPENCODE_CONFIG_STORAGE_KEY
       ];
       if (!saved) return;
-      if (typeof saved.opencodeBaseUrl === 'string' && saved.opencodeBaseUrl.trim())
-        this._opencodeBaseUrl = saved.opencodeBaseUrl.trim();
-      if (typeof saved.bridgeBaseUrl === 'string' && saved.bridgeBaseUrl.trim())
-        this._bridgeBaseUrl = saved.bridgeBaseUrl.trim();
       const lastSessionId =
         typeof saved.lastSessionId === 'string'
           ? saved.lastSessionId.trim()
@@ -3260,73 +3698,76 @@ var SidePanelApp = class SidePanelApp extends i$2 {
       this._opencodeDraftSessionId = lastSessionId;
       if (!lastSessionId) return;
       const cfg = this._getOpenCodeConfig();
-      const [sessions, runtimeStatus] = await Promise.all([
-        listSessions(cfg),
-        sendRuntimeRequest(BRIDGE_METHODS.extensionStatusGet).catch(() => ({
-          connected: false,
-          scopedSessions: [],
-        })),
-      ]);
+      const sessions = await listSessions(cfg);
+      await getConnectionsStore().refresh();
+      const descriptors = this._connections.descriptors;
       const aliveSessionIds = new Set(sessions.map((session) => session.id));
-      const staleScopedSessions = (runtimeStatus.scopedSessions ?? []).filter(
-        (session) => !aliveSessionIds.has(session.tenantId),
+      const staleScopedDescriptors = descriptors.filter(
+        (descriptor) =>
+          descriptor.kind === 'opencode-bridge-ws' &&
+          typeof descriptor.meta?.tenantId === 'string' &&
+          !aliveSessionIds.has(descriptor.meta.tenantId),
       );
       await Promise.all(
-        staleScopedSessions.map(async (session) => {
+        staleScopedDescriptors.map(async (descriptor) => {
           try {
-            await this._disconnectOpenCodeBridgeSession(session.tenantId);
+            await this._disconnectOpenCodeBridgeSession(String(descriptor.meta?.tenantId ?? ''));
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             spLog(
-              `Failed to drop stale OpenCode bridge session ${session.tenantId}: ${message}`,
+              `Failed to drop stale OpenCode bridge session ${String(descriptor.meta?.tenantId ?? '')}: ${message}`,
               'warn',
             );
           }
         }),
       );
+      await getConnectionsStore().refresh();
       if (!aliveSessionIds.has(lastSessionId)) {
         this._opencodeSessions = [];
         this._opencodeActiveSessionId = '';
         this._opencodeDraftSessionId = '';
-        this._opencodeStatus = 'Last session no longer exists. Cleared saved state.';
-        this._opencodeStatusClass = 'text-xs opacity-60';
+        this._opencodeMessage = 'Last session no longer exists. Cleared saved state.';
         await storageLocalRemove(OPENCODE_CONFIG_STORAGE_KEY);
         return;
       }
-      const aliveScopedSessions = (runtimeStatus.scopedSessions ?? []).filter(
-        (session) => session.connected && aliveSessionIds.has(session.tenantId),
+      const aliveScopedDescriptors = this._connections.descriptors.filter(
+        (descriptor) =>
+          descriptor.kind === 'opencode-bridge-ws' &&
+          descriptor.status === 'connected' &&
+          typeof descriptor.meta?.tenantId === 'string' &&
+          aliveSessionIds.has(descriptor.meta.tenantId),
       );
       const sessionById = new Map(sessions.map((session) => [session.id, session]));
-      this._opencodeSessions = aliveScopedSessions.map((session) =>
+      this._opencodeSessions = aliveScopedDescriptors.map((descriptor) =>
         this._buildOpenCodeSessionView(
-          sessionById.get(session.tenantId) ?? { id: session.tenantId },
-          session,
+          sessionById.get(String(descriptor.meta?.tenantId ?? '')) ?? {
+            id: String(descriptor.meta?.tenantId ?? ''),
+          },
+          descriptor,
         ),
       );
-      let restoredStatus = aliveScopedSessions.find(
-        (session) => session.tenantId === lastSessionId,
+      let restoredDescriptor = aliveScopedDescriptors.find(
+        (descriptor) => descriptor.meta?.tenantId === lastSessionId,
       );
-      if (!restoredStatus) {
+      if (!restoredDescriptor) {
         await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect, {
           sessionId: lastSessionId,
           wsUrl: buildExtWsUrl(cfg, lastSessionId),
         });
-        restoredStatus = await this._getScopedRuntimeStatus(lastSessionId);
+        restoredDescriptor = await this._waitForScopedConnection(lastSessionId);
       }
       this._upsertOpenCodeSession(
         this._buildOpenCodeSessionView(
           sessionById.get(lastSessionId) ?? { id: lastSessionId },
-          restoredStatus,
+          restoredDescriptor,
         ),
       );
       this._opencodeActiveSessionId = lastSessionId;
-      this._opencodeStatus = `Restored session ${lastSessionId}`;
-      this._opencodeStatusClass = 'text-xs text-success';
+      this._opencodeMessage = `Restored session ${lastSessionId}`;
       await this._persistOpenCodeConfig();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this._opencodeStatus = `Restore skipped: ${message}`;
-      this._opencodeStatusClass = 'text-xs text-warning';
+      this._opencodeMessage = `Restore skipped: ${message}`;
       spLog(`Failed to restore OpenCode config: ${message}`, 'warn');
     }
   }
@@ -3334,19 +3775,10 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     const lastSessionId = this._opencodeActiveSessionId.trim();
     await storageLocalSet({
       [OPENCODE_CONFIG_STORAGE_KEY]: {
-        opencodeBaseUrl: this._opencodeBaseUrl.trim(),
-        bridgeBaseUrl: this._bridgeBaseUrl.trim(),
         lastSessionId,
         sessionId: lastSessionId,
       },
     });
-  }
-  async _refreshStatus() {
-    try {
-      this._connected = (await sendRuntimeRequest(BRIDGE_METHODS.extensionStatusGet)).connected;
-    } catch {
-      this._connected = false;
-    }
   }
   async _getCurrentTabId() {
     if (this._boundTabId != null) return this._boundTabId;
@@ -3944,6 +4376,7 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     if (tab === 'tools') this._loadPageTools();
     else if (tab === 'context') this._loadContextManifest();
     else if (tab === 'feedback') this._loadFeedbackSnapshot();
+    else if (tab === 'connections') getConnectionsStore().refresh();
   }
   _handleGoClick() {
     const input = this.shadowRoot.querySelector('#urlInput');
@@ -3965,12 +4398,12 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     this.requestUpdate();
     try {
       await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
+      await getConnectionsStore().refresh();
     } catch (error) {
       spLog(`Reconnect failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
     } finally {
       setTimeout(() => {
         this._refreshing = false;
-        this._refreshStatus();
         this.requestUpdate();
       }, 800);
     }
@@ -3978,20 +4411,18 @@ var SidePanelApp = class SidePanelApp extends i$2 {
   async _handleInjectAgentation() {
     if (this._agentationInjecting) return;
     this._agentationInjecting = true;
-    this._agentationInjectStatus = 'Injecting...';
-    this._agentationInjectStatusClass = 'text-xs opacity-60';
     this.requestUpdate();
     try {
       const tabId = await this._getCurrentTabId();
       if (tabId == null) throw new Error('No active tab');
       await sendRuntimeRequest(BRIDGE_METHODS.extensionAgentationMainEnsure, { tabId });
-      this._agentationInjectStatus = 'Injected';
-      this._agentationInjectStatusClass = 'text-xs text-success';
+      await getConnectionsStore().refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this._agentationInjectStatus = message;
-      this._agentationInjectStatusClass = 'text-xs text-error';
-      spLog(`Agentation inject failed: ${message}`, 'error');
+      spLog(
+        `Agentation inject failed: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+      );
+      await getConnectionsStore().refresh();
     } finally {
       this._agentationInjecting = false;
       this.requestUpdate();
@@ -4000,8 +4431,7 @@ var SidePanelApp = class SidePanelApp extends i$2 {
   async _handleOpencodeConnect(forceNewSession = false) {
     if (this._opencodeConnecting) return;
     this._opencodeConnecting = true;
-    this._opencodeStatus = 'Resolving session...';
-    this._opencodeStatusClass = 'text-xs opacity-60';
+    this._opencodeMessage = 'Resolving session...';
     this.requestUpdate();
     try {
       const session = await this._createOrReuseOpenCodeSession(forceNewSession);
@@ -4009,8 +4439,7 @@ var SidePanelApp = class SidePanelApp extends i$2 {
       await this._connectOpenCodeSession(session);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this._opencodeStatus = message;
-      this._opencodeStatusClass = 'text-xs text-error';
+      this._opencodeMessage = message;
       spLog(`OpenCode connect failed: ${message}`, 'error');
     } finally {
       this._opencodeConnecting = false;
@@ -4022,25 +4451,23 @@ var SidePanelApp = class SidePanelApp extends i$2 {
     if (!normalizedSessionId) return;
     const shouldDeleteSession = this._opencodeDeleteSessionOnDisconnect && sessionId !== '';
     this._opencodeConnecting = true;
-    this._opencodeStatus = shouldDeleteSession ? 'Deleting session...' : 'Disconnecting...';
-    this._opencodeStatusClass = 'text-xs opacity-60';
+    this._opencodeMessage = shouldDeleteSession ? 'Deleting session...' : 'Disconnecting...';
     this.requestUpdate();
     try {
       await this._disconnectOpenCodeBridgeSession(normalizedSessionId);
+      await getConnectionsStore().refresh();
       if (shouldDeleteSession) await deleteSession(this._getOpenCodeConfig(), normalizedSessionId);
       this._removeOpenCodeSession(normalizedSessionId);
       if (this._opencodeActiveSessionId === normalizedSessionId)
         this._opencodeActiveSessionId = this._opencodeSessions[0]?.sessionId ?? '';
       this._opencodeDraftSessionId = shouldDeleteSession ? '' : normalizedSessionId;
       await this._persistOpenCodeConfig();
-      this._opencodeStatus = shouldDeleteSession
+      this._opencodeMessage = shouldDeleteSession
         ? `Disconnected and deleted ${normalizedSessionId}`
         : `Disconnected ${normalizedSessionId}`;
-      this._opencodeStatusClass = 'text-xs opacity-60';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this._opencodeStatus = message;
-      this._opencodeStatusClass = 'text-xs text-error';
+      this._opencodeMessage = message;
       spLog(`OpenCode disconnect failed: ${message}`, 'error');
     } finally {
       this._opencodeConnecting = false;
@@ -4050,6 +4477,10 @@ var SidePanelApp = class SidePanelApp extends i$2 {
   _handleOpenTab() {
     const url = this.shadowRoot.querySelector('#urlInput')?.value.trim();
     if (url) tabsCreate({ url });
+  }
+  _handleConnectionsEndpointsChanged(event) {
+    this._opencodeBaseUrl = event.detail.opencodeBaseUrl;
+    this._bridgeBaseUrl = event.detail.bridgeBaseUrl;
   }
   _handleToolsFilterInput(event) {
     const input = event.target;
@@ -4135,30 +4566,18 @@ var SidePanelApp = class SidePanelApp extends i$2 {
         class="tab-content ${e$1({ active: this._activeTab === 'opencode' })} flex flex-col flex-1 min-h-0"
       >
         <div class="flex flex-col gap-2 p-3 border-b border-base-300 bg-base-100 shrink-0">
-          <label class="form-control flex flex-col gap-1">
-            <span class="text-xs font-semibold opacity-70">OpenCode Base URL</span>
-            <input
-              type="text"
-              class="input input-sm input-bordered font-mono"
-              .value=${this._opencodeBaseUrl}
-              @input=${(event) => {
-                this._opencodeBaseUrl = event.target.value;
-              }}
-              placeholder="http://localhost:4096"
-            />
-          </label>
-          <label class="form-control flex flex-col gap-1">
-            <span class="text-xs font-semibold opacity-70">Bridge Base URL</span>
-            <input
-              type="text"
-              class="input input-sm input-bordered font-mono"
-              .value=${this._bridgeBaseUrl}
-              @input=${(event) => {
-                this._bridgeBaseUrl = event.target.value;
-              }}
-              placeholder="http://localhost:22334"
-            />
-          </label>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs opacity-60">
+              Endpoint 与连接状态已统一收口到 Connections 面板。
+            </span>
+            <button
+              class="btn btn-xs btn-ghost"
+              @click=${() => this._handleTabClick('connections')}
+              title="Open Connections panel"
+            >
+              Open Connections
+            </button>
+          </div>
           <label class="form-control flex flex-col gap-1">
             <span class="text-xs font-semibold opacity-70">Session ID (optional)</span>
             <input
@@ -4204,7 +4623,7 @@ var SidePanelApp = class SidePanelApp extends i$2 {
             >
               Disconnect
             </button>
-            ${this._opencodeStatus ? b`<span class=${this._opencodeStatusClass}>${this._opencodeStatus}</span>` : A}
+            ${this._opencodeMessage ? b`<span class="text-xs opacity-60">${this._opencodeMessage}</span>` : A}
           </div>
           ${
             this._opencodeSessions.length > 0
@@ -4298,12 +4717,12 @@ var SidePanelApp = class SidePanelApp extends i$2 {
         class="flex items-center gap-2 px-3 py-1.5 bg-base-100 border-b border-base-300 shrink-0"
       >
         <button
-          class="w-4 h-4 rounded-full shrink-0 flex items-center justify-center ${this._refreshing ? 'bg-base-300' : this._connected ? 'bg-success' : 'bg-error'} hover:opacity-80 transition-all duration-200 cursor-pointer border-none p-0 overflow-hidden"
+          class="btn btn-xs btn-ghost btn-square shrink-0"
           @click=${this._handleReconnect}
-          title="${this._refreshing ? 'Refreshing...' : 'Click to refresh'}"
+          title="${this._refreshing ? 'Refreshing...' : 'Refresh sidepanel data'}"
         >
           <svg
-            class="w-3 h-3 text-white transition-opacity duration-200 ${this._refreshing ? 'animate-spin opacity-100' : 'opacity-0'}"
+            class="w-3.5 h-3.5 transition-opacity duration-200 ${this._refreshing ? 'animate-spin opacity-100' : 'opacity-70'}"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -4320,19 +4739,10 @@ var SidePanelApp = class SidePanelApp extends i$2 {
           class="btn btn-xs btn-ghost ${this._agentationInjecting ? 'loading' : ''}"
           @click=${() => void this._handleInjectAgentation()}
           ?disabled=${this._agentationInjecting}
-          title=${this._agentationInjectStatus || 'Inject Agentation into the active tab'}
+          title="Inject Agentation into the active tab"
         >
           Inject Agentation
         </button>
-        ${
-          this._agentationInjectStatus
-            ? b`<span
-              class=${this._agentationInjectStatusClass}
-              title=${this._agentationInjectStatus}
-              >${this._agentationInjectStatus}</span
-            >`
-            : A
-        }
         <div role="tablist" class="tabs tabs-boxed ml-auto bg-transparent border-none gap-0.5">
           <button
             role="tab"
@@ -4411,6 +4821,27 @@ var SidePanelApp = class SidePanelApp extends i$2 {
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
               <line x1="8" y1="21" x2="16" y2="21" />
               <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </button>
+          <button
+            role="tab"
+            class="tab tab-xs px-2 ${e$1({ 'tab-active': this._activeTab === 'connections' })}"
+            @click=${() => this._handleTabClick('connections')}
+            title="Connections"
+          >
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 12H5a3 3 0 0 1 0-6h4" />
+              <path d="M15 6h4a3 3 0 1 1 0 6h-4" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+              <line x1="12" y1="9" x2="12" y2="15" />
             </svg>
           </button>
           <button
@@ -4542,11 +4973,15 @@ var SidePanelApp = class SidePanelApp extends i$2 {
         <div class="iframe-container flex-1 relative bg-base-100" id="iframeContainer"></div>
       </div>
 
+      <connections-panel
+        ?hidden=${this._activeTab !== 'connections'}
+        @connections-endpoints-changed=${this._handleConnectionsEndpointsChanged}
+      ></connections-panel>
+
       ${this._renderOpencodeTab()}
     `;
   }
 };
-__decorate([r$1()], SidePanelApp.prototype, '_connected', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_refreshing', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_currentTabId', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_toolTreeResponse', void 0);
@@ -4596,16 +5031,13 @@ __decorate([r$1()], SidePanelApp.prototype, '_feedbackLoading', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_feedbackError', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_feedbackActionStateByAnnotationId', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_agentationInjecting', void 0);
-__decorate([r$1()], SidePanelApp.prototype, '_agentationInjectStatus', void 0);
-__decorate([r$1()], SidePanelApp.prototype, '_agentationInjectStatusClass', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_opencodeBaseUrl', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_bridgeBaseUrl', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_opencodeDraftSessionId', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_opencodeActiveSessionId', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_opencodeSessions', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_opencodeConnecting', void 0);
-__decorate([r$1()], SidePanelApp.prototype, '_opencodeStatus', void 0);
-__decorate([r$1()], SidePanelApp.prototype, '_opencodeStatusClass', void 0);
+__decorate([r$1()], SidePanelApp.prototype, '_opencodeMessage', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_opencodeDeleteSessionOnDisconnect', void 0);
 __decorate([e$3('#iframeContainer')], SidePanelApp.prototype, '_iframeContainer', void 0);
 __decorate([r$1()], SidePanelApp.prototype, '_diffStatusClass', void 0);
