@@ -1112,16 +1112,10 @@ describe('side-panel-app tools tree interactions', () => {
     expect(connectedSessions.get('install-test')).toBe(
       'ws://127.0.0.1:22335/default?tenantId=install-test',
     );
-    expect(ensureMcpRegisteredMock).toHaveBeenNthCalledWith(
-      1,
+    expect(ensureMcpRegisteredMock).toHaveBeenCalledTimes(1);
+    expect(ensureMcpRegisteredMock).toHaveBeenCalledWith(
       expect.any(Object),
       'session-alpha',
-      'install-test',
-    );
-    expect(ensureMcpRegisteredMock).toHaveBeenNthCalledWith(
-      2,
-      expect.any(Object),
-      'session-beta',
       'install-test',
     );
     expect(createOpenCodeSessionMock).toHaveBeenNthCalledWith(1, {

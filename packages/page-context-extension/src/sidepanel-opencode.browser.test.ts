@@ -5,6 +5,7 @@ import {
   buildIframeUrl,
   buildMcpUrl,
   buildMcpName,
+  clearOpenCodeMcpRegistrationCache,
   ensureMcpRegistered,
   type OpenCodeConfig,
 } from './sidepanel-opencode';
@@ -20,10 +21,12 @@ describe('sidepanel-opencode', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearOpenCodeMcpRegistrationCache();
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    clearOpenCodeMcpRegistrationCache();
   });
 
   it('builds websocket urls and rewrites http/https protocols', () => {
@@ -90,7 +93,7 @@ describe('sidepanel-opencode', () => {
     );
   });
 
-  it('reuses one MCP entry for multiple OpenCode sessions on the same bridge channel', async () => {
+  it('does not re-post the same MCP entry for multiple OpenCode sessions on one bridge channel', async () => {
     const fetchMock = vi.fn().mockImplementation(
       async () =>
         new Response(
@@ -105,20 +108,18 @@ describe('sidepanel-opencode', () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    await ensureMcpRegistered(cfg, 'session-alpha', 'install-test');
-    await ensureMcpRegistered(cfg, 'session-beta', 'install-test');
+    await expect(ensureMcpRegistered(cfg, 'session-alpha', 'install-test')).resolves.toEqual({
+      created: true,
+      mcpName: 'page-context-install-test',
+    });
+    await expect(ensureMcpRegistered(cfg, 'session-beta', 'install-test')).resolves.toEqual({
+      created: false,
+      mcpName: 'page-context-install-test',
+    });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'http://localhost:4096/mcp',
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.stringContaining('"name":"page-context-install-test"'),
-      }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
       'http://localhost:4096/mcp',
       expect.objectContaining({
         method: 'POST',

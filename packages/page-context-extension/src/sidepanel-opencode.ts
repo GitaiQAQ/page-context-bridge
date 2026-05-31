@@ -15,6 +15,7 @@ interface OpenCodeMcpEntry {
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
+const registeredMcpEntries = new Set<string>();
 
 function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '');
@@ -122,6 +123,12 @@ export async function ensureMcpRegistered(
 ): Promise<{ created: boolean; mcpName: string }> {
   const normalized = getNormalizedConfig(cfg);
   const mcpName = buildMcpName(channelId);
+  const mcpUrl = buildMcpUrl(normalized, channelId);
+  const cacheKey = `${normalized.opencodeBaseUrl}\n${mcpName}\n${mcpUrl}`;
+
+  if (registeredMcpEntries.has(cacheKey)) {
+    return { created: false, mcpName };
+  }
 
   const status = await requestJson<Record<string, OpenCodeMcpEntry>>(getMcpApiUrl(normalized), {
     method: 'POST',
@@ -129,7 +136,7 @@ export async function ensureMcpRegistered(
       name: mcpName,
       config: {
         type: 'remote',
-        url: buildMcpUrl(normalized, channelId),
+        url: mcpUrl,
         enabled: true,
       },
     },
@@ -150,7 +157,12 @@ export async function ensureMcpRegistered(
     );
   }
 
+  registeredMcpEntries.add(cacheKey);
   return { created: true, mcpName };
+}
+
+export function clearOpenCodeMcpRegistrationCache(): void {
+  registeredMcpEntries.clear();
 }
 
 export function buildMcpName(channelId: string): string {

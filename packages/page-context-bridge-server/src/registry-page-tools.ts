@@ -8,12 +8,7 @@ import { z } from 'zod';
 
 import { buildRegisteredPageToolName } from './page-tool-routing.js';
 import { buildZodSchema, type JsonSchemaLike } from './schema.js';
-import type {
-  ExtensionRpcCaller,
-  PageToolSpec,
-  RegisteredPageTool,
-  ServerHandleStore,
-} from './registry-types.js';
+import type { ExtensionRpcCaller, PageToolSpec, ServerHandleStore } from './registry-types.js';
 import type { RegistryTabState } from './registry-tab-state.js';
 import {
   createTextResponse,
@@ -119,7 +114,14 @@ export function registerPageToolsOnAllServers(input: {
 }): void {
   const { state, mcpServers, rpcCaller, tabId, tools, logger } = input;
   for (const mcpServer of mcpServers) {
-    registerPageToolsOnServer({ state, mcpServer, rpcCaller, tabId, tools, logger });
+    registerPageToolsOnServer({
+      state,
+      mcpServer,
+      rpcCaller,
+      tabId,
+      tools,
+      logger,
+    });
   }
 }
 

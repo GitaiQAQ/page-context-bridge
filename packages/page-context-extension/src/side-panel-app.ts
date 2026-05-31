@@ -355,6 +355,7 @@ export class SidePanelApp extends LitElement {
   private readonly _boundTabId = this._runtimeTabBinding.tabId;
   private readonly _boundWindowId = this._runtimeTabBinding.windowId;
   private _bridgeInstallId = '';
+  private readonly _registeredOpenCodeMcpKeys = new Set<string>();
 
   // ─── Lifecycle ─────────────────────────────────────────────────
   override connectedCallback(): void {
@@ -546,6 +547,10 @@ export class SidePanelApp extends LitElement {
     return buildOpenCodeExtWsUrl(this._getOpenCodeConfig(), channelId);
   }
 
+  private _getOpenCodeMcpRegistrationKey(cfg: OpenCodeConfig, channelId: string): string {
+    return `${cfg.bridgeBaseUrl.trim().replace(/\/+$/, '')}\n${buildOpenCodeMcpName(channelId)}`;
+  }
+
   private async _getBridgeInstallId(): Promise<string> {
     if (this._bridgeInstallId) {
       return this._bridgeInstallId;
@@ -703,7 +708,14 @@ export class SidePanelApp extends LitElement {
 
     this._opencodeMessage = `Registering MCP for ${sessionId}...`;
     this.requestUpdate();
-    await ensureMcpRegistered(cfg, sessionId, channelId);
+    const mcpRegistrationKey = this._getOpenCodeMcpRegistrationKey(cfg, channelId);
+    if (!this._registeredOpenCodeMcpKeys.has(mcpRegistrationKey)) {
+      // OpenCode keeps MCP clients at the server/config level, not per chat session.
+      // Re-posting the same dynamic MCP entry on every new chat can leave previous
+      // client tool lists alive internally, so only register once for the stable bridge channel.
+      await ensureMcpRegistered(cfg, sessionId, channelId);
+      this._registeredOpenCodeMcpKeys.add(mcpRegistrationKey);
+    }
 
     const sessionView = this._buildOpenCodeSessionView(session, descriptor, channelId);
     this._upsertOpenCodeSession(sessionView);
