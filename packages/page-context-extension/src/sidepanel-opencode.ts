@@ -117,11 +117,11 @@ export async function deleteSession(cfg: OpenCodeConfig, id: string): Promise<vo
  */
 export async function ensureMcpRegistered(
   cfg: OpenCodeConfig,
-  sessionId: string,
+  _sessionId: string,
   channelId: string,
 ): Promise<{ created: boolean; mcpName: string }> {
   const normalized = getNormalizedConfig(cfg);
-  const mcpName = `page-context-${sessionId}`;
+  const mcpName = buildMcpName(channelId);
 
   const status = await requestJson<Record<string, OpenCodeMcpEntry>>(getMcpApiUrl(normalized), {
     method: 'POST',
@@ -151,6 +151,14 @@ export async function ensureMcpRegistered(
   }
 
   return { created: true, mcpName };
+}
+
+export function buildMcpName(channelId: string): string {
+  // OpenCode MCP entries are process/global, not scoped to one chat session. Using the
+  // OpenCode session id here creates one MCP server per new chat, so every new session
+  // sees duplicate browser/page-context tools from previous sessions. The bridge channel
+  // is stable for this extension install, so reusing it keeps the MCP entry idempotent.
+  return `page-context-${channelId}`;
 }
 
 function encodeOpencodeRouteSegment(value: string): string {

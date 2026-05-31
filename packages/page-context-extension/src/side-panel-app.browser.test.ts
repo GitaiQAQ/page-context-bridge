@@ -685,27 +685,27 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       expect(
-        element.shadowRoot?.querySelector('button[role="tab"][title="Context"]'),
+        element.shadowRoot?.querySelector('button[role="tab"][title="AI View"]'),
       ).not.toBeNull();
     });
 
     const contextTabButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
-      'button[role="tab"][title="Context"]',
+      'button[role="tab"][title="AI View"]',
     );
     contextTabButton!.click();
 
     await vi.waitFor(() => {
       const text = element.shadowRoot?.textContent ?? '';
-      expect(text).toContain('Page Capabilities');
-      expect(text).toContain('Agent Briefing');
-      expect(text).toContain('Business Domains');
+      expect(text).toContain('What AI sees');
+      expect(text).toContain('Before OpenCode acts');
+      expect(text).toContain('Page Areas');
       expect(text).toContain(
-        'Bridge sees 1 data resource and 1 runnable skill across 2 namespaces.',
+        'OpenCode can see 1 data source and 1 guided workflow across 2 page areas.',
       );
       expect(text).toContain('Catalog');
       expect(text).toContain('Catalog Items');
       expect(text).toContain('Manage Catalog Items');
-      expect(text).toContain('Capability Filters');
+      expect(text).toContain('Hidden from AI');
       expect(text).toContain('catalog.primary.removeItem');
     });
 
@@ -765,7 +765,7 @@ describe('side-panel-app tools tree interactions', () => {
     expect(tabsQueryMock).not.toHaveBeenCalled();
 
     const contextTabButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
-      'button[role="tab"][title="Context"]',
+      'button[role="tab"][title="AI View"]',
     );
     contextTabButton!.click();
 
@@ -857,7 +857,7 @@ describe('side-panel-app tools tree interactions', () => {
     expect(storageRemoveMock.mock.calls[0]?.[0]).toBe('sidePanelUrl:devtools');
   });
 
-  test('renders product journey shortcuts from real user workflows', async () => {
+  test('renders a workspace-first sidepanel shell with setup as troubleshooting', async () => {
     await import('./side-panel-app');
 
     const element = document.createElement('side-panel-app');
@@ -865,18 +865,19 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       const text = element.shadowRoot?.textContent ?? '';
-      expect(text).toContain('Workflow');
-      expect(text).toContain('Setup → OpenCode → Tools → Feedback');
-      expect(text).toContain('Check endpoint config');
-      expect(text).toContain('Manage OpenCode');
-      expect(text).toContain('Inspect tools');
-      expect(text).toContain('Review feedback');
+      expect(text).toContain('Connect OpenCode to the current browser page');
+      expect(text).toContain('Workspace');
+      expect(text).toContain('Inspect');
+      expect(text).toContain('Feedback');
+      expect(text).toContain('Setup');
+      expect(text).toContain('AI View');
+      expect(text).toContain('Connect OpenCode to this page');
       expect(text).not.toContain('Delete session on disconnect');
     });
 
-    findButtonByText(element, 'Endpoint config')?.click();
+    findButtonByText(element, 'Setup')?.click();
     await vi.waitFor(() => {
-      expect(element.shadowRoot?.textContent ?? '').toContain('Connection readiness');
+      expect(element.shadowRoot?.textContent ?? '').toContain('Setup & troubleshooting');
     });
   });
 
@@ -958,7 +959,7 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       const text = getOpenCodeTabText(element);
-      expect(text).toContain('Reuse a session ID');
+      expect(text).toContain('Restore an existing session');
       expect(text).not.toContain('OpenCode Base URL');
       expect(text).not.toContain('Bridge Base URL');
       expect(text).not.toContain('Delete session on disconnect');
@@ -1087,17 +1088,17 @@ describe('side-panel-app tools tree interactions', () => {
     });
     closeOpenCodeIframe(element);
     await vi.waitFor(() => {
-      expect(findButtonByText(element, 'New Session')).not.toBeNull();
+      expect(findButtonByText(element, 'New')).not.toBeNull();
     });
 
-    findButtonByText(element, 'New Session')?.click();
+    findButtonByText(element, 'New')?.click();
 
     await vi.waitFor(() => {
       expect(element.shadowRoot?.textContent ?? '').toContain('session-beta');
     });
     closeOpenCodeIframe(element);
     await vi.waitFor(() => {
-      expect(findButtonByText(element, 'New Session')).not.toBeNull();
+      expect(findButtonByText(element, 'New')).not.toBeNull();
     });
 
     expect(
@@ -1110,6 +1111,18 @@ describe('side-panel-app tools tree interactions', () => {
     expect(connectedSessions.size).toBe(1);
     expect(connectedSessions.get('install-test')).toBe(
       'ws://127.0.0.1:22335/default?tenantId=install-test',
+    );
+    expect(ensureMcpRegisteredMock).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Object),
+      'session-alpha',
+      'install-test',
+    );
+    expect(ensureMcpRegisteredMock).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Object),
+      'session-beta',
+      'install-test',
     );
     expect(createOpenCodeSessionMock).toHaveBeenNthCalledWith(1, {
       opencodeBaseUrl: 'http://localhost:4096',
@@ -1129,6 +1142,9 @@ describe('side-panel-app tools tree interactions', () => {
     expect(findButtonByText(element, 'Copy')).not.toBeNull();
     expect(findButtonByText(element, 'Open')).not.toBeNull();
     expect(findButtonByText(element, 'Delete')).not.toBeNull();
+    expect(element.shadowRoot?.textContent ?? '').toContain('page-context-install-test');
+    expect(element.shadowRoot?.textContent ?? '').not.toContain('page-context-session-alpha');
+    expect(element.shadowRoot?.textContent ?? '').not.toContain('page-context-session-beta');
     expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]')).toBeNull();
     const sidebarButtons = [
       ...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? []),
@@ -1324,11 +1340,11 @@ describe('side-panel-app tools tree interactions', () => {
 
 async function openOpencodeTab(element: Element): Promise<void> {
   await vi.waitFor(() => {
-    expect(element.shadowRoot?.querySelector('[title="OpenCode"]')).not.toBeNull();
+    expect(element.shadowRoot?.querySelector('[title="Workspace"]')).not.toBeNull();
   });
-  (element.shadowRoot?.querySelector('[title="OpenCode"]') as HTMLButtonElement | null)?.click();
+  (element.shadowRoot?.querySelector('[title="Workspace"]') as HTMLButtonElement | null)?.click();
   await vi.waitFor(() => {
-    expect(element.shadowRoot?.textContent ?? '').toContain('Reuse a session ID');
+    expect(element.shadowRoot?.textContent ?? '').toContain('Restore an existing session');
   });
 }
 
@@ -1355,8 +1371,9 @@ function getOpenCodeTabText(element: Element): string {
     ...(element.shadowRoot?.querySelectorAll<HTMLElement>('.tab-content.active') ?? []),
   ];
   return (
-    activeTabContents.find((content) => content.textContent?.includes('Reuse a session ID'))
-      ?.textContent ?? ''
+    activeTabContents.find((content) =>
+      content.textContent?.includes('Restore an existing session'),
+    )?.textContent ?? ''
   );
 }
 

@@ -4,6 +4,7 @@ import {
   buildExtWsUrl,
   buildIframeUrl,
   buildMcpUrl,
+  buildMcpName,
   ensureMcpRegistered,
   type OpenCodeConfig,
 } from './sidepanel-opencode';
@@ -40,6 +41,7 @@ describe('sidepanel-opencode', () => {
 
   it('builds iframe and mcp urls without double trailing slashes', () => {
     expect(buildMcpUrl(cfg, 'session-1')).toBe('http://localhost:22334/session-1/mcp');
+    expect(buildMcpName('install-test')).toBe('page-context-install-test');
     expect(buildIframeUrl(cfg, 'session 1')).toBe('http://localhost:4096/?session=session%201');
     expect(
       buildIframeUrl(cfg, {
@@ -53,7 +55,7 @@ describe('sidepanel-opencode', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          'page-context-session-1': { status: 'connected' },
+          'page-context-install-test': { status: 'connected' },
         }),
         {
           status: 200,
@@ -65,7 +67,7 @@ describe('sidepanel-opencode', () => {
 
     await expect(ensureMcpRegistered(cfg, 'session-1', 'install-test')).resolves.toEqual({
       created: true,
-      mcpName: 'page-context-session-1',
+      mcpName: 'page-context-install-test',
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -74,7 +76,7 @@ describe('sidepanel-opencode', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          name: 'page-context-session-1',
+          name: 'page-context-install-test',
           config: {
             type: 'remote',
             url: 'http://localhost:22334/install-test/mcp',
@@ -88,11 +90,56 @@ describe('sidepanel-opencode', () => {
     );
   });
 
+  it('reuses one MCP entry for multiple OpenCode sessions on the same bridge channel', async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            'page-context-install-test': { status: 'connected' },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await ensureMcpRegistered(cfg, 'session-alpha', 'install-test');
+    await ensureMcpRegistered(cfg, 'session-beta', 'install-test');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:4096/mcp',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"name":"page-context-install-test"'),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:4096/mcp',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"name":"page-context-install-test"'),
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ body: expect.stringContaining('page-context-session-alpha') }),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ body: expect.stringContaining('page-context-session-beta') }),
+    );
+  });
+
   it('throws when opencode reports a failed mcp entry', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          'page-context-session-2': {
+          'page-context-install-test': {
             status: 'failed',
             error: 'SSE error: Non-200 status code (500)',
           },
@@ -115,7 +162,7 @@ describe('sidepanel-opencode', () => {
       new Response(
         JSON.stringify({
           other: { status: 'connected' },
-          'page-context-session-2': { status: 'connected' },
+          'page-context-install-test': { status: 'connected' },
         }),
         {
           status: 200,
@@ -127,7 +174,7 @@ describe('sidepanel-opencode', () => {
 
     await expect(ensureMcpRegistered(cfg, 'session-2', 'install-test')).resolves.toEqual({
       created: true,
-      mcpName: 'page-context-session-2',
+      mcpName: 'page-context-install-test',
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -137,7 +184,7 @@ describe('sidepanel-opencode', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          name: 'page-context-session-2',
+          name: 'page-context-install-test',
           config: {
             type: 'remote',
             url: 'http://localhost:22334/install-test/mcp',
@@ -155,7 +202,7 @@ describe('sidepanel-opencode', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          'page-context-session-3': { status: 'connecting' },
+          'page-context-install-test': { status: 'connecting' },
         }),
         {
           status: 200,

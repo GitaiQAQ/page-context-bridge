@@ -358,6 +358,7 @@ export class ConnectionsPanel extends LitElement {
             class="input input-sm input-bordered font-mono ${validation ? 'input-error' : ''}"
             .value=${input.value}
             placeholder=${input.placeholder}
+            title=${input.helper}
             @input=${(event: Event) => {
               this.endpoints = {
                 ...this.endpoints,
@@ -391,47 +392,11 @@ export class ConnectionsPanel extends LitElement {
             : nothing}
         </div>
 
-        <p class="text-xs opacity-60 leading-relaxed">${input.helper}</p>
+        <p class="text-xs opacity-60 leading-relaxed" title=${input.helper}>${input.helper}</p>
         ${input.actions
           ? html`<div class="flex justify-end gap-2">${input.actions}</div>`
           : nothing}
       </section>
-    `;
-  }
-
-  private renderJourneyStep(input: {
-    index: number;
-    title: string;
-    body: string;
-    descriptor?: ConnectionDescriptor | null;
-    complete?: boolean;
-  }): TemplateResult {
-    const complete =
-      input.complete ?? (input.descriptor ? isHealthyConnection(input.descriptor) : false);
-    const blocked = input.descriptor ? isAttentionConnection(input.descriptor) : false;
-    return html`
-      <div class="flex gap-3 rounded-xl bg-base-200/60 px-3 py-2">
-        <div
-          class="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${complete
-            ? 'bg-success text-success-content'
-            : blocked
-              ? 'bg-error text-error-content'
-              : 'bg-base-300 text-base-content/70'}"
-        >
-          ${complete ? '✓' : input.index}
-        </div>
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="text-sm font-semibold truncate">${input.title}</span>
-            ${input.descriptor
-              ? html`<connection-status-badge
-                  connection-id=${input.descriptor.id}
-                ></connection-status-badge>`
-              : nothing}
-          </div>
-          <p class="text-xs opacity-60 leading-relaxed">${input.body}</p>
-        </div>
-      </div>
     `;
   }
 
@@ -521,77 +486,66 @@ export class ConnectionsPanel extends LitElement {
 
     return html`
       <div class="tab-content active flex flex-col flex-1 min-h-0">
-        <div class="border-b border-base-300 bg-base-200/40 p-3 shrink-0 flex flex-col gap-3">
-          <section
-            class="rounded-3xl border border-base-300 bg-gradient-to-br from-base-100 to-base-200/80 p-4 shadow-sm"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-xs font-bold uppercase tracking-[0.18em] opacity-50">
-                  Connection readiness
-                </p>
-                <h2 class="text-lg font-bold leading-tight">${readinessTitle}</h2>
-                <p class="text-xs opacity-60 mt-1 leading-relaxed">${readinessBody}</p>
-              </div>
-              <div class="stats stats-vertical shadow bg-base-100 border border-base-300 shrink-0">
-                <div class="stat py-2 px-3">
-                  <div class="stat-title text-[10px]">Healthy</div>
-                  <div class="stat-value text-lg text-success">${healthyCount}</div>
-                </div>
-                <div class="stat py-2 px-3">
-                  <div class="stat-title text-[10px]">Attention</div>
-                  <div
-                    class="stat-value text-lg ${attentionCount > 0 ? 'text-error' : 'opacity-60'}"
-                  >
-                    ${attentionCount}
+        <div class="border-b border-base-300 bg-base-200/40 p-3 shrink-0 flex flex-col gap-2">
+          <section class="rounded-2xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex min-w-0 items-center gap-2">
+                <span
+                  class="badge badge-sm ${attentionCount > 0
+                    ? 'badge-error'
+                    : configured
+                      ? 'badge-success'
+                      : 'badge-warning'}"
+                >
+                  ${attentionCount > 0 ? 'blocked' : configured ? 'ready' : 'setup'}
+                </span>
+                <div class="min-w-0">
+                  <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">
+                    Setup & troubleshooting
+                  </div>
+                  <div class="truncate text-sm font-bold">${readinessTitle}</div>
+                  <div class="truncate text-[11px] opacity-60" title=${readinessBody}>
+                    ${readinessBody}
                   </div>
                 </div>
               </div>
-            </div>
-            <div class="grid grid-cols-1 gap-2 mt-3 md:grid-cols-2">
-              ${this.renderJourneyStep({
-                index: 1,
-                title: 'Endpoint config',
-                body: 'The only place to edit OpenCode HTTP, Bridge MCP, and Bridge WS endpoints.',
-                complete: configured,
-              })}
-              ${this.renderJourneyStep({
-                index: 2,
-                title: 'Bridge control plane',
-                body: 'Keeps the browser extension connected to the bridge service.',
-                descriptor: bridgeDescriptor,
-              })}
-              ${this.renderJourneyStep({
-                index: 3,
-                title: 'OpenCode endpoint',
-                body: 'Lets the extension create sessions and register MCP with OpenCode.',
-                descriptor: opencodeHttpDescriptor,
-              })}
-              ${this.renderJourneyStep({
-                index: 4,
-                title: 'Session MCP links',
-                body: `${scopedSessionCount} OpenCode session link${scopedSessionCount === 1 ? '' : 's'}. Each should be independently connected.`,
-                complete: scopedSessionCount > 0,
-              })}
-            </div>
-            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <p class="text-xs opacity-60 leading-relaxed">
-                When "OpenCode cannot call page tools", run diagnosis first, then copy the report to
-                collaborators.
-              </p>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1.5 text-xs">
+                <span class="badge badge-ghost badge-sm tabular-nums">${healthyCount} healthy</span>
+                <span class="badge badge-ghost badge-sm tabular-nums"
+                  >${attentionCount} attention</span
+                >
                 <button
-                  class="btn btn-xs btn-outline"
+                  class="tooltip tooltip-bottom btn btn-xs btn-outline"
+                  data-tip="Refresh all descriptors and generate a copyable diagnosis report"
+                  title="Refresh all descriptors and generate a copyable diagnosis report"
                   @click=${() => void this.handleRunDiagnosis()}
                 >
-                  Run diagnosis
+                  Diagnose
                 </button>
                 <button
-                  class="btn btn-xs btn-ghost"
+                  class="tooltip tooltip-bottom btn btn-xs btn-ghost"
+                  data-tip="Copy the latest diagnosis report for issue reports or teammates"
+                  title="Copy the latest diagnosis report for issue reports or teammates"
                   @click=${() => void this.handleCopyDiagnosis()}
                 >
-                  Copy report
+                  Copy
                 </button>
+              </div>
+            </div>
+            <div class="mt-2 grid grid-cols-3 gap-2">
+              <div class="rounded-xl bg-base-200/70 px-3 py-1.5 text-xs">
+                <div class="font-semibold">Configuration</div>
+                <div class="opacity-60">${configured ? 'Complete' : 'Missing endpoint'}</div>
+              </div>
+              <div class="rounded-xl bg-base-200/70 px-3 py-1.5 text-xs">
+                <div class="font-semibold">OpenCode</div>
+                <div class="opacity-60">
+                  ${opencodeHttpDescriptor ? opencodeHttpDescriptor.status : 'Not checked'}
+                </div>
+              </div>
+              <div class="rounded-xl bg-base-200/70 px-3 py-1.5 text-xs">
+                <div class="font-semibold">Session links</div>
+                <div class="opacity-60 tabular-nums">${scopedSessionCount} connected</div>
               </div>
             </div>
             ${this.diagnosisReport
@@ -605,23 +559,41 @@ ${this.diagnosisReport}</pre
               : nothing}
           </section>
 
-          <section class="rounded-2xl border border-base-300 bg-base-100 p-3 shadow-sm">
-            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-bold uppercase tracking-wide opacity-60"
-                    >Endpoint config</span
-                  >
-                  <span class="badge badge-outline badge-xs">single source of truth</span>
+          <details
+            class="rounded-xl border border-base-300 bg-base-100 px-3 py-2 shadow-sm"
+            ?open=${attentionCount > 0 || !configured}
+          >
+            <summary class="cursor-pointer select-none list-none">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold uppercase tracking-wide opacity-60"
+                      >Endpoint configuration</span
+                    >
+                    <span
+                      class="tooltip tooltip-bottom badge badge-outline badge-xs"
+                      data-tip="Most users should not edit this unless Setup says endpoints are wrong"
+                      title="Most users should not edit this unless Setup says endpoints are wrong"
+                      >advanced</span
+                    >
+                  </div>
+                  <p class="mt-1 text-xs opacity-60 leading-relaxed">
+                    Edit endpoints only when local ports or remote bridge routes change.
+                  </p>
                 </div>
+                ${this.message
+                  ? html`<span class="text-xs opacity-60" role="status">${this.message}</span>`
+                  : nothing}
+              </div>
+            </summary>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div class="min-w-0">
                 <p class="mt-1 text-xs opacity-60 leading-relaxed">
                   Edit only what changed. Status, failure reasons, and retry actions stay attached
                   to each endpoint.
                 </p>
               </div>
-              ${this.message
-                ? html`<span class="text-xs opacity-60" role="status">${this.message}</span>`
-                : nothing}
             </div>
 
             <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -686,14 +658,18 @@ ${this.diagnosisReport}</pre
                 reconnects Bridge Default WS.
               </p>
               <button
-                class="btn btn-sm btn-primary ${this.saving ? 'loading' : ''}"
+                class="tooltip tooltip-bottom btn btn-sm btn-primary ${this.saving
+                  ? 'loading'
+                  : ''}"
+                data-tip="Save endpoint values, probe OpenCode health, and reconnect the bridge WebSocket"
+                title="Save endpoint values, probe OpenCode health, and reconnect the bridge WebSocket"
                 ?disabled=${this.saving}
                 @click=${() => void this.handleSaveEndpoints()}
               >
                 Save & Probe
               </button>
             </div>
-          </section>
+          </details>
         </div>
 
         <div class="flex-1 p-3 flex flex-col gap-4">

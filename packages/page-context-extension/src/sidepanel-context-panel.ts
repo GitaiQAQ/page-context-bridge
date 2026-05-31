@@ -235,7 +235,7 @@ export function renderContextNamespaceCard(namespace: ContextNamespaceDescriptor
   `;
 }
 
-/** Render a resource descriptor as a data card with an "Inspect Payload" button. */
+/** Render a resource descriptor as a data card with a preview button. */
 export function renderContextResourceCard(resource: ContextResourceDescriptor): TemplateResult {
   const tags = resource.tags ?? [];
 
@@ -257,16 +257,18 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
             </div>`
           : nothing}
         <p class="text-[11px] opacity-55">
-          Agents can inspect this payload directly from the current page state.
+          OpenCode can read this page data when it needs grounded evidence.
         </p>
         <div class="card-actions mt-1">
           <button
-            class="btn btn-xs btn-primary"
+            class="tooltip tooltip-bottom btn btn-xs btn-primary"
             type="button"
+            data-tip="Preview the exact text or JSON OpenCode would receive from this data source"
             data-action="read-resource"
             data-resource-id="${resource.id}"
+            title="Preview the exact text or JSON OpenCode would receive from this data source"
           >
-            Inspect Payload
+            Preview Data
           </button>
         </div>
       </div>
@@ -274,7 +276,7 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
   `;
 }
 
-/** Render a skill descriptor as a workflow card with an "Inspect Skill" button. */
+/** Render a skill descriptor as a workflow card with a preview button. */
 export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateResult {
   const intentTags = skill.intentTags ?? [];
   const linkedResourceCount = skill.resourceIds?.length ?? 0;
@@ -303,16 +305,18 @@ export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateR
             </div>`
           : nothing}
         <p class="text-[11px] opacity-55">
-          Uses page-grounded context before the agent expands into tools or workflows.
+          A page-provided recipe that helps OpenCode choose the right data and tools.
         </p>
         <div class="card-actions mt-1">
           <button
-            class="btn btn-xs btn-primary"
+            class="tooltip tooltip-bottom btn btn-xs btn-primary"
             type="button"
+            data-tip="Preview the workflow instructions before OpenCode uses them"
             data-action="preview-skill"
             data-skill-id="${skill.id}"
+            title="Preview the workflow instructions before OpenCode uses them"
           >
-            Inspect Skill
+            Preview Workflow
           </button>
         </div>
       </div>

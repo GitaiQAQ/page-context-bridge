@@ -141,19 +141,17 @@ describe('connections-panel', () => {
     await element.updateComplete;
 
     const text = element.textContent ?? '';
-    expect(text).toContain('Connection readiness');
+    expect(text).toContain('Setup & troubleshooting');
     expect(text).toContain('Needs attention');
-    expect(text).toContain('Endpoint config');
-    expect(text).toContain('The only place to edit OpenCode HTTP');
+    expect(text).toContain('Endpoint configuration');
+    expect(text).toContain('Edit endpoints only when local ports or remote bridge routes change');
     expect(text).toContain('OpenCode Base URL');
     expect(text).toContain('Bridge Base URL');
     expect(text).toContain('Bridge Default WS URL');
     expect(text).toContain('OpenCode control plane');
     expect(text).toContain('Session MCP transport');
     expect(text).toContain('Browser bridge control link');
-    expect(text).toContain('Bridge control plane');
-    expect(text).toContain('OpenCode endpoint');
-    expect(text).toContain('Attention');
+    expect(text).toContain('1 attention');
     expect(text).toContain('ECONNREFUSED');
 
     await (element as unknown as { handleRunDiagnosis(): Promise<void> }).handleRunDiagnosis();

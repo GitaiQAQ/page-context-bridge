@@ -1,6 +1,6 @@
 /**
- * Pure render function for the Context Tab, extracted from SidePanelApp.
- * Receives precomputed state and returns the full Page Capabilities panel template.
+ * Pure render function for the AI View tab, extracted from SidePanelApp.
+ * Receives precomputed state and returns the page briefing OpenCode can inspect.
  */
 
 import { html, type TemplateResult } from 'lit';
@@ -50,7 +50,7 @@ function pluralize(countText: string, singular: string, plural = `${singular}s`)
 
 /** Generate capability summary text: how many resources/skills/namespaces the Bridge currently sees. */
 function buildCapabilityBriefing(input: RenderContextTabInput): string {
-  return `Bridge sees ${input.contextResourceCount} ${pluralize(input.contextResourceCount, 'data resource')} and ${input.contextSkillCount} ${pluralize(input.contextSkillCount, 'runnable skill')} across ${input.contextNamespaceCount} ${pluralize(input.contextNamespaceCount, 'namespace')}.`;
+  return `OpenCode can see ${input.contextResourceCount} ${pluralize(input.contextResourceCount, 'data source')} and ${input.contextSkillCount} ${pluralize(input.contextSkillCount, 'guided workflow')} across ${input.contextNamespaceCount} ${pluralize(input.contextNamespaceCount, 'page area')}.`;
 }
 
 /** Renders the complete Context Tab content. */
@@ -61,21 +61,26 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
     <div class="tab-content ${classMap({ active: input.active })} flex flex-col flex-1 min-h-0">
       <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
         <div class="flex flex-col gap-0.5">
-          <span class="text-xs font-bold uppercase tracking-[0.18em] opacity-60"
-            >Page Capabilities</span
-          >
+          <span class="text-xs font-bold uppercase tracking-[0.18em] opacity-60">What AI sees</span>
           <span class="text-[11px] opacity-55"
-            >Operational briefing for what this page can expose to the bridge right now</span
+            >Preview the page context OpenCode receives before it starts working</span
           >
         </div>
-        <button class="btn btn-xs btn-ghost ml-auto" @click=${input.onRefresh}>Refresh</button>
+        <button
+          class="tooltip tooltip-bottom btn btn-xs btn-ghost ml-auto"
+          data-tip="Reload page context after the page changes or exposes new data"
+          title="Reload page context after the page changes or exposes new data"
+          @click=${input.onRefresh}
+        >
+          Refresh
+        </button>
       </div>
       <div class="grid grid-cols-[minmax(240px,320px)_1fr] flex-1 min-h-0">
         <!-- Sidebar -->
         <div class="border-r border-base-300 bg-base-100 overflow-auto">
           <div class="border-b border-base-200 p-3">
             <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">
-              Page Identity
+              Current Page
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="stat bg-base-200 rounded-lg p-2">
@@ -98,9 +103,7 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
           </div>
           <div class="border-b border-base-200 p-3">
             <div class="flex items-center justify-between mb-2">
-              <div class="text-xs font-bold uppercase tracking-wide opacity-50">
-                Exposure Snapshot
-              </div>
+              <div class="text-xs font-bold uppercase tracking-wide opacity-50">AI Briefing</div>
               <span class="badge badge-ghost badge-xs">${input.manifestStatus}</span>
             </div>
             <div class="text-[11px] opacity-55 mb-2">${capabilityBriefing}</div>
@@ -120,20 +123,18 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
             </div>
           </div>
           <div class="border-b border-base-200 p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              Business Domains
-            </div>
+            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">Page Areas</div>
             <div class="text-[11px] opacity-55 mb-2">
-              Namespace groups the page has declared for agent-visible work.
+              Functional areas this page exposes for page-aware agent work.
             </div>
             <div id="contextNamespacesList">${input.contextNamespacesListHtml}</div>
           </div>
           <div class="border-b border-base-200 p-3">
             <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              Available Data
+              Readable Data
             </div>
             <div class="text-[11px] opacity-55 mb-2">
-              Structured payloads the page currently allows the bridge to read.
+              Structured page data OpenCode can inspect when answering or acting.
             </div>
             <div id="contextResourcesList" @click=${input.onResourceClick}>
               ${input.contextResourcesListHtml}
@@ -141,10 +142,10 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
           </div>
           <div class="p-3">
             <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              Available Workflows
+              Guided Workflows
             </div>
             <div class="text-[11px] opacity-55 mb-2">
-              Promptable actions grounded in this page's current data and tool surface.
+              Task recipes the page provides so OpenCode can use the right data and tools safely.
             </div>
             <div id="contextSkillsList" @click=${input.onSkillClick}>
               ${input.contextSkillsListHtml}
@@ -157,9 +158,9 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
             <div class="card-body p-3 gap-2">
               <div class="flex items-center justify-between gap-2">
                 <div>
-                  <div class="font-bold text-sm">Agent Briefing</div>
+                  <div class="font-bold text-sm">Before OpenCode acts</div>
                   <p class="text-[11px] opacity-55">
-                    Concrete summary of what an agent can inspect or invoke on this page.
+                    Use this screen to verify what the AI will understand about the current page.
                   </p>
                 </div>
                 <div class="flex gap-1.5 flex-wrap justify-end">
@@ -171,20 +172,20 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
               <div class="rounded-lg border border-base-300 bg-base-200 px-3 py-2">
                 <div class="text-sm font-semibold">${capabilityBriefing}</div>
                 <div class="text-xs opacity-60 mt-1">
-                  Route ${input.contextRouteValue} is currently mapped to app
+                  This browser route ${input.contextRouteValue} is mapped to app
                   <strong>${input.contextAppValue}</strong> in scene
                   <strong>${input.contextSceneValue}</strong>.
                 </div>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
-                  <div class="text-[10px] uppercase tracking-wide opacity-50">Manifest Status</div>
+                  <div class="text-[10px] uppercase tracking-wide opacity-50">Page Briefing</div>
                   <div class="text-sm font-semibold ${input.manifestStatusClass}">
                     ${input.manifestStatus}
                   </div>
                 </div>
                 <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
-                  <div class="text-[10px] uppercase tracking-wide opacity-50">Filter Result</div>
+                  <div class="text-[10px] uppercase tracking-wide opacity-50">Safety Filters</div>
                   <div class="text-sm font-semibold ${input.diffStatusClass}">
                     ${input.diffStatus}
                   </div>
@@ -195,14 +196,14 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Capability Filters</span>
+                <span class="font-bold text-sm">Hidden from AI</span>
                 <span class="text-xs font-semibold ${input.diffStatusClass}"
                   >${input.diffStatus}</span
                 >
               </div>
               <p class="text-[11px] opacity-55">
-                Anything declared by the page but removed before agent exposure shows up here with
-                the filter reason.
+                If the page declares data or workflows that are not safe or enabled for this route,
+                they show up here with the reason.
               </p>
               <div id="contextDiffOutput" class="flex flex-col gap-2">${input.diffOutput}</div>
             </div>
@@ -210,14 +211,14 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Raw Manifest</span>
+                <span class="font-bold text-sm">Developer payload</span>
                 <span class="text-xs font-semibold ${input.manifestStatusClass}"
                   >${input.manifestStatus}</span
                 >
               </div>
               <p class="text-[11px] opacity-55">
-                Low-level manifest payload from the current tab. Useful for debugging, not the
-                primary reading view.
+                Raw page declaration used by the bridge. This is mainly for developers debugging why
+                something is or is not visible to OpenCode.
               </p>
               <pre
                 class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
@@ -229,7 +230,7 @@ ${input.manifestOutput}</pre
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Selected Data Payload</span>
+                <span class="font-bold text-sm">Selected data preview</span>
                 <span class="text-xs font-semibold ${input.resourceStatusClass}"
                   >${input.resourceStatus}</span
                 >
@@ -244,13 +245,13 @@ ${input.resourceOutput}</pre
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Selected Skill Prompt</span>
+                <span class="font-bold text-sm">Selected workflow prompt</span>
                 <span class="text-xs font-semibold ${input.skillStatusClass}"
                   >${input.skillStatus}</span
                 >
               </div>
               <p class="text-[11px] opacity-55">
-                Preview the exact prompt contract exposed by the page before an agent consumes it.
+                Preview the instruction contract the page gives OpenCode for this workflow.
               </p>
               <pre
                 class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"

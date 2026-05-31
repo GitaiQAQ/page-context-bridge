@@ -121,13 +121,13 @@ describe('sidepanel-context-panel', () => {
     expect(text).toContain('12');
     expect(text).toContain('Catalog Items');
     expect(text).toContain('application/json');
-    expect(text).toContain('Agents can inspect this payload directly from the current page state.');
-    expect(text).toContain('Inspect Payload');
+    expect(text).toContain('OpenCode can read this page data when it needs grounded evidence.');
+    expect(text).toContain('Preview Data');
     expect(text).toContain('Manage Catalog Items');
     expect(text).toContain('mutation');
     expect(text).toContain('1 resource');
     expect(text).toContain('3 tools');
-    expect(text).toContain('Inspect Skill');
+    expect(text).toContain('Preview Workflow');
   });
 
   it('renders diff output with concrete filter reasons and trimmed tools', () => {

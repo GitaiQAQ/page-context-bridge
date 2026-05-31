@@ -13,7 +13,7 @@ describe('renderContextTab', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders a concrete page capabilities summary instead of abstract manifest-only wording', () => {
+  it('renders a concrete AI view summary instead of abstract manifest-only wording', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
 
@@ -50,21 +50,19 @@ describe('renderContextTab', () => {
     );
 
     const text = host.textContent ?? '';
-    expect(text).toContain('Page Capabilities');
+    expect(text).toContain('What AI sees');
+    expect(text).toContain('Preview the page context OpenCode receives before it starts working');
+    expect(text).toContain('Before OpenCode acts');
+    expect(text).toContain('Current Page');
+    expect(text).toContain('AI Briefing');
+    expect(text).toContain('Page Areas');
+    expect(text).toContain('Readable Data');
+    expect(text).toContain('Guided Workflows');
     expect(text).toContain(
-      'Operational briefing for what this page can expose to the bridge right now',
+      'OpenCode can see 4 data sources and 2 guided workflows across 3 page areas.',
     );
-    expect(text).toContain('Agent Briefing');
-    expect(text).toContain('Page Identity');
-    expect(text).toContain('Exposure Snapshot');
-    expect(text).toContain('Business Domains');
-    expect(text).toContain('Available Data');
-    expect(text).toContain('Available Workflows');
-    expect(text).toContain(
-      'Bridge sees 4 data resources and 2 runnable skills across 3 namespaces.',
-    );
-    expect(text).toContain('Capability Filters');
-    expect(text).toContain('Raw Manifest');
+    expect(text).toContain('Hidden from AI');
+    expect(text).toContain('Developer payload');
     expect(text).toContain('3');
     expect(text).toContain('4');
     expect(text).toContain('2');
@@ -111,14 +109,14 @@ describe('renderContextTab', () => {
     expect(text).toContain('mutation');
     expect(text).toContain('Catalog Items');
     expect(text).toContain('application/json');
-    expect(text).toContain('Agents can inspect this payload directly from the current page state.');
-    expect(text).toContain('Inspect Payload');
+    expect(text).toContain('OpenCode can read this page data when it needs grounded evidence.');
+    expect(text).toContain('Preview Data');
     expect(text).toContain('Manage Catalog Items');
     expect(text).toContain('1 resource');
     expect(text).toContain('2 tools');
     expect(text).toContain(
-      'Uses page-grounded context before the agent expands into tools or workflows.',
+      'A page-provided recipe that helps OpenCode choose the right data and tools.',
     );
-    expect(text).toContain('Inspect Skill');
+    expect(text).toContain('Preview Workflow');
   });
 });
