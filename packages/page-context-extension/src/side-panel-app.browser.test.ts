@@ -747,7 +747,7 @@ describe('side-panel-app tools tree interactions', () => {
     });
   });
 
-  test('prefers boundTabId from URL for context and feedback flows', async () => {
+  test('prefers boundTabId from URL for context flows and hides feedback entry', async () => {
     await import('./side-panel-app');
 
     window.history.replaceState({}, '', '/sidepanel.html?boundTabId=22&windowId=9');
@@ -778,45 +778,11 @@ describe('side-panel-app tools tree interactions', () => {
       );
     });
 
-    const feedbackTabButton = element.shadowRoot?.querySelector<HTMLButtonElement>(
-      'button[role="tab"][title="Feedback"]',
+    expect(element.shadowRoot?.querySelector('button[role="tab"][title="Feedback"]')).toBeNull();
+    expect(sendRuntimeRequestMock).not.toHaveBeenCalledWith(
+      BRIDGE_METHODS.extensionFeedbackStateSnapshot,
+      expect.anything(),
     );
-    feedbackTabButton!.click();
-
-    await vi.waitFor(() => {
-      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
-        BRIDGE_METHODS.extensionFeedbackStateSnapshot,
-        {
-          tabId: 22,
-          windowId: 9,
-        },
-      );
-    });
-
-    const feedbackBody = element.shadowRoot?.querySelector<HTMLTextAreaElement>(
-      'textarea[placeholder="Describe the problem, expected behavior, reproduction steps"]',
-    );
-    expect(feedbackBody).not.toBeNull();
-    feedbackBody!.value = 'Bound tab feedback';
-    feedbackBody!.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-
-    const submitButton = [
-      ...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? []),
-    ].find((button) => button.textContent?.trim() === 'Submit');
-    expect(submitButton).not.toBeNull();
-    submitButton!.click();
-
-    await vi.waitFor(() => {
-      expect(sendRuntimeRequestMock).toHaveBeenCalledWith(
-        BRIDGE_METHODS.extensionFeedbackAnnotationCreate,
-        {
-          body: 'Bound tab feedback',
-          priority: 'normal',
-          tabId: 22,
-          windowId: 9,
-        },
-      );
-    });
 
     expect(tabsQueryMock).not.toHaveBeenCalled();
   });
@@ -868,7 +834,7 @@ describe('side-panel-app tools tree interactions', () => {
       expect(text).toContain('Connect OpenCode to the current browser page');
       expect(text).toContain('Workspace');
       expect(text).toContain('Inspect');
-      expect(text).toContain('Feedback');
+      expect(text).not.toContain('Feedback');
       expect(text).toContain('Setup');
       expect(text).toContain('AI View');
       expect(text).toContain('Connect OpenCode to this page');
@@ -879,6 +845,20 @@ describe('side-panel-app tools tree interactions', () => {
     await vi.waitFor(() => {
       expect(element.shadowRoot?.textContent ?? '').toContain('Setup & troubleshooting');
     });
+  });
+
+  test('includes dropdown positioning fallback styles for shadow-dom menus', async () => {
+    const mod = await import('./side-panel-app');
+    const styles = Array.isArray(mod.SidePanelApp.styles)
+      ? mod.SidePanelApp.styles
+      : [mod.SidePanelApp.styles];
+    const cssText = styles
+      .map((style) => (typeof style === 'string' ? style : (style?.cssText ?? '')))
+      .join('\n');
+
+    expect(cssText).toContain('details.dropdown > .dropdown-content');
+    expect(cssText).toContain('position: absolute');
+    expect(cssText).toContain('details.dropdown[open] > .dropdown-content');
   });
 
   test('re-discovers page tools when current tab is missing from initial tree', async () => {
@@ -998,7 +978,16 @@ describe('side-panel-app tools tree interactions', () => {
 
     await vi.waitFor(() => {
       const text = element.shadowRoot?.textContent ?? '';
-      expect(text).toContain('OpenCode sidebar iframe');
+      expect(text).toContain('session-alpha');
+      expect(text).toContain('Recent sessions');
+    });
+    expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]')).toBeNull();
+
+    findButtonByText(element, 'Open in sidebar')?.click();
+    await vi.waitFor(() => {
+      expect(
+        element.shadowRoot?.querySelector('[aria-label="OpenCode sidebar iframe controls"]'),
+      ).not.toBeNull();
     });
     const iframe = element.shadowRoot?.querySelector<HTMLIFrameElement>(
       'iframe[data-session-id="session-alpha"]',
@@ -1013,8 +1002,15 @@ describe('side-panel-app tools tree interactions', () => {
       expect(
         element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]'),
       ).toBeNull();
-      expect(element.shadowRoot?.textContent ?? '').toContain('Sidebar');
+      expect(element.shadowRoot?.textContent ?? '').toContain('Open in sidebar');
     });
+
+    const recentSessionsHeading = [...(element.shadowRoot?.querySelectorAll('h3') ?? [])].find(
+      (node) => node.textContent?.trim() === 'Recent sessions',
+    );
+    const recentSessionsCard = recentSessionsHeading?.closest('.card');
+    expect(recentSessionsCard).not.toBeNull();
+    expect(recentSessionsCard?.classList.contains('overflow-hidden')).toBe(false);
   });
 
   test('creates a second opencode session while reusing the install bridge channel', async () => {
@@ -1086,20 +1082,16 @@ describe('side-panel-app tools tree interactions', () => {
     await vi.waitFor(() => {
       expect(element.shadowRoot?.textContent ?? '').toContain('session-alpha');
     });
-    closeOpenCodeIframe(element);
-    await vi.waitFor(() => {
-      expect(findButtonByText(element, 'New')).not.toBeNull();
-    });
+    expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-alpha"]')).toBeNull();
+    expect(findButtonByText(element, 'New')).not.toBeNull();
 
     findButtonByText(element, 'New')?.click();
 
     await vi.waitFor(() => {
       expect(element.shadowRoot?.textContent ?? '').toContain('session-beta');
     });
-    closeOpenCodeIframe(element);
-    await vi.waitFor(() => {
-      expect(findButtonByText(element, 'New')).not.toBeNull();
-    });
+    expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]')).toBeNull();
+    expect(findButtonByText(element, 'New')).not.toBeNull();
 
     expect(
       sendRuntimeRequestMock.mock.calls.filter(
@@ -1134,7 +1126,7 @@ describe('side-panel-app tools tree interactions', () => {
     expect(sessionButtons).toContain('session-beta');
 
     expect(findButtonByText(element, 'Copy')).not.toBeNull();
-    expect(findButtonByText(element, 'Open')).not.toBeNull();
+    expect(findButtonByText(element, 'Open in sidebar')).not.toBeNull();
     expect(findButtonByText(element, 'Delete')).not.toBeNull();
     expect(element.shadowRoot?.textContent ?? '').toContain('page-context-install-test');
     expect(element.shadowRoot?.textContent ?? '').not.toContain('page-context-session-alpha');
@@ -1142,13 +1134,80 @@ describe('side-panel-app tools tree interactions', () => {
     expect(element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]')).toBeNull();
     const sidebarButtons = [
       ...(element.shadowRoot?.querySelectorAll<HTMLButtonElement>('button') ?? []),
-    ].filter((button) => button.textContent?.trim() === 'Sidebar');
+    ].filter((button) => button.textContent?.trim() === 'Open in sidebar');
     sidebarButtons.at(-1)?.click();
     await vi.waitFor(() => {
       expect(
         element.shadowRoot?.querySelector('iframe[data-session-id="session-beta"]'),
       ).not.toBeNull();
     });
+  });
+
+  test('reports an error when New returns an existing opencode session id', async () => {
+    const storageGetMock = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    storageGetMock.mockImplementation(async (keyOrDefaults: string | Record<string, unknown>) => {
+      if (keyOrDefaults === 'page-context.bridge-install-id.v1') {
+        return { 'page-context.bridge-install-id.v1': 'install-test' };
+      }
+      if (typeof keyOrDefaults === 'string') {
+        return {};
+      }
+      return keyOrDefaults;
+    });
+    await import('./side-panel-app');
+
+    createOpenCodeSessionMock.mockResolvedValue({
+      id: 'session-alpha',
+      directory: `${opencodeProjectDirectory}/session-alpha`,
+      opencodeBaseUrl: 'http://127.0.0.1:4101',
+    });
+    ensureMcpRegisteredMock.mockResolvedValue({
+      created: true,
+      mcpName: 'page-context-install-test',
+    });
+
+    sendRuntimeRequestMock.mockImplementation(async (method: string) => {
+      switch (method) {
+        case CONNECTION_METHODS.subscribe:
+        case CONNECTION_METHODS.list:
+          return {
+            descriptors: [
+              makeDefaultConnectionDescriptor(),
+              makeScopedConnectionDescriptor(
+                'install-test',
+                'ws://127.0.0.1:22335/default?tenantId=install-test',
+              ),
+            ],
+          };
+        case BRIDGE_METHODS.extensionReconnect:
+          return { ok: true };
+        case BRIDGE_METHODS.extensionPageToolsTreeGet:
+          return buildToolTree(tabs, pageEntries, builtinTools, {});
+        default:
+          return null;
+      }
+    });
+
+    const element = document.createElement('side-panel-app');
+    document.body.appendChild(element);
+    await openOpencodeTab(element);
+
+    findButtonByText(element, 'Start session')?.click();
+    await vi.waitFor(() => {
+      expect(element.shadowRoot?.textContent ?? '').toContain('session-alpha');
+    });
+
+    findButtonByText(element, 'New')?.click();
+    await vi.waitFor(() => {
+      expect(element.shadowRoot?.textContent ?? '').toContain(
+        'OpenCode returned existing session session-alpha',
+      );
+    });
+    expect(createOpenCodeSessionMock).toHaveBeenCalledTimes(2);
+    const sessionButtons = [
+      ...(element.shadowRoot?.querySelectorAll('button[title^="ws://"]') ?? []),
+    ].map((button) => button.textContent?.trim());
+    expect(sessionButtons.filter((sessionId) => sessionId === 'session-alpha')).toHaveLength(1);
   });
 
   test('restores last live session without re-registering MCP', async () => {
@@ -1362,7 +1421,7 @@ function closeOpenCodeIframe(element: Element): void {
 
 function getOpenCodeTabText(element: Element): string {
   const activeTabContents = [
-    ...(element.shadowRoot?.querySelectorAll<HTMLElement>('.tab-content.active') ?? []),
+    ...(element.shadowRoot?.querySelectorAll<HTMLElement>('.pcb-tab-panel.active') ?? []),
   ];
   return (
     activeTabContents.find((content) =>

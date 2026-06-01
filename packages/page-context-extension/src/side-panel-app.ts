@@ -180,6 +180,7 @@ import {
 } from './connections-endpoints';
 import { ConnectionsController, getConnectionsStore } from './connections-controller';
 import { getScopedBridgeDescriptorId } from './bg-scoped-ws-connection';
+import { renderIcon } from './icons';
 import { t } from './i18n';
 
 // Vite resolves this to the built CSS asset URL at runtime
@@ -210,10 +211,14 @@ interface OpenCodeSessionView {
 }
 
 type SidePanelTab = 'tools' | 'context' | 'feedback' | 'opencode' | 'connections';
+const FEEDBACK_TAB_ENABLED = false;
 
 function readInitialSidePanelTab(search: string = window.location.search): SidePanelTab {
   const tab = new URLSearchParams(search).get('tab');
-  if (tab === 'tools' || tab === 'context' || tab === 'feedback' || tab === 'connections') {
+  if (tab === 'tools' || tab === 'context' || tab === 'connections') {
+    return tab;
+  }
+  if (FEEDBACK_TAB_ENABLED && tab === 'feedback') {
     return tab;
   }
   return 'opencode';
@@ -254,14 +259,43 @@ const customRules = css`
     display: flex;
   }
   /* tab content visibility: override daisyUI's display:none */
-  .tab-content {
+  .pcb-tab-panel {
     display: none;
   }
-  .tab-content.active {
+  .pcb-tab-panel.active {
     display: flex;
   }
   details > summary::-webkit-details-marker {
     display: none;
+  }
+  /* Shadow DOM fallback for DaisyUI dropdown positioning.
+   * If component CSS does not fully apply here, the dropdown content
+   * can enter normal flow and overlap session action labels. */
+  details.dropdown {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    overflow: visible;
+  }
+  details.dropdown > summary {
+    display: inline-flex;
+    align-items: center;
+  }
+  details.dropdown > .dropdown-content {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    display: none;
+    min-width: max-content;
+    max-width: min(18rem, calc(100vw - 2rem));
+    z-index: 20;
+  }
+  details.dropdown.dropdown-end > .dropdown-content {
+    right: 0;
+    left: auto;
+  }
+  details.dropdown[open] > .dropdown-content {
+    display: block;
   }
   details[open] .details-chevron {
     transform: rotate(180deg);
@@ -524,7 +558,6 @@ export class SidePanelApp extends LitElement {
   private async _selectOpenCodeSession(sessionId: string): Promise<void> {
     this._opencodeActiveSessionId = sessionId;
     this._opencodeDraftSessionId = sessionId;
-    this._opencodeIframeOpen = true;
     await this._persistOpenCodeConfig();
   }
 
@@ -680,7 +713,7 @@ export class SidePanelApp extends LitElement {
   private async _createOrReuseOpenCodeSession(forceNewSession = false): Promise<OpenCodeSession> {
     const desiredSessionId = forceNewSession ? '' : this._opencodeDraftSessionId.trim();
     if (!desiredSessionId) {
-      return this._createOpenCodeSession();
+      return this._createOpenCodeSession({ forceDistinct: forceNewSession });
     }
 
     const sessions = await listOpenCodeSessions(this._getOpenCodeConfig());
@@ -689,14 +722,24 @@ export class SidePanelApp extends LitElement {
       return matched;
     }
 
-    return this._createOpenCodeSession();
+    return this._createOpenCodeSession({ forceDistinct: forceNewSession });
   }
 
-  private async _createOpenCodeSession(): Promise<OpenCodeSession> {
+  private async _createOpenCodeSession(
+    options: { forceDistinct?: boolean } = {},
+  ): Promise<OpenCodeSession> {
     const cfg = this._getOpenCodeConfig();
     this._opencodeMessage = 'Creating OpenCode session...';
     this.requestUpdate();
     const session = await createOpenCodeSession(cfg);
+    if (
+      options.forceDistinct &&
+      this._opencodeSessions.some((entry) => entry.sessionId === session.id)
+    ) {
+      throw new Error(
+        `OpenCode returned existing session ${session.id}. New session was not created.`,
+      );
+    }
     return {
       ...session,
       directory: session.directory?.trim(),
@@ -1559,6 +1602,11 @@ export class SidePanelApp extends LitElement {
 
   // ─── Event Handlers ────────────────────────────────────────────
   private _handleTabClick(tab: SidePanelTab): void {
+    if (tab === 'feedback' && !FEEDBACK_TAB_ENABLED) {
+      this._activeTab = 'opencode';
+      this.requestUpdate();
+      return;
+    }
     this._activeTab = tab;
     this.requestUpdate();
     if (tab === 'tools') {
@@ -1865,47 +1913,32 @@ export class SidePanelApp extends LitElement {
         ></iframe>
 
         <div
-          class="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-3"
+          class="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[min(18rem,calc(100%-1rem))] items-center gap-1.5"
+          aria-label="OpenCode sidebar iframe controls"
         >
-          <div
-            class="pointer-events-auto min-w-0 max-w-[calc(100%-4rem)] rounded-md bg-neutral/80 px-3 py-2 text-neutral-content shadow-2xl backdrop-blur-md"
-          >
-            <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">
-              OpenCode sidebar iframe
-            </p>
-            <div class="mt-0.5 flex items-center gap-2 min-w-0">
-              <span
-                class="font-mono text-xs font-semibold truncate"
-                title=${activeSession.sessionId}
-              >
-                ${shortenSessionId(activeSession.sessionId)}
-              </span>
-              <span class="text-[11px] opacity-60"
-                >${activeScopedDescriptor?.status ?? t('pending')}</span
-              >
-            </div>
-          </div>
-
           <button
-            class="btn btn-sm btn-circle pointer-events-auto border-base-100/20 bg-neutral/80 text-neutral-content shadow-2xl backdrop-blur-md transition-transform duration-150 active:scale-[0.96] hover:bg-neutral"
+            class="btn btn-ghost btn-circle pointer-events-auto h-9 min-h-9 w-9 border border-base-300/70 bg-base-100/90 text-base-content shadow-lg backdrop-blur-md transition-transform duration-150 hover:bg-base-100 active:scale-[0.96]"
             aria-label="Close OpenCode iframe"
             title="Close OpenCode iframe"
             @click=${() => this._handleCloseOpenCodeIframe()}
           >
-            <svg
-              class="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            ${renderIcon('x', 'h-4 w-4')}
           </button>
+
+          <div
+            class="pointer-events-auto flex h-9 min-w-0 items-center gap-2 rounded-full border border-base-300/70 bg-base-100/90 py-1 pl-2.5 pr-3 text-base-content shadow-lg backdrop-blur-md"
+          >
+            <span class="status status-success status-xs shrink-0" aria-hidden="true"></span>
+            <span
+              class="min-w-0 truncate font-mono text-xs font-semibold tabular-nums"
+              title=${activeSession.sessionId}
+            >
+              ${shortenSessionId(activeSession.sessionId)}
+            </span>
+            <span class="badge badge-ghost badge-xs shrink-0 opacity-70">
+              ${activeScopedDescriptor?.status ?? t('pending')}
+            </span>
+          </div>
         </div>
       </section>
     `;
@@ -1921,51 +1954,46 @@ export class SidePanelApp extends LitElement {
 
     return html`
       <div
-        class="tab-content ${this._activeTab === 'opencode'
+        class="pcb-tab-panel ${this._activeTab === 'opencode'
           ? 'active'
-          : ''} flex flex-col flex-1 min-h-0 bg-base-200/50"
+          : ''} flex flex-col flex-1 min-h-0 bg-base-200"
       >
-        <div class="flex flex-col gap-2 p-2 flex-1 min-h-0 overflow-y-auto">
-          <section
-            class="relative overflow-hidden rounded-md border border-base-300 bg-base-100 shadow-sm"
-          >
-            <div
-              class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary via-info to-success"
-            ></div>
-            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-3">
+        <div class="flex flex-col gap-3 p-3 flex-1 min-h-0 overflow-y-auto">
+          <section class="card border border-base-300 bg-base-100 shadow-sm">
+            <div class="card-body grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4">
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50"
                     >${t('controlDeck')}</span
                   >
-                  <span class="text-[11px] opacity-45">
+                  <span class="badge badge-outline badge-sm opacity-75">
                     ${activeScopedDescriptor?.status ?? t('noSession')} ·
                     ${attentionCount > 0 ? `${attentionCount} ${t('fix')}` : t('ready')}
                   </span>
                 </div>
-                <div class="mt-1 truncate text-base font-bold leading-tight">
+                <div class="mt-2 truncate text-lg font-bold leading-tight">
                   ${activeSession ? t('opencodeCanUsePage') : t('connectPage')}
                 </div>
-                <p class="mt-1 max-w-[56rem] text-[11px] leading-relaxed opacity-65">
+                <p class="mt-1 max-w-[56rem] text-xs leading-relaxed opacity-70">
                   ${readiness.detail}
                 </p>
               </div>
 
-              <div class="flex flex-col items-end gap-1.5">
+              <div class="flex flex-col items-end gap-2">
                 ${activeSession
                   ? html`
                       <button
-                        class="tooltip tooltip-left btn btn-sm btn-primary min-w-28"
+                        class="tooltip tooltip-left btn btn-sm btn-primary min-w-32 gap-1.5"
                         data-tip="Embed the active OpenCode session in this side panel"
                         title="Embed the active OpenCode session in this side panel"
                         @click=${() => this._handleOpenOpenCodeIframe(activeSession.sessionId)}
                       >
-                        ${t('openSidebar')}
+                        ${renderIcon('panelRightOpen')} ${t('openSidebar')}
                       </button>
                     `
                   : html`
                       <button
-                        class="tooltip tooltip-left btn btn-sm btn-primary min-w-28 ${this
+                        class="tooltip tooltip-left btn btn-sm btn-primary min-w-32 gap-1.5 ${this
                           ._opencodeConnecting
                           ? 'loading'
                           : ''}"
@@ -1974,21 +2002,22 @@ export class SidePanelApp extends LitElement {
                         @click=${() => void this._handleOpencodeConnect(true)}
                         ?disabled=${this._opencodeConnecting}
                       >
-                        ${t('startSession')}
+                        ${renderIcon('play')} ${t('startSession')}
                       </button>
                     `}
                 <div class="flex items-center gap-1">
                   <button
-                    class="tooltip tooltip-left btn btn-xs btn-ghost"
+                    class="tooltip tooltip-left btn btn-xs btn-ghost border border-base-300 gap-1"
                     data-tip="Start a clean OpenCode session even if one is already active"
                     title="Start a clean OpenCode session even if one is already active"
                     @click=${() => void this._handleOpencodeConnect(true)}
                     ?disabled=${this._opencodeConnecting}
                   >
-                    ${t('newSessionShort')}
+                    ${renderIcon('plus', 'h-3 w-3')} ${t('newSessionShort')}
                   </button>
                   <button
-                    class="tooltip tooltip-left btn btn-xs btn-ghost ${this._agentationInjecting
+                    class="tooltip tooltip-left btn btn-xs btn-ghost border border-base-300 gap-1 ${this
+                      ._agentationInjecting
                       ? 'loading'
                       : ''}"
                     data-tip="Inject the page helper so automation can read and act on the active tab"
@@ -1996,7 +2025,7 @@ export class SidePanelApp extends LitElement {
                     @click=${() => void this._handleInjectAgentation()}
                     ?disabled=${this._agentationInjecting}
                   >
-                    ${t('preparePageShort')}
+                    ${renderIcon('wrench', 'h-3 w-3')} ${t('preparePageShort')}
                   </button>
                 </div>
               </div>
@@ -2004,7 +2033,7 @@ export class SidePanelApp extends LitElement {
 
             ${this._opencodeMessage
               ? html`<div
-                  class="border-t border-base-300 px-3 py-2 text-xs opacity-75"
+                  class="border-t border-base-300 bg-base-200/45 px-4 py-2 text-xs opacity-80"
                   role="status"
                 >
                   ${this._opencodeMessage}
@@ -2013,9 +2042,9 @@ export class SidePanelApp extends LitElement {
           </section>
 
           <section class="flex flex-col gap-2">
-            <div class="rounded-md border border-base-300 bg-base-100 shadow-sm">
+            <div class="card border border-base-300 bg-base-100 shadow-sm">
               <div
-                class="flex items-center justify-between gap-2 border-b border-base-300 px-3 py-2"
+                class="flex items-center justify-between gap-2 border-b border-base-300 bg-base-200/35 px-3 py-2.5"
               >
                 <div>
                   <h3 class="text-sm font-bold">${t('recentSessions')}</h3>
@@ -2023,20 +2052,20 @@ export class SidePanelApp extends LitElement {
                 </div>
                 ${activeSession
                   ? html`<button
-                      class="tooltip tooltip-left btn btn-xs btn-ghost"
+                      class="tooltip tooltip-left btn btn-xs btn-ghost border border-base-300 gap-1"
                       data-tip="Close the active bridge link without deleting the OpenCode session"
                       title="Close the active bridge link without deleting the OpenCode session"
                       @click=${() => void this._handleOpencodeDisconnect()}
                       ?disabled=${this._opencodeConnecting}
                     >
-                      ${t('disconnectActive')}
+                      ${renderIcon('plug', 'h-3 w-3')} ${t('disconnectActive')}
                     </button>`
                   : nothing}
               </div>
 
               ${this._opencodeSessions.length > 0
                 ? html`
-                    <div class="divide-y divide-base-200">
+                    <div class="divide-y divide-base-300/70">
                       ${repeat(
                         this._opencodeSessions,
                         (session) => session.sessionId,
@@ -2045,13 +2074,13 @@ export class SidePanelApp extends LitElement {
                           const active = session.sessionId === this._opencodeActiveSessionId;
                           return html`
                             <div
-                              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 ${active
-                                ? 'bg-primary/5'
-                                : 'hover:bg-base-200/60'}"
+                              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 transition-colors duration-200 ${active
+                                ? 'bg-primary/10 ring-1 ring-inset ring-primary/25'
+                                : 'hover:bg-base-200/70'}"
                             >
                               <div class="min-w-0">
                                 <button
-                                  class="block max-w-full truncate text-left font-mono text-xs font-semibold hover:underline"
+                                  class="block max-w-full truncate text-left font-mono text-xs font-semibold text-base-content hover:underline focus-visible:underline"
                                   title=${session.wsUrl}
                                   @click=${() =>
                                     void this._selectOpenCodeSession(session.sessionId)}
@@ -2063,49 +2092,56 @@ export class SidePanelApp extends LitElement {
                                 </div>
                               </div>
                               <div class="flex flex-wrap items-center justify-end gap-1">
-                                <span class="text-[10px] opacity-45">
+                                <span class="badge badge-outline badge-xs opacity-70">
                                   ${active ? `${t('active')} · ` : ''}${descriptor?.status ??
                                   t('pending')}
                                 </span>
                                 <button
-                                  class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                                  class="btn btn-[10px] btn-ghost min-h-0 h-6 gap-1 px-2"
                                   title="Copy session id"
                                   @click=${() =>
                                     void this._handleCopyOpenCodeSessionId(session.sessionId)}
                                 >
-                                  ${t('copy')}
+                                  ${renderIcon('copy', 'h-3 w-3')} ${t('copy')}
                                 </button>
                                 <button
-                                  class="btn btn-[10px] btn-ghost border border-base-300 min-h-0 h-6 px-2"
+                                  class="btn btn-[10px] btn-ghost border border-base-300 min-h-0 h-6 gap-1 px-2"
                                   title="Open this OpenCode session fullscreen in the sidebar"
                                   @click=${() => this._handleOpenOpenCodeIframe(session.sessionId)}
                                 >
-                                  ${t('openInSidebar')}
+                                  ${renderIcon('panelRightOpen', 'h-3 w-3')} ${t('openInSidebar')}
                                 </button>
                                 <details class="dropdown dropdown-end">
-                                  <summary class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2">
-                                    ${t('moreActions')}
+                                  <summary class="btn btn-[10px] btn-ghost min-h-0 h-6 gap-1 px-2">
+                                    ${renderIcon('chevronDown', 'h-3 w-3')} ${t('moreActions')}
                                   </summary>
-                                  <div
-                                    class="menu dropdown-content z-10 mt-1 rounded-sm border border-base-300 bg-base-100 p-1 shadow-sm"
+                                  <ul
+                                    class="menu menu-xs dropdown-content z-10 mt-1 w-40 rounded-box border border-base-300 bg-base-100 p-1 shadow-sm"
                                   >
-                                    <button
-                                      class="btn btn-[10px] btn-ghost justify-start min-h-0 h-6 px-2"
-                                      title="Open this OpenCode session in a browser tab"
-                                      @click=${() => this._handleOpenOpenCodeSession(session)}
-                                    >
-                                      ${t('openInTab')}
-                                    </button>
-                                    <button
-                                      class="btn btn-[10px] btn-ghost justify-start min-h-0 h-6 px-2 text-error"
-                                      title="Delete this OpenCode session"
-                                      ?disabled=${this._opencodeConnecting}
-                                      @click=${() =>
-                                        void this._handleDeleteOpenCodeSession(session.sessionId)}
-                                    >
-                                      ${t('deleteSession')}
-                                    </button>
-                                  </div>
+                                    <li>
+                                      <button
+                                        type="button"
+                                        title="Open this OpenCode session in a browser tab"
+                                        @click=${() => this._handleOpenOpenCodeSession(session)}
+                                      >
+                                        ${renderIcon('externalLink', 'h-3 w-3')}
+                                        <span>${t('openInTab')}</span>
+                                      </button>
+                                    </li>
+                                    <li>
+                                      <button
+                                        type="button"
+                                        class="text-error"
+                                        title="Delete this OpenCode session"
+                                        ?disabled=${this._opencodeConnecting}
+                                        @click=${() =>
+                                          void this._handleDeleteOpenCodeSession(session.sessionId)}
+                                      >
+                                        ${renderIcon('trash2', 'h-3 w-3')}
+                                        <span>${t('deleteSession')}</span>
+                                      </button>
+                                    </li>
+                                  </ul>
                                 </details>
                               </div>
                               ${active
@@ -2177,30 +2213,14 @@ export class SidePanelApp extends LitElement {
                   `}
             </div>
 
-            <details class="rounded-md border border-base-300 bg-base-100 px-3 py-2 shadow-sm">
+            <details class="collapse collapse-arrow border border-base-300 bg-base-100 shadow-sm">
               <summary
-                class="flex cursor-pointer select-none items-center justify-between gap-2 text-sm font-semibold"
+                class="collapse-title min-h-0 px-3 py-2 text-sm font-semibold"
                 title="Use this only when you already know an existing OpenCode session ID"
               >
-                <span>${t('restoreExistingSession')}</span>
-                <span
-                  class="details-chevron inline-flex h-5 w-5 items-center justify-center rounded-sm border border-base-300 bg-base-200 transition-transform duration-150"
-                  aria-hidden="true"
-                >
-                  <svg
-                    class="h-3.5 w-3.5"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </span>
+                ${t('restoreExistingSession')}
               </summary>
-              <div class="mt-3 grid gap-2">
+              <div class="collapse-content grid gap-2 px-3 pb-3">
                 <label class="form-control flex flex-col gap-1">
                   <span class="text-xs font-semibold opacity-70">${t('sessionId')}</span>
                   <input
@@ -2214,12 +2234,12 @@ export class SidePanelApp extends LitElement {
                   />
                 </label>
                 <button
-                  class="btn btn-sm btn-outline"
+                  class="btn btn-sm btn-outline gap-1.5"
                   title="Reconnect the typed session ID instead of creating a new OpenCode session"
                   @click=${() => void this._handleOpencodeConnect()}
                   ?disabled=${this._opencodeConnecting}
                 >
-                  ${t('useId')}
+                  ${renderIcon('plug')} ${t('useId')}
                 </button>
               </div>
             </details>
@@ -2266,116 +2286,124 @@ export class SidePanelApp extends LitElement {
     const attentionCount = this._getConnectionAttentionCount();
 
     return html`
-      <div class="flex flex-col gap-2 border-b border-base-300 bg-base-100 px-3 py-2 shrink-0">
-        <div class="flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <div class="text-sm font-semibold leading-tight truncate">${t('appName')}</div>
-            <div class="text-[11px] opacity-60 truncate">${t('appTagline')}</div>
+      <div class="shrink-0 border-b border-base-300 bg-base-100 shadow-sm">
+        <div class="flex flex-col gap-2 px-3 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-mono text-sm font-semibold leading-tight truncate">
+                ${t('appName')}
+              </div>
+              <div class="text-[11px] opacity-60 truncate">${t('appTagline')}</div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              ${attentionCount > 0
+                ? html`<button
+                    class="btn btn-xs btn-warning min-h-8 gap-1"
+                    @click=${() => this._handleTabClick('connections')}
+                  >
+                    ${renderIcon('wrench', 'h-3 w-3')} ${attentionCount} fix
+                  </button>`
+                : nothing}
+              <button
+                class="btn btn-xs btn-ghost btn-square min-h-8"
+                @click=${this._handleReconnect}
+                title="${this._refreshing ? 'Refreshing...' : 'Refresh status'}"
+                aria-label="Refresh status"
+              >
+                ${renderIcon(
+                  'refreshCw',
+                  `w-3.5 h-3.5 transition-opacity duration-200 ${this._refreshing ? 'animate-spin opacity-100' : 'opacity-70'}`,
+                )}
+              </button>
+            </div>
           </div>
-          <div class="flex items-center gap-1 shrink-0">
-            ${attentionCount > 0
+
+          <div
+            role="tablist"
+            class="tabs tabs-box grid ${FEEDBACK_TAB_ENABLED
+              ? 'grid-cols-5'
+              : 'grid-cols-4'} bg-base-200/70 p-1"
+          >
+            <button
+              role="tab"
+              aria-selected=${this._activeTab === 'opencode'}
+              aria-label="Workspace"
+              data-tip=${t('workspaceTip')}
+              class="tab tooltip tooltip-bottom gap-1 text-[11px] font-semibold uppercase tracking-wide ${this
+                ._activeTab === 'opencode'
+                ? 'tab-active'
+                : ''}"
+              @click=${() => this._handleTabClick('opencode')}
+              title=${t('workspace')}
+            >
+              ${renderIcon('panelRightOpen', 'h-3.5 w-3.5')}
+              <span>${t('workspace')}</span>
+            </button>
+            <button
+              role="tab"
+              aria-selected=${this._activeTab === 'tools'}
+              aria-label="Inspect page tools"
+              data-tip=${t('inspectTip')}
+              class="tab tooltip tooltip-bottom gap-1 text-[11px] font-semibold uppercase tracking-wide ${this
+                ._activeTab === 'tools'
+                ? 'tab-active'
+                : ''}"
+              @click=${() => this._handleTabClick('tools')}
+              title=${t('inspectTip')}
+            >
+              ${renderIcon('search', 'h-3.5 w-3.5')}
+              <span>${t('inspect')}</span>
+            </button>
+            ${FEEDBACK_TAB_ENABLED
               ? html`<button
-                  class="btn btn-xs btn-warning"
-                  @click=${() => this._handleTabClick('connections')}
+                  role="tab"
+                  aria-selected=${this._activeTab === 'feedback'}
+                  aria-label="Feedback"
+                  data-tip=${t('feedbackTip')}
+                  class="tab tooltip tooltip-bottom gap-1 text-[11px] font-semibold uppercase tracking-wide ${this
+                    ._activeTab === 'feedback'
+                    ? 'tab-active'
+                    : ''}"
+                  @click=${() => this._handleTabClick('feedback')}
+                  title=${t('feedback')}
                 >
-                  ${attentionCount} fix
+                  ${renderIcon('messageSquare', 'h-3.5 w-3.5')}
+                  <span>${t('feedback')}</span>
                 </button>`
               : nothing}
             <button
-              class="btn btn-xs btn-ghost btn-square"
-              @click=${this._handleReconnect}
-              title="${this._refreshing ? 'Refreshing...' : 'Refresh status'}"
-              aria-label="Refresh status"
+              role="tab"
+              aria-selected=${this._activeTab === 'connections'}
+              aria-label="Setup and troubleshooting"
+              data-tip=${t('setupTip')}
+              class="tab tooltip tooltip-bottom gap-1 text-[11px] font-semibold uppercase tracking-wide ${this
+                ._activeTab === 'connections'
+                ? 'tab-active'
+                : attentionCount > 0
+                  ? 'text-warning'
+                  : ''}"
+              @click=${() => this._handleTabClick('connections')}
+              title=${t('setupTip')}
             >
-              <svg
-                class="w-3.5 h-3.5 transition-opacity duration-200 ${this._refreshing
-                  ? 'animate-spin opacity-100'
-                  : 'opacity-70'}"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                <polyline points="21 3 21 9 15 9" />
-              </svg>
+              ${renderIcon('settings', 'h-3.5 w-3.5')}
+              <span>${t('setup')}</span>
+            </button>
+            <button
+              role="tab"
+              aria-selected=${this._activeTab === 'context'}
+              aria-label="AI View"
+              data-tip=${t('aiViewTip')}
+              class="tab tooltip tooltip-bottom gap-1 text-[11px] font-semibold uppercase tracking-wide ${this
+                ._activeTab === 'context'
+                ? 'tab-active'
+                : ''}"
+              @click=${() => this._handleTabClick('context')}
+              title=${t('aiView')}
+            >
+              ${renderIcon('brain', 'h-3.5 w-3.5')}
+              <span>${t('aiView')}</span>
             </button>
           </div>
-        </div>
-
-        <div
-          role="tablist"
-          class="grid grid-cols-5 gap-px rounded-sm border border-base-300 bg-base-300 p-px"
-        >
-          <button
-            role="tab"
-            aria-label="Workspace"
-            data-tip=${t('workspaceTip')}
-            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
-              ._activeTab === 'opencode'
-              ? 'bg-base-100 text-primary'
-              : ''}"
-            @click=${() => this._handleTabClick('opencode')}
-            title=${t('workspace')}
-          >
-            <span>${t('workspace')}</span>
-          </button>
-          <button
-            role="tab"
-            aria-label="Inspect page tools"
-            data-tip=${t('inspectTip')}
-            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
-              ._activeTab === 'tools'
-              ? 'bg-base-100 text-primary'
-              : ''}"
-            @click=${() => this._handleTabClick('tools')}
-            title=${t('inspectTip')}
-          >
-            <span>${t('inspect')}</span>
-          </button>
-          <button
-            role="tab"
-            aria-label="Feedback"
-            data-tip=${t('feedbackTip')}
-            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
-              ._activeTab === 'feedback'
-              ? 'bg-base-100 text-primary'
-              : ''}"
-            @click=${() => this._handleTabClick('feedback')}
-            title=${t('feedback')}
-          >
-            <span>${t('feedback')}</span>
-          </button>
-          <button
-            role="tab"
-            aria-label="Setup and troubleshooting"
-            data-tip=${t('setupTip')}
-            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
-              ._activeTab === 'connections'
-              ? 'bg-base-100 text-primary'
-              : attentionCount > 0
-                ? 'bg-warning/20'
-                : ''}"
-            @click=${() => this._handleTabClick('connections')}
-            title=${t('setupTip')}
-          >
-            <span>${t('setup')}</span>
-          </button>
-          <button
-            role="tab"
-            aria-label="AI View"
-            data-tip=${t('aiViewTip')}
-            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
-              ._activeTab === 'context'
-              ? 'bg-base-100 text-primary'
-              : ''}"
-            @click=${() => this._handleTabClick('context')}
-            title=${t('aiView')}
-          >
-            <span>${t('aiView')}</span>
-          </button>
         </div>
       </div>
 
@@ -2435,7 +2463,7 @@ export class SidePanelApp extends LitElement {
       } as RenderContextTabInput)}
 
       <!-- Feedback Tab -->
-      ${this._activeTab === 'feedback'
+      ${FEEDBACK_TAB_ENABLED && this._activeTab === 'feedback'
         ? renderFeedbackTab({
             snapshot: this._feedbackSnapshot,
             loading: this._feedbackLoading,
@@ -2457,7 +2485,7 @@ export class SidePanelApp extends LitElement {
             onResolve: (annotationId) => void this._resolveFeedbackAnnotation(annotationId),
             onDismiss: (annotationId) => void this._dismissFeedbackAnnotation(annotationId),
           })
-        : html`<div class="tab-content flex flex-col flex-1 min-h-0"></div>`}
+        : html`<div class="pcb-tab-panel flex flex-col flex-1 min-h-0"></div>`}
 
       <connections-panel
         ?hidden=${this._activeTab !== 'connections'}
