@@ -36,6 +36,7 @@
     "@page-context/tool-executor": "workspace:*",
     "@page-context/tool-visibility": "workspace:*",
     "lit": "^3.2.0",
+    "lucide": "^1.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -47,12 +48,12 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@playwright/test": "^1.59.1",
-    "sass": "^1.93.2",
-    "@tailwindcss/vite": "^4.2.2",
     "daisyui": "^5.5.19",
+    "sass": "^1.93.2",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.8",
     "vite-plugin-chrome-extension": "^0.0.7",

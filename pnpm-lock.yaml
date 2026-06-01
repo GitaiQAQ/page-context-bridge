@@ -139,6 +139,9 @@ importers:
       lit:
         specifier: ^3.2.0
         version: 3.3.2
+      lucide:
+        specifier: ^1.17.0
+        version: 1.17.0
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -4635,6 +4638,12 @@ packages:
         integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==,
       }
 
+  lucide@1.17.0:
+    resolution:
+      {
+        integrity: sha512-C9YbnxThJgxfXFHCZ8WzcSFEyXdDmprVx3B0ovkbwCNYJWc0wuM1qQlXyCZ33SGFZPklArYmtoIpdbeqgQaG0g==,
+      }
+
   magic-string@0.30.21:
     resolution:
       {
@@ -9053,6 +9062,8 @@ snapshots:
   loupe@3.2.1: {}
 
   lru-cache@10.4.3: {}
+
+  lucide@1.17.0: {}
 
   magic-string@0.30.21:
     dependencies:
