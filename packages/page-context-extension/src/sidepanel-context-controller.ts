@@ -5,6 +5,7 @@
 
 import { html, type TemplateResult } from 'lit';
 import { classMap } from 'lit/directives/class-map.js';
+import { renderIcon } from './icons';
 import { t, tf } from './i18n';
 
 export interface RenderContextTabInput {
@@ -54,12 +55,22 @@ function buildCapabilityBriefing(input: RenderContextTabInput): string {
   return `OpenCode can see ${input.contextResourceCount} ${pluralize(input.contextResourceCount, 'data source')} and ${input.contextSkillCount} ${pluralize(input.contextSkillCount, 'guided workflow')} across ${input.contextNamespaceCount} ${pluralize(input.contextNamespaceCount, 'page area')}.`;
 }
 
+function renderCodeBlock(content: string): TemplateResult {
+  return html`
+    <pre
+      class="max-h-80 overflow-auto rounded-box bg-base-200 p-3 font-mono text-xs whitespace-pre-wrap break-words"
+    >
+${content}</pre
+    >
+  `;
+}
+
 /** Renders the complete Context Tab content. */
 export function renderContextTab(input: RenderContextTabInput): TemplateResult {
   const capabilityBriefing = buildCapabilityBriefing(input);
 
   return html`
-    <div class="tab-content ${classMap({ active: input.active })} flex flex-col flex-1 min-h-0">
+    <div class="pcb-tab-panel ${classMap({ active: input.active })} flex flex-col flex-1 min-h-0">
       <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
         <div class="flex flex-col gap-0.5">
           <span class="text-xs font-bold uppercase tracking-[0.18em] opacity-60"
@@ -68,192 +79,164 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
           <span class="text-[11px] opacity-55">${t('aiViewSubtitle')}</span>
         </div>
         <button
-          class="tooltip tooltip-bottom btn btn-xs btn-ghost ml-auto"
+          class="tooltip tooltip-bottom btn btn-xs btn-ghost ml-auto gap-1"
           data-tip=${t('reloadPageContext')}
           title=${t('reloadPageContext')}
           @click=${input.onRefresh}
         >
-          ${t('refresh')}
+          ${renderIcon('refreshCw', 'h-3 w-3')} ${t('refresh')}
         </button>
       </div>
-      <div class="grid grid-cols-[minmax(240px,320px)_1fr] flex-1 min-h-0">
-        <!-- Sidebar -->
-        <div class="border-r border-base-300 bg-base-100 overflow-auto">
-          <div class="border-b border-base-200 p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">
-              ${t('currentPage')}
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">${t('app')}</div>
-                <div class="stat-value text-sm font-bold">${input.contextAppValue}</div>
-              </div>
-              <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">${t('scene')}</div>
-                <div class="stat-value text-sm font-bold">${input.contextSceneValue}</div>
-              </div>
-              <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">${t('tab')}</div>
-                <div class="stat-value text-sm font-bold">${input.contextTabValue}</div>
-              </div>
-              <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">${t('route')}</div>
-                <div class="stat-value text-sm font-bold">${input.contextRouteValue}</div>
-              </div>
-            </div>
-          </div>
-          <div class="border-b border-base-200 p-3">
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-xs font-bold uppercase tracking-wide opacity-50">
-                ${t('aiBriefing')}
-              </div>
-              <span class="text-[11px] opacity-50">${input.manifestStatus}</span>
-            </div>
-            <div class="text-[11px] opacity-55 mb-2">${capabilityBriefing}</div>
-            <div class="grid grid-cols-3 gap-2">
-              <div class="rounded-lg border border-base-300 bg-base-200 px-2 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">${t('namespaces')}</div>
-                <div class="text-sm font-bold">${input.contextNamespaceCount}</div>
-              </div>
-              <div class="rounded-lg border border-base-300 bg-base-200 px-2 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">${t('data')}</div>
-                <div class="text-sm font-bold">${input.contextResourceCount}</div>
-              </div>
-              <div class="rounded-lg border border-base-300 bg-base-200 px-2 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">${t('skills')}</div>
-                <div class="text-sm font-bold">${input.contextSkillCount}</div>
-              </div>
-            </div>
-          </div>
-          <div class="border-b border-base-200 p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              ${t('pageAreas')}
-            </div>
-            <div class="text-[11px] opacity-55 mb-2">${t('functionalAreasExposed')}</div>
-            <div id="contextNamespacesList">${input.contextNamespacesListHtml}</div>
-          </div>
-          <div class="border-b border-base-200 p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              ${t('readableData')}
-            </div>
-            <div class="text-[11px] opacity-55 mb-2">${t('structuredPageData')}</div>
-            <div id="contextResourcesList" @click=${input.onResourceClick}>
-              ${input.contextResourcesListHtml}
-            </div>
-          </div>
-          <div class="p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              ${t('guidedWorkflows')}
-            </div>
-            <div class="text-[11px] opacity-55 mb-2">${t('taskRecipesProvided')}</div>
-            <div id="contextSkillsList" @click=${input.onSkillClick}>
-              ${input.contextSkillsListHtml}
-            </div>
-          </div>
-        </div>
-        <!-- Main -->
-        <div class="bg-base-200 overflow-auto p-3 flex flex-col gap-3">
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-2">
-              <div class="flex items-center justify-between gap-2">
-                <div>
-                  <div class="font-bold text-sm">${t('beforeOpenCodeActs')}</div>
-                  <p class="text-[11px] opacity-55">${t('aiUnderstandPage')}</p>
+      <div class="flex-1 min-h-0 overflow-auto bg-base-200 p-3">
+        <div class="mx-auto flex max-w-5xl flex-col gap-3">
+          <section class="card border border-base-300 bg-base-100 shadow-sm">
+            <div class="card-body gap-3 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="text-[11px] font-bold uppercase tracking-wide opacity-50">
+                    ${t('aiBriefing')}
+                  </div>
+                  <h3 class="mt-1 text-base font-bold">${t('beforeOpenCodeActs')}</h3>
+                  <p class="mt-1 text-sm leading-relaxed opacity-75">${capabilityBriefing}</p>
                 </div>
-                <div class="max-w-[18rem] truncate text-right text-[11px] opacity-50">
-                  ${input.contextAppValue} · ${input.contextSceneValue} · ${t('tab')}
-                  ${input.contextTabValue}
+                <div class="flex flex-wrap justify-end gap-1.5 text-xs">
+                  <span class="badge badge-outline">${input.contextAppValue}</span>
+                  <span class="badge badge-outline">${input.contextSceneValue}</span>
+                  <span class="badge badge-outline">${t('tab')} ${input.contextTabValue}</span>
                 </div>
               </div>
-              <div class="rounded-lg border border-base-300 bg-base-200 px-3 py-2">
-                <div class="text-sm font-semibold">${capabilityBriefing}</div>
-                <div class="text-xs opacity-60 mt-1">
+
+              <div
+                class="stats stats-horizontal w-full border border-base-300 bg-base-100 shadow-none"
+              >
+                <div class="stat px-3 py-2">
+                  <div class="stat-title text-[10px] uppercase tracking-wide">
+                    ${t('pageAreas')}
+                  </div>
+                  <div class="stat-value text-lg font-bold">${input.contextNamespaceCount}</div>
+                </div>
+                <div class="stat px-3 py-2">
+                  <div class="stat-title text-[10px] uppercase tracking-wide">
+                    ${t('readableData')}
+                  </div>
+                  <div class="stat-value text-lg font-bold">${input.contextResourceCount}</div>
+                </div>
+                <div class="stat px-3 py-2">
+                  <div class="stat-title text-[10px] uppercase tracking-wide">
+                    ${t('guidedWorkflows')}
+                  </div>
+                  <div class="stat-value text-lg font-bold">${input.contextSkillCount}</div>
+                </div>
+              </div>
+
+              <div class="alert border border-base-300 bg-base-200/60 py-2 text-xs">
+                <span>
                   ${tf('browserRouteMapped', {
                     route: input.contextRouteValue,
                     app: input.contextAppValue,
                     scene: input.contextSceneValue,
                   })}
-                </div>
+                </span>
               </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
-                  <div class="text-[10px] uppercase tracking-wide opacity-50">
-                    ${t('pageBriefing')}
-                  </div>
-                  <div class="text-sm font-semibold ${input.manifestStatusClass}">
-                    ${input.manifestStatus}
-                  </div>
+            </div>
+          </section>
+
+          <section class="grid grid-cols-1 gap-3 xl:grid-cols-3">
+            <div class="card border border-base-300 bg-base-100 shadow-sm">
+              <div class="card-body gap-2 p-3">
+                <div>
+                  <h3 class="text-sm font-bold">${t('pageAreas')}</h3>
+                  <p class="text-[11px] opacity-55">${t('functionalAreasExposed')}</p>
                 </div>
-                <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
-                  <div class="text-[10px] uppercase tracking-wide opacity-50">
-                    ${t('safetyFilters')}
-                  </div>
-                  <div class="text-sm font-semibold ${input.diffStatusClass}">
-                    ${input.diffStatus}
-                  </div>
+                <div id="contextNamespacesList" class="min-h-0">
+                  ${input.contextNamespacesListHtml}
                 </div>
               </div>
             </div>
-          </div>
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-1">
-              <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">${t('hiddenFromAi')}</span>
-                <span class="text-xs font-semibold ${input.diffStatusClass}"
-                  >${input.diffStatus}</span
-                >
+
+            <div class="card border border-base-300 bg-base-100 shadow-sm">
+              <div class="card-body gap-2 p-3">
+                <div>
+                  <h3 class="text-sm font-bold">${t('readableData')}</h3>
+                  <p class="text-[11px] opacity-55">${t('structuredPageData')}</p>
+                </div>
+                <div id="contextResourcesList" class="min-h-0" @click=${input.onResourceClick}>
+                  ${input.contextResourcesListHtml}
+                </div>
               </div>
-              <p class="text-[11px] opacity-55">${t('hiddenItemsExplanation')}</p>
-              <div id="contextDiffOutput" class="flex flex-col gap-2">${input.diffOutput}</div>
             </div>
-          </div>
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-1">
-              <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">${t('developerPayload')}</span>
-                <span class="text-xs font-semibold ${input.manifestStatusClass}"
-                  >${input.manifestStatus}</span
-                >
+
+            <div class="card border border-base-300 bg-base-100 shadow-sm">
+              <div class="card-body gap-2 p-3">
+                <div>
+                  <h3 class="text-sm font-bold">${t('guidedWorkflows')}</h3>
+                  <p class="text-[11px] opacity-55">${t('taskRecipesProvided')}</p>
+                </div>
+                <div id="contextSkillsList" class="min-h-0" @click=${input.onSkillClick}>
+                  ${input.contextSkillsListHtml}
+                </div>
               </div>
-              <p class="text-[11px] opacity-55">${t('developerPayloadDescription')}</p>
-              <pre
-                class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
-              >
-${input.manifestOutput}</pre
-              >
             </div>
-          </div>
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-1">
-              <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">${t('selectedDataPreview')}</span>
-                <span class="text-xs font-semibold ${input.resourceStatusClass}"
-                  >${input.resourceStatus}</span
-                >
+          </section>
+
+          <section class="card border border-base-300 bg-base-100 shadow-sm">
+            <div class="card-body gap-2 p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-sm font-bold">${t('selectedDataPreview')}</h3>
+                  <p class="text-[11px] opacity-55">${t('workflowPromptDescription')}</p>
+                </div>
+                <div class="flex gap-2 text-xs">
+                  <span class="font-semibold ${input.resourceStatusClass}"
+                    >${input.resourceStatus}</span
+                  >
+                  <span class="font-semibold ${input.skillStatusClass}">${input.skillStatus}</span>
+                </div>
               </div>
-              <pre
-                class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
-              >
-${input.resourceOutput}</pre
-              >
-            </div>
-          </div>
-          <div class="card bg-base-100 border border-base-300 shadow-sm">
-            <div class="card-body p-3 gap-1">
-              <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">${t('selectedWorkflowPrompt')}</span>
-                <span class="text-xs font-semibold ${input.skillStatusClass}"
-                  >${input.skillStatus}</span
-                >
+              <div class="grid grid-cols-1 gap-2 xl:grid-cols-2">
+                <div>
+                  <div class="mb-1 text-[11px] font-bold uppercase tracking-wide opacity-50">
+                    ${t('readableData')}
+                  </div>
+                  ${renderCodeBlock(input.resourceOutput)}
+                </div>
+                <div>
+                  <div class="mb-1 text-[11px] font-bold uppercase tracking-wide opacity-50">
+                    ${t('selectedWorkflowPrompt')}
+                  </div>
+                  ${renderCodeBlock(input.skillOutput)}
+                </div>
               </div>
-              <p class="text-[11px] opacity-55">${t('workflowPromptDescription')}</p>
-              <pre
-                class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
-              >
-${input.skillOutput}</pre
-              >
             </div>
-          </div>
+          </section>
+
+          <section class="flex flex-col gap-2">
+            <details class="collapse collapse-arrow border border-base-300 bg-base-100 shadow-sm">
+              <summary class="collapse-title min-h-0 px-3 py-2 text-sm font-bold">
+                <span>${t('hiddenFromAi')}</span>
+                <span class="ml-2 text-xs font-semibold ${input.diffStatusClass}">
+                  ${input.diffStatus}
+                </span>
+              </summary>
+              <div class="collapse-content px-3 pb-3">
+                <p class="mb-2 text-[11px] opacity-55">${t('hiddenItemsExplanation')}</p>
+                <div id="contextDiffOutput" class="flex flex-col gap-2">${input.diffOutput}</div>
+              </div>
+            </details>
+
+            <details class="collapse collapse-arrow border border-base-300 bg-base-100 shadow-sm">
+              <summary class="collapse-title min-h-0 px-3 py-2 text-sm font-bold">
+                <span>${t('developerPayload')}</span>
+                <span class="ml-2 text-xs font-semibold ${input.manifestStatusClass}">
+                  ${input.manifestStatus}
+                </span>
+              </summary>
+              <div class="collapse-content px-3 pb-3">
+                <p class="mb-2 text-[11px] opacity-55">${t('developerPayloadDescription')}</p>
+                ${renderCodeBlock(input.manifestOutput)}
+              </div>
+            </details>
+          </section>
         </div>
       </div>
     </div>

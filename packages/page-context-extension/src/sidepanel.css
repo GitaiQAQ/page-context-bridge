@@ -1,2 +1,37 @@
 @import 'tailwindcss';
 @plugin "daisyui";
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  summary,
+  select,
+  [role='button'],
+  [role='tab'] {
+    cursor: pointer;
+  }
+
+  button:focus-visible,
+  summary:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  [role='tab']:focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

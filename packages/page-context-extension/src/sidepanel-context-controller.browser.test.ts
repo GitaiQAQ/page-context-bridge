@@ -53,7 +53,6 @@ describe('renderContextTab', () => {
     expect(text).toContain('What AI sees');
     expect(text).toContain('Preview the page context OpenCode receives before it starts working');
     expect(text).toContain('Before OpenCode acts');
-    expect(text).toContain('Current Page');
     expect(text).toContain('AI Briefing');
     expect(text).toContain('Page Areas');
     expect(text).toContain('Readable Data');
@@ -63,9 +62,17 @@ describe('renderContextTab', () => {
     );
     expect(text).toContain('Hidden from AI');
     expect(text).toContain('Developer payload');
+    expect(text).toContain('crm');
+    expect(text).toContain('lead_detail');
+    expect(text).toContain('tab 12');
     expect(text).toContain('3');
     expect(text).toContain('4');
     expect(text).toContain('2');
+
+    expect(host.querySelector('#contextNamespacesList')?.textContent).toContain('namespace-card');
+    expect(host.querySelector('#contextResourcesList')?.textContent).toContain('resource-card');
+    expect(host.querySelector('#contextSkillsList')?.textContent).toContain('skill-card');
+    expect(host.querySelector('#contextDiffOutput')?.textContent).toContain('diff');
   });
 
   it('renders namespace, resource, and skill cards with concrete capability metadata', () => {

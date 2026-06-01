@@ -10,6 +10,7 @@ import {
   saveConnectionEndpoints,
   type ConnectionEndpointsConfig,
 } from './connections-endpoints';
+import { renderIcon } from './icons';
 import { t } from './i18n';
 
 function isUnsupportedConnectionsActionError(error: unknown): boolean {
@@ -329,20 +330,21 @@ export class ConnectionsPanel extends LitElement {
 
     return html`
       <section
-        class="flex flex-col gap-2 p-3 min-w-0 ${validation || needsAttention
-          ? 'bg-error/5'
+        class="flex flex-col gap-2.5 p-3 min-w-0 transition-colors duration-200 ${validation ||
+        needsAttention
+          ? 'bg-error/10'
           : input.descriptor && isHealthyConnection(input.descriptor)
-            ? 'bg-success/5'
+            ? 'bg-success/10'
             : ''}"
       >
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-45">
+            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50">
               ${input.eyebrow}
             </div>
             <h3 class="text-sm font-bold leading-tight">${input.title}</h3>
           </div>
-          <span class="text-[11px] opacity-50 whitespace-nowrap">
+          <span class="badge badge-outline badge-sm opacity-80 whitespace-nowrap">
             ${input.descriptor?.status ?? input.emptyStatusLabel ?? t('notRegistered')}
           </span>
         </div>
@@ -367,13 +369,13 @@ export class ConnectionsPanel extends LitElement {
             />
             <button
               type="button"
-              class="btn btn-sm join-item border-base-300 bg-base-200 px-2 font-mono text-[10px] normal-case"
+              class="btn btn-sm join-item border-base-300 bg-base-200 px-2 font-mono text-[10px] normal-case gap-1"
               title=${`${t('example')}: ${exampleValue}`}
               @click=${() => {
                 this.endpoints = { ...this.endpoints, [input.field]: exampleValue };
               }}
             >
-              ${t('useExample')}
+              ${renderIcon('copy', 'h-3 w-3')} ${t('useExample')}
             </button>
           </div>
           <div class="flex items-center gap-1 text-[10px] leading-relaxed opacity-60">
@@ -384,7 +386,9 @@ export class ConnectionsPanel extends LitElement {
           </div>
         </label>
 
-        <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px]">
+        <div
+          class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-lg border border-base-300 bg-base-200/50 p-2 text-[11px]"
+        >
           <span class="opacity-50">${t('check')}</span>
           <span class="opacity-70 leading-relaxed">${input.check}</span>
           <span class="opacity-50">${t('current')}</span>
@@ -423,48 +427,52 @@ export class ConnectionsPanel extends LitElement {
 
     return html`
       <div
-        class="rounded-md border bg-base-100 px-3 py-3 shadow-sm flex flex-col gap-2 ${needsAttention
-          ? 'border-error/50'
-          : 'border-base-300'}"
+        class="card border bg-base-100 shadow-sm transition-colors duration-200 ${needsAttention
+          ? 'border-error/60 bg-error/5'
+          : 'border-base-300 hover:border-base-content/20'}"
       >
-        <div class="grid grid-cols-[minmax(0,1.35fr)_auto] gap-2 items-start">
-          <div class="min-w-0">
-            <div class="text-sm font-semibold truncate">${descriptor.label}</div>
-            <div class="text-xs opacity-60 truncate" title=${descriptor.id}>${descriptor.id}</div>
+        <div class="card-body gap-2 p-3">
+          <div class="grid grid-cols-[minmax(0,1.35fr)_auto] gap-2 items-start">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold truncate">${descriptor.label}</div>
+              <div class="text-xs opacity-60 truncate" title=${descriptor.id}>${descriptor.id}</div>
+            </div>
+            <span class="badge badge-outline badge-sm opacity-75">${descriptor.status}</span>
           </div>
-          <span class="text-[11px] opacity-50">${descriptor.status}</span>
-        </div>
-        <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
-          <span class="opacity-50">${t('endpoint')}</span>
-          <span class="font-mono opacity-80 truncate" title=${descriptor.endpoint ?? ''}>
-            ${descriptor.endpoint ?? '-'}
-          </span>
-          <span class="opacity-50">${t('updated')}</span>
-          <span class="opacity-70">${formatUpdatedAt(descriptor.updatedAt)}</span>
-          ${descriptor.statusReason
-            ? html`
-                <span class="opacity-50">${t('reason')}</span>
-                <span class="opacity-70 break-words">${descriptor.statusReason}</span>
-              `
-            : nothing}
-        </div>
-        <div class="flex items-center justify-end gap-2">
-          <button
-            class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
-            ?disabled=${!reconnectEnabled}
-            title=${reconnectEnabled ? t('retry') : t('disconnectNotSupported')}
-            @click=${() => void this.handleAction(descriptor.id, 'reconnect')}
+          <div
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-lg bg-base-200/45 p-2 text-xs"
           >
-            ${t('retry')}
-          </button>
-          <button
-            class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
-            ?disabled=${!disconnectEnabled}
-            title=${disconnectEnabled ? t('closeConnection') : t('disconnectNotSupported')}
-            @click=${() => void this.handleAction(descriptor.id, 'disconnect')}
-          >
-            ${t('close')}
-          </button>
+            <span class="opacity-50">${t('endpoint')}</span>
+            <span class="font-mono opacity-80 truncate" title=${descriptor.endpoint ?? ''}>
+              ${descriptor.endpoint ?? '-'}
+            </span>
+            <span class="opacity-50">${t('updated')}</span>
+            <span class="opacity-70">${formatUpdatedAt(descriptor.updatedAt)}</span>
+            ${descriptor.statusReason
+              ? html`
+                  <span class="opacity-50">${t('reason')}</span>
+                  <span class="opacity-70 break-words">${descriptor.statusReason}</span>
+                `
+              : nothing}
+          </div>
+          <div class="flex items-center justify-end gap-2">
+            <button
+              class="btn btn-xs btn-ghost h-6 min-h-0 gap-1 px-2"
+              ?disabled=${!reconnectEnabled}
+              title=${reconnectEnabled ? t('retry') : t('disconnectNotSupported')}
+              @click=${() => void this.handleAction(descriptor.id, 'reconnect')}
+            >
+              ${renderIcon('refreshCw', 'h-3 w-3')} ${t('retry')}
+            </button>
+            <button
+              class="btn btn-xs btn-ghost h-6 min-h-0 gap-1 px-2"
+              ?disabled=${!disconnectEnabled}
+              title=${disconnectEnabled ? t('closeConnection') : t('disconnectNotSupported')}
+              @click=${() => void this.handleAction(descriptor.id, 'disconnect')}
+            >
+              ${renderIcon('x', 'h-3 w-3')} ${t('close')}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -501,61 +509,63 @@ export class ConnectionsPanel extends LitElement {
           : t('needEndpointsBody');
 
     return html`
-      <div class="tab-content active flex flex-col flex-1 min-h-0">
-        <div class="border-b border-base-300 bg-base-200/40 p-3 shrink-0 flex flex-col gap-2">
-          <section class="rounded-lg border border-base-300 bg-base-100 px-3 py-2.5 shadow-sm">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex min-w-0 items-center gap-2">
-                <div class="min-w-0">
-                  <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">
-                    ${t('setupTroubleshooting')}
-                  </div>
-                  <div class="truncate text-sm font-bold">${readinessTitle}</div>
-                  <div class="truncate text-[11px] opacity-60" title=${readinessBody}>
-                    ${readinessBody}
+      <div class="pcb-tab-panel active flex flex-col flex-1 min-h-0 bg-base-200">
+        <div class="border-b border-base-300 bg-base-200 p-3 shrink-0 flex flex-col gap-3">
+          <section class="card border border-base-300 bg-base-100 shadow-sm">
+            <div class="card-body p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <div class="min-w-0">
+                    <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">
+                      ${t('setupTroubleshooting')}
+                    </div>
+                    <div class="truncate text-base font-bold">${readinessTitle}</div>
+                    <div class="truncate text-xs opacity-65" title=${readinessBody}>
+                      ${readinessBody}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div class="flex items-center gap-1.5 text-xs">
-                <span class="text-[11px] opacity-55 tabular-nums"
-                  >${attentionCount > 0 ? t('blocked') : configured ? t('ready') : t('setup')} ·
-                  ${healthyCount} ${t('healthyCount')} · ${attentionCount}
-                  ${t('attentionCount')}</span
-                >
-                <button
-                  class="tooltip tooltip-bottom btn btn-xs btn-ghost h-6 min-h-0 px-2"
-                  data-tip="Refresh all descriptors and generate a copyable diagnosis report"
-                  title="Refresh all descriptors and generate a copyable diagnosis report"
-                  @click=${() => void this.handleRunDiagnosis()}
-                >
-                  ${t('diagnose')}
-                </button>
-                <button
-                  class="tooltip tooltip-bottom btn btn-xs btn-ghost h-6 min-h-0 px-2"
-                  data-tip="Copy the latest diagnosis report for issue reports or teammates"
-                  title="Copy the latest diagnosis report for issue reports or teammates"
-                  @click=${() => void this.handleCopyDiagnosis()}
-                >
-                  ${t('copy')}
-                </button>
-              </div>
-            </div>
-            ${this.diagnosisReport
-              ? html`
-                  <pre
-                    class="mt-3 max-h-40 max-w-full overflow-auto rounded-md bg-base-300/60 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words"
+                <div class="flex items-center gap-1.5 text-xs">
+                  <span class="badge badge-outline badge-sm h-auto py-1 opacity-80 tabular-nums"
+                    >${attentionCount > 0 ? t('blocked') : configured ? t('ready') : t('setup')} ·
+                    ${healthyCount} ${t('healthyCount')} · ${attentionCount}
+                    ${t('attentionCount')}</span
                   >
+                  <button
+                    class="tooltip tooltip-bottom btn btn-xs btn-ghost h-7 min-h-0 border border-base-300 gap-1 px-2"
+                    data-tip="Refresh all descriptors and generate a copyable diagnosis report"
+                    title="Refresh all descriptors and generate a copyable diagnosis report"
+                    @click=${() => void this.handleRunDiagnosis()}
+                  >
+                    ${renderIcon('wrench', 'h-3 w-3')} ${t('diagnose')}
+                  </button>
+                  <button
+                    class="tooltip tooltip-bottom btn btn-xs btn-ghost h-7 min-h-0 border border-base-300 gap-1 px-2"
+                    data-tip="Copy the latest diagnosis report for issue reports or teammates"
+                    title="Copy the latest diagnosis report for issue reports or teammates"
+                    @click=${() => void this.handleCopyDiagnosis()}
+                  >
+                    ${renderIcon('copy', 'h-3 w-3')} ${t('copy')}
+                  </button>
+                </div>
+              </div>
+              ${this.diagnosisReport
+                ? html`
+                    <pre
+                      class="mt-3 max-h-40 max-w-full overflow-auto rounded-md bg-base-300/60 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words"
+                    >
 ${this.diagnosisReport}</pre
-                  >
-                `
-              : nothing}
+                    >
+                  `
+                : nothing}
+            </div>
           </section>
 
           <details
-            class="rounded-md border border-base-300 bg-base-100 px-3 py-2 shadow-sm"
+            class="collapse collapse-arrow border border-base-300 bg-base-100 shadow-sm"
             ?open=${attentionCount > 0 || !configured}
           >
-            <summary class="cursor-pointer select-none list-none">
+            <summary class="collapse-title min-h-0 px-3 py-2">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
@@ -567,123 +577,115 @@ ${this.diagnosisReport}</pre
                     Edit endpoints only when local ports or remote bridge routes change.
                   </p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="mr-6 flex items-center gap-2">
                   ${this.message
                     ? html`<span class="text-xs opacity-60" role="status">${this.message}</span>`
                     : nothing}
-                  <span
-                    class="details-chevron inline-flex h-6 w-6 items-center justify-center rounded-sm border border-base-300 bg-base-200 transition-transform duration-150"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      class="h-3.5 w-3.5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </span>
                 </div>
               </div>
             </summary>
 
-            <div class="mt-3 flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div class="min-w-0">
-                <p class="mt-1 text-xs opacity-60 leading-relaxed">
-                  Edit only what changed. Status, failure reasons, and retry actions stay attached
-                  to each endpoint.
-                </p>
+            <div class="collapse-content px-3 pb-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div class="min-w-0">
+                  <p class="mt-1 text-xs opacity-60 leading-relaxed">
+                    Edit only what changed. Status, failure reasons, and retry actions stay attached
+                    to each endpoint.
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div
-              class="rounded-md border border-base-300 bg-base-100 divide-y divide-base-200 overflow-hidden"
-            >
-              ${this.renderEndpointCard({
-                eyebrow: 'OpenCode control plane',
-                title: t('openCodeBaseUrl'),
-                field: 'opencodeBaseUrl',
-                value: this.endpoints.opencodeBaseUrl,
-                placeholder: 'http://localhost:4096',
-                protocols: ['http:', 'https:'],
-                check:
-                  'After saving, probes /global/health; Connect/New Session uses this to create sessions and register MCP.',
-                helper:
-                  'If unreachable, the OpenCode workspace will stall at Resolving session or MCP registration will fail.',
-                descriptor: opencodeHttpDescriptor,
-                actions: html`
-                  <button
-                    class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
-                    @click=${() => void this.handleAction('opencode-http', 'reconnect')}
-                  >
-                    ${t('probeOpencode')}
-                  </button>
-                `,
-              })}
-              ${this.renderEndpointCard({
-                eyebrow: 'Session MCP transport',
-                title: t('bridgeBaseUrl'),
-                field: 'bridgeBaseUrl',
-                value: this.endpoints.bridgeBaseUrl,
-                placeholder: 'http://localhost:22334',
-                protocols: ['http:', 'https:'],
-                check: `OpenCode MCP registration uses ${shortEndpoint(this.endpoints.bridgeBaseUrl)}/{sessionId}/mcp.`,
-                helper: `This is the HTTP entry point for OpenCode to access each session's MCP server; it does not handle the persistent browser WS.`,
-                emptyStatusLabel: 'Used on registration',
-              })}
-              ${this.renderEndpointCard({
-                eyebrow: 'Browser bridge control link',
-                title: t('bridgeDefaultWsUrl'),
-                field: 'bridgeWsUrl',
-                value: this.endpoints.bridgeWsUrl,
-                placeholder: 'ws://127.0.0.1:22335/default',
-                protocols: ['ws:', 'wss:'],
-                check:
-                  'The extension background uses this to establish a persistent default WS; when creating/restoring an OpenCode session, the extension automatically derives a session-scoped WS and appends tenantId.',
-                helper:
-                  'OpenCode itself does not connect to this WS; it only connects to /{sessionId}/mcp under the Bridge Base URL. For remote deployment, fill in the actual bridge WS route, e.g. ws://host:22335/project-path.',
-                descriptor: bridgeDescriptor,
-                actions: html`
-                  <button
-                    class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
-                    @click=${() => void this.handleAction('bridge-default-ws', 'reconnect')}
-                  >
-                    ${t('reconnectWs')}
-                  </button>
-                `,
-              })}
-            </div>
+              <div class="card overflow-hidden border border-base-300 bg-base-100 shadow-none">
+                <div class="divide-y divide-base-300/70">
+                  ${this.renderEndpointCard({
+                    eyebrow: 'OpenCode control plane',
+                    title: t('openCodeBaseUrl'),
+                    field: 'opencodeBaseUrl',
+                    value: this.endpoints.opencodeBaseUrl,
+                    placeholder: 'http://localhost:4096',
+                    protocols: ['http:', 'https:'],
+                    check:
+                      'After saving, probes /global/health; Connect/New Session uses this to create sessions and register MCP.',
+                    helper:
+                      'If unreachable, the OpenCode workspace will stall at Resolving session or MCP registration will fail.',
+                    descriptor: opencodeHttpDescriptor,
+                    actions: html`
+                      <button
+                        class="btn btn-xs btn-ghost h-6 min-h-0 gap-1 px-2"
+                        @click=${() => void this.handleAction('opencode-http', 'reconnect')}
+                      >
+                        ${renderIcon('refreshCw', 'h-3 w-3')} ${t('probeOpencode')}
+                      </button>
+                    `,
+                  })}
+                  ${this.renderEndpointCard({
+                    eyebrow: 'Session MCP transport',
+                    title: t('bridgeBaseUrl'),
+                    field: 'bridgeBaseUrl',
+                    value: this.endpoints.bridgeBaseUrl,
+                    placeholder: 'http://localhost:22334',
+                    protocols: ['http:', 'https:'],
+                    check: `OpenCode MCP registration uses ${shortEndpoint(this.endpoints.bridgeBaseUrl)}/{sessionId}/mcp.`,
+                    helper: `This is the HTTP entry point for OpenCode to access each session's MCP server; it does not handle the persistent browser WS.`,
+                    emptyStatusLabel: 'Used on registration',
+                  })}
+                  ${this.renderEndpointCard({
+                    eyebrow: 'Browser bridge control link',
+                    title: t('bridgeDefaultWsUrl'),
+                    field: 'bridgeWsUrl',
+                    value: this.endpoints.bridgeWsUrl,
+                    placeholder: 'ws://127.0.0.1:22335/default',
+                    protocols: ['ws:', 'wss:'],
+                    check:
+                      'The extension background uses this to establish a persistent default WS; when creating/restoring an OpenCode session, the extension automatically derives a session-scoped WS and appends tenantId.',
+                    helper:
+                      'OpenCode itself does not connect to this WS; it only connects to /{sessionId}/mcp under the Bridge Base URL. For remote deployment, fill in the actual bridge WS route, e.g. ws://host:22335/project-path.',
+                    descriptor: bridgeDescriptor,
+                    actions: html`
+                      <button
+                        class="btn btn-xs btn-ghost h-6 min-h-0 gap-1 px-2"
+                        @click=${() => void this.handleAction('bridge-default-ws', 'reconnect')}
+                      >
+                        ${renderIcon('refreshCw', 'h-3 w-3')} ${t('reconnectWs')}
+                      </button>
+                    `,
+                  })}
+                </div>
+              </div>
 
-            <div class="mt-3 flex items-center justify-between gap-2 border-t border-base-300 pt-3">
-              <p class="text-xs opacity-60 leading-relaxed">${t('saveProbeHint')}</p>
-              <button
-                class="tooltip tooltip-bottom btn btn-sm btn-primary ${this.saving
-                  ? 'loading'
-                  : ''}"
-                data-tip="Save endpoint values, probe OpenCode health, and reconnect the bridge WebSocket"
-                title="Save endpoint values, probe OpenCode health, and reconnect the bridge WebSocket"
-                ?disabled=${this.saving}
-                @click=${() => void this.handleSaveEndpoints()}
+              <div
+                class="mt-3 flex items-center justify-between gap-2 border-t border-base-300 pt-3"
               >
-                ${t('saveProbe')}
-              </button>
+                <p class="text-xs opacity-60 leading-relaxed">${t('saveProbeHint')}</p>
+                <button
+                  class="tooltip tooltip-bottom btn btn-sm btn-primary gap-1.5 ${this.saving
+                    ? 'loading'
+                    : ''}"
+                  data-tip="Save endpoint values, probe OpenCode health, and reconnect the bridge WebSocket"
+                  title="Save endpoint values, probe OpenCode health, and reconnect the bridge WebSocket"
+                  ?disabled=${this.saving}
+                  @click=${() => void this.handleSaveEndpoints()}
+                >
+                  ${renderIcon('plug')} ${t('saveProbe')}
+                </button>
+              </div>
             </div>
           </details>
         </div>
 
-        <div class="flex-1 p-3 flex flex-col gap-4">
+        <div class="flex-1 p-3 flex flex-col gap-4 overflow-auto">
           ${groups.length === 0
             ? html`
-                <div class="rounded-lg border border-dashed border-base-300 p-6 text-center">
-                  <div class="text-sm font-semibold">${t('noRuntimeSnapshots')}</div>
-                  <p class="text-xs opacity-60 mt-1">
-                    Endpoint status is shown in the cards above; after clicking Connect in OpenCode,
-                    session and page capability links will appear here.
-                  </p>
+                <div
+                  class="card border border-dashed border-base-300 bg-base-100/60 text-center shadow-none"
+                >
+                  <div class="card-body p-6">
+                    <div class="text-sm font-semibold">${t('noRuntimeSnapshots')}</div>
+                    <p class="text-xs opacity-60 mt-1">
+                      Endpoint status is shown in the cards above; after clicking Connect in
+                      OpenCode, session and page capability links will appear here.
+                    </p>
+                  </div>
                 </div>
               `
             : repeat(

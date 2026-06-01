@@ -6,10 +6,10 @@ export function renderTabHeader(input: {
   action?: TemplateResult;
 }): TemplateResult {
   return html`
-    <div class="flex items-center gap-2 border-b border-base-300 bg-base-100 px-3 py-2 shrink-0">
+    <div class="flex items-center gap-2 border-b border-base-300 bg-base-100 px-3 py-2.5 shrink-0">
       <span class="text-xs font-bold uppercase tracking-wide opacity-60">${input.title}</span>
       ${input.meta
-        ? html`<span class="text-[11px] opacity-45 truncate">${input.meta}</span>`
+        ? html`<span class="text-[11px] opacity-55 truncate">${input.meta}</span>`
         : nothing}
       ${input.action ? html`<div class="ml-auto">${input.action}</div>` : nothing}
     </div>
@@ -24,10 +24,10 @@ export function renderPanel(input: {
   className?: string;
 }): TemplateResult {
   return html`
-    <section class="border border-base-300 bg-base-100 ${input.className ?? ''}">
+    <section class="card border border-base-300 bg-base-100 shadow-sm ${input.className ?? ''}">
       ${input.title || input.meta || input.action
         ? html`
-            <div class="flex items-center gap-2 border-b border-base-200 px-3 py-2">
+            <div class="flex items-center gap-2 border-b border-base-300 bg-base-200/35 px-3 py-2">
               ${input.title
                 ? html`<h3 class="text-sm font-bold leading-tight">${input.title}</h3>`
                 : nothing}
@@ -36,7 +36,7 @@ export function renderPanel(input: {
             </div>
           `
         : nothing}
-      <div class="p-3">${input.body}</div>
+      <div class="card-body p-3">${input.body}</div>
     </section>
   `;
 }
