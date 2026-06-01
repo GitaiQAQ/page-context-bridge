@@ -6,6 +6,7 @@ import {
   buildMcpUrl,
   buildMcpName,
   clearOpenCodeMcpRegistrationCache,
+  createSession,
   ensureMcpRegistered,
   type OpenCodeConfig,
 } from './sidepanel-opencode';
@@ -52,6 +53,38 @@ describe('sidepanel-opencode', () => {
         directory: projectDirectory,
       }),
     ).toBe(`http://localhost:4096/${projectSegment}/session/session-1`);
+  });
+
+  it('creates opencode sessions with a non-empty unique title instead of an empty body', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'session-1', directory: projectDirectory }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'session-2', directory: projectDirectory }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(createSession(cfg)).resolves.toMatchObject({ id: 'session-1' });
+    await expect(createSession(cfg)).resolves.toMatchObject({ id: 'session-2' });
+
+    const bodies = fetchMock.mock.calls.map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)),
+    );
+    expect(bodies[0]?.title).toMatch(/^Page Context /);
+    expect(bodies[1]?.title).toMatch(/^Page Context /);
+    expect(bodies[0]?.title).not.toBe(bodies[1]?.title);
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ body: '{}' }),
+    );
   });
 
   it('treats an already-connected entry as idempotent (single POST roundtrip)', async () => {

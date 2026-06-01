@@ -9,6 +9,10 @@ export interface OpenCodeSession {
   opencodeBaseUrl?: string;
 }
 
+export interface CreateOpenCodeSessionOptions {
+  title?: string;
+}
+
 interface OpenCodeMcpEntry {
   status?: string;
   error?: string;
@@ -98,10 +102,23 @@ export async function listSessions(cfg: OpenCodeConfig): Promise<OpenCodeSession
   return requestJson<OpenCodeSession[]>(getSessionApiUrl(cfg), { method: 'GET' });
 }
 
-export async function createSession(cfg: OpenCodeConfig): Promise<OpenCodeSession> {
+function createSessionTitle(): string {
+  const suffix =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `Page Context ${suffix}`;
+}
+
+export async function createSession(
+  cfg: OpenCodeConfig,
+  options: CreateOpenCodeSessionOptions = {},
+): Promise<OpenCodeSession> {
   return requestJson<OpenCodeSession>(getSessionApiUrl(cfg), {
     method: 'POST',
-    bodyJson: {},
+    bodyJson: {
+      title: options.title?.trim() || createSessionTitle(),
+    },
   });
 }
 
