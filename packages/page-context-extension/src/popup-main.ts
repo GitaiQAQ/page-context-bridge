@@ -3,6 +3,7 @@ import './popup.css';
 
 import { BRIDGE_METHODS } from '@page-context/shared-protocol';
 
+import { createIconElement, type IconName } from './icons';
 import {
   getExtensionApi,
   runtimeGetUrl,
@@ -48,6 +49,21 @@ const statusLabel = document.getElementById('statusLabel') as HTMLDivElement | n
 const pendingCallsLabel = document.getElementById('pendingCallsLabel') as HTMLDivElement | null;
 const languageLabel = document.getElementById('languageLabel') as HTMLLabelElement | null;
 
+function renderButtonIcon(button: HTMLButtonElement, iconName: IconName): void {
+  const slot = button.querySelector<HTMLElement>('[data-icon]');
+  if (!slot) return;
+  slot.replaceChildren(createIconElement(iconName));
+}
+
+function setButtonLabel(button: HTMLButtonElement, label: string): void {
+  const text = button.querySelector('span:last-child');
+  if (text) {
+    text.textContent = label;
+    return;
+  }
+  button.textContent = label;
+}
+
 type ChromeWithOptionalSidePanel = typeof chrome & {
   sidePanel?: {
     open(options: { windowId: number }): Promise<void>;
@@ -77,10 +93,10 @@ function localizeStaticText(): void {
   if (statusLabel) statusLabel.textContent = t('status');
   if (pendingCallsLabel) pendingCallsLabel.textContent = t('pendingToolCalls');
   if (languageLabel) languageLabel.textContent = t('language');
-  openSidePanelBtn.textContent = t('workspaceAction');
-  openSetupBtn.textContent = t('setup');
-  reconnectBtn.textContent = t('reconnect');
-  openExampleBtn.textContent = t('contextTestPage');
+  setButtonLabel(openSidePanelBtn, t('workspaceAction'));
+  setButtonLabel(openSetupBtn, t('setup'));
+  setButtonLabel(reconnectBtn, t('reconnect'));
+  setButtonLabel(openExampleBtn, t('contextTestPage'));
   localeSelect.value = getLocalePreference();
   localeSelect.options[0].textContent = t('systemLanguage');
   localeSelect.options[1].textContent = t('english');
@@ -190,6 +206,10 @@ openSetupBtn.addEventListener('click', async () => {
   await launchConsoleUi('connections');
 });
 
+renderButtonIcon(reconnectBtn, 'refreshCw');
+renderButtonIcon(openSidePanelBtn, 'panelRightOpen');
+renderButtonIcon(openSetupBtn, 'settings');
+renderButtonIcon(openExampleBtn, 'externalLink');
 localizeStaticText();
 void refreshStatus();
 setInterval(() => void refreshStatus(), 2_000);
