@@ -121,7 +121,7 @@ describe('connectWebSocket', () => {
 
     // First connection closes directly during handshake: should fail immediately, not hang.
     const firstConnect = wsModule.connectWebSocket(noop, noop, noop);
-    await flushMicrotasks();
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0));
     const firstSocket = FakeWebSocket.instances[0];
     if (!firstSocket) {
       throw new Error('Missing first socket instance');
@@ -132,7 +132,7 @@ describe('connectWebSocket', () => {
 
     // Second connection is still available, indicating previous failure doesn't block global connectPromise.
     const secondConnect = wsModule.connectWebSocket(noop, noop, noop);
-    await flushMicrotasks();
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(1));
     const secondSocket = FakeWebSocket.instances[1];
     if (!secondSocket) {
       throw new Error('Missing second socket instance');
@@ -147,7 +147,7 @@ describe('connectWebSocket', () => {
     const noop = vi.fn(async () => ({}));
 
     const connectPromise = wsModule.connectWebSocket(noop, noop, noop);
-    await flushMicrotasks();
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0));
     const socket = FakeWebSocket.instances[0];
     if (!socket) {
       throw new Error('Missing socket instance');
@@ -160,6 +160,29 @@ describe('connectWebSocket', () => {
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionAgentationMainEnsure);
     // Secure debug entry depends on this forwarding method, missing it causes bridge call to report method not found.
     expect(FakeRpcPeer.registeredMethods).toContain(BRIDGE_METHODS.extensionToolDebugCall);
+  });
+
+  it('uses connections.endpoints.v1 bridgeWsUrl as the only default WS source', async () => {
+    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    storageGet.mockImplementation(async (defaults: Record<string, unknown>) => ({
+      ...defaults,
+      'connections.endpoints.v1': {
+        opencodeBaseUrl: 'http://localhost:4096',
+        bridgeBaseUrl: 'http://localhost:22334',
+        bridgeWsUrl: 'ws://10.0.0.9:22335/project-route',
+      },
+    }));
+
+    const wsModule = await import('./bg-ws-connection');
+    const noop = vi.fn(async () => ({}));
+
+    const connectPromise = wsModule.connectWebSocket(noop, noop, noop);
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1));
+
+    expect(FakeWebSocket.instances[0]?.url).toBe('ws://10.0.0.9:22335/project-route');
+    FakeWebSocket.instances[0]?.emitOpen();
+    await connectPromise;
+    expect(storageGet).not.toHaveBeenCalledWith('mcpWsUrl');
   });
 });
 

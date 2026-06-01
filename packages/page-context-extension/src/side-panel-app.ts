@@ -180,6 +180,7 @@ import {
 } from './connections-endpoints';
 import { ConnectionsController, getConnectionsStore } from './connections-controller';
 import { getScopedBridgeDescriptorId } from './bg-scoped-ws-connection';
+import { t } from './i18n';
 
 // Vite resolves this to the built CSS asset URL at runtime
 import sidepanelCssUrl from './sidepanel.css?url';
@@ -209,6 +210,14 @@ interface OpenCodeSessionView {
 }
 
 type SidePanelTab = 'tools' | 'context' | 'feedback' | 'opencode' | 'connections';
+
+function readInitialSidePanelTab(search: string = window.location.search): SidePanelTab {
+  const tab = new URLSearchParams(search).get('tab');
+  if (tab === 'tools' || tab === 'context' || tab === 'feedback' || tab === 'connections') {
+    return tab;
+  }
+  return 'opencode';
+}
 
 function shortenSessionId(sessionId: string): string {
   if (sessionId.length <= 18) {
@@ -251,6 +260,12 @@ const customRules = css`
   .tab-content.active {
     display: flex;
   }
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+  details[open] .details-chevron {
+    transform: rotate(180deg);
+  }
 `;
 
 @customElement('side-panel-app')
@@ -280,7 +295,7 @@ export class SidePanelApp extends LitElement {
   @state() private _currentEffectiveContextManifest: PageContextManifest | null = null;
   @state() private _currentContextDebug: ContextManifestFilterDebug | null = null;
   @state()
-  private _activeTab: SidePanelTab = 'opencode';
+  private _activeTab: SidePanelTab = readInitialSidePanelTab();
   @state() private _manifestStatus = '';
   @state() private _manifestStatusClass = '';
   @state() private _manifestOutput = '(manifest not loaded)';
@@ -1137,30 +1152,28 @@ export class SidePanelApp extends LitElement {
     const debug = this._currentContextDebug;
     this._diffOutput = html`
       ${this._renderDiffCard(
-        'Namespaces',
+        t('namespaces'),
         diff.rawNamespaces,
         diff.effectiveNamespaces,
         debug?.hiddenNamespaces ?? diff.hiddenNamespaces.map((id) => ({ id, reason: 'unknown' })),
       )}
       ${this._renderDiffCard(
-        'Resources',
+        t('readableData'),
         diff.rawResources,
         diff.effectiveResources,
         debug?.hiddenResources ?? diff.hiddenResources.map((id) => ({ id, reason: 'unknown' })),
       )}
       ${this._renderDiffCard(
-        'Skills',
+        t('skills'),
         diff.rawSkills,
         diff.effectiveSkills,
         debug?.hiddenSkills ?? diff.hiddenSkills.map((id) => ({ id, reason: 'unknown' })),
       )}
       ${this._renderTrimmedToolsCard(debug)}
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
-        <h4 class="text-xs font-bold mb-1">Scene</h4>
+        <h4 class="text-xs font-bold mb-1">${t('scene')}</h4>
         <p class="text-xs opacity-70">
-          ${diff.sceneChanged
-            ? 'Scene changed between raw and effective manifest.'
-            : 'Scene is unchanged.'}
+          ${diff.sceneChanged ? t('sceneChanged') : t('sceneUnchanged')}
         </p>
       </div>
     `;
@@ -1855,7 +1868,7 @@ export class SidePanelApp extends LitElement {
           class="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-3"
         >
           <div
-            class="pointer-events-auto min-w-0 max-w-[calc(100%-4rem)] rounded-2xl bg-neutral/80 px-3 py-2 text-neutral-content shadow-2xl backdrop-blur-md"
+            class="pointer-events-auto min-w-0 max-w-[calc(100%-4rem)] rounded-md bg-neutral/80 px-3 py-2 text-neutral-content shadow-2xl backdrop-blur-md"
           >
             <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">
               OpenCode sidebar iframe
@@ -1867,11 +1880,9 @@ export class SidePanelApp extends LitElement {
               >
                 ${shortenSessionId(activeSession.sessionId)}
               </span>
-              ${activeScopedDescriptor
-                ? html`<connection-status-badge
-                    connection-id=${activeScopedDescriptor.id}
-                  ></connection-status-badge>`
-                : html`<span class="badge badge-outline badge-xs">pending</span>`}
+              <span class="text-[11px] opacity-60"
+                >${activeScopedDescriptor?.status ?? t('pending')}</span
+              >
             </div>
           </div>
 
@@ -1907,80 +1918,54 @@ export class SidePanelApp extends LitElement {
       ? this._getOpenCodeScopedDescriptor(activeSession.sessionId)
       : null;
     const attentionCount = this._getConnectionAttentionCount();
-    const enabledTools = this._toolTreeResponse?.enabledTools ?? 0;
-    const totalTools = this._toolTreeResponse?.totalTools ?? 0;
-    const openFeedbackCount = this._feedbackSnapshot?.annotations?.length ?? 0;
 
     return html`
       <div
         class="tab-content ${this._activeTab === 'opencode'
           ? 'active'
-          : ''} flex flex-col flex-1 min-h-0"
+          : ''} flex flex-col flex-1 min-h-0 bg-base-200/50"
       >
-        <div class="flex flex-col gap-3 p-3 bg-base-200/40 flex-1 min-h-0 overflow-y-auto">
-          ${attentionCount > 0
-            ? html`
-                <section class="rounded-2xl border border-warning/50 bg-warning/10 p-3 shadow-sm">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                      <div class="text-sm font-bold">Setup is blocking the workspace</div>
-                      <p class="mt-1 text-xs leading-relaxed opacity-70">
-                        Fix ${attentionCount} connection issue${attentionCount === 1 ? '' : 's'}
-                        before OpenCode can reliably call page tools.
-                      </p>
-                    </div>
-                    <button
-                      class="btn btn-xs btn-warning shrink-0"
-                      @click=${() => this._handleTabClick('connections')}
-                    >
-                      Fix setup
-                    </button>
-                  </div>
-                </section>
-              `
-            : nothing}
-
+        <div class="flex flex-col gap-2 p-2 flex-1 min-h-0 overflow-y-auto">
           <section
-            class="rounded-2xl border px-3 py-2.5 shadow-sm bg-base-100 ${readiness.tone ===
-            'success'
-              ? 'border-success/40'
-              : readiness.tone === 'warning'
-                ? 'border-warning/50'
-                : 'border-base-300'}"
+            class="relative overflow-hidden rounded-md border border-base-300 bg-base-100 shadow-sm"
           >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex min-w-0 items-center gap-2">
-                ${activeScopedDescriptor
-                  ? html`<connection-status-badge
-                      connection-id=${activeScopedDescriptor.id}
-                    ></connection-status-badge>`
-                  : html`<span class="badge badge-outline badge-sm">No session</span>`}
-                <div class="min-w-0">
-                  <div class="truncate text-sm font-bold">
-                    ${activeSession
-                      ? 'OpenCode can use this page'
-                      : 'Connect OpenCode to this page'}
-                  </div>
-                  <div class="truncate text-[11px] opacity-60" title=${readiness.detail}>
-                    ${readiness.title}
-                  </div>
+            <div
+              class="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary via-info to-success"
+            ></div>
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-3">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50"
+                    >${t('controlDeck')}</span
+                  >
+                  <span class="text-[11px] opacity-45">
+                    ${activeScopedDescriptor?.status ?? t('noSession')} ·
+                    ${attentionCount > 0 ? `${attentionCount} ${t('fix')}` : t('ready')}
+                  </span>
                 </div>
+                <div class="mt-1 truncate text-base font-bold leading-tight">
+                  ${activeSession ? t('opencodeCanUsePage') : t('connectPage')}
+                </div>
+                <p class="mt-1 max-w-[56rem] text-[11px] leading-relaxed opacity-65">
+                  ${readiness.detail}
+                </p>
               </div>
-              <div class="flex flex-wrap items-center gap-1.5">
+
+              <div class="flex flex-col items-end gap-1.5">
                 ${activeSession
                   ? html`
                       <button
-                        class="tooltip tooltip-bottom btn btn-sm btn-primary"
+                        class="tooltip tooltip-left btn btn-sm btn-primary min-w-28"
                         data-tip="Embed the active OpenCode session in this side panel"
                         title="Embed the active OpenCode session in this side panel"
                         @click=${() => this._handleOpenOpenCodeIframe(activeSession.sessionId)}
                       >
-                        Open sidebar
+                        ${t('openSidebar')}
                       </button>
                     `
                   : html`
                       <button
-                        class="tooltip tooltip-bottom btn btn-sm btn-primary ${this
+                        class="tooltip tooltip-left btn btn-sm btn-primary min-w-28 ${this
                           ._opencodeConnecting
                           ? 'loading'
                           : ''}"
@@ -1989,266 +1974,256 @@ export class SidePanelApp extends LitElement {
                         @click=${() => void this._handleOpencodeConnect(true)}
                         ?disabled=${this._opencodeConnecting}
                       >
-                        Start session
+                        ${t('startSession')}
                       </button>
                     `}
-                <button
-                  class="tooltip tooltip-bottom btn btn-sm btn-ghost"
-                  data-tip="Start a clean OpenCode session even if one is already active"
-                  title="Start a clean OpenCode session even if one is already active"
-                  @click=${() => void this._handleOpencodeConnect(true)}
-                  ?disabled=${this._opencodeConnecting}
-                >
-                  New
-                </button>
-                <button
-                  class="tooltip tooltip-bottom btn btn-sm btn-ghost ${this._agentationInjecting
-                    ? 'loading'
-                    : ''}"
-                  data-tip="Inject the page helper so automation can read and act on the active tab"
-                  @click=${() => void this._handleInjectAgentation()}
-                  ?disabled=${this._agentationInjecting}
-                  title="Inject the page helper so automation can read and act on the active tab"
-                >
-                  Prepare
-                </button>
+                <div class="flex items-center gap-1">
+                  <button
+                    class="tooltip tooltip-left btn btn-xs btn-ghost"
+                    data-tip="Start a clean OpenCode session even if one is already active"
+                    title="Start a clean OpenCode session even if one is already active"
+                    @click=${() => void this._handleOpencodeConnect(true)}
+                    ?disabled=${this._opencodeConnecting}
+                  >
+                    ${t('newSessionShort')}
+                  </button>
+                  <button
+                    class="tooltip tooltip-left btn btn-xs btn-ghost ${this._agentationInjecting
+                      ? 'loading'
+                      : ''}"
+                    data-tip="Inject the page helper so automation can read and act on the active tab"
+                    title="Inject the page helper so automation can read and act on the active tab"
+                    @click=${() => void this._handleInjectAgentation()}
+                    ?disabled=${this._agentationInjecting}
+                  >
+                    ${t('preparePageShort')}
+                  </button>
+                </div>
               </div>
             </div>
+
             ${this._opencodeMessage
-              ? html`<div class="mt-2 text-xs opacity-70" role="status">
+              ? html`<div
+                  class="border-t border-base-300 px-3 py-2 text-xs opacity-75"
+                  role="status"
+                >
                   ${this._opencodeMessage}
                 </div>`
               : nothing}
           </section>
 
-          <section class="grid grid-cols-3 gap-2">
-            <button
-              class="tooltip tooltip-bottom rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-left shadow-sm transition-colors hover:border-primary/50"
-              data-tip="Open Inspect to see exactly which page tools are exposed to OpenCode"
-              title="Open Inspect to see exactly which page tools are exposed to OpenCode"
-              @click=${() => this._handleTabClick('tools')}
-            >
-              <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">Tools</div>
-              <div class="mt-1 text-sm font-semibold">
-                ${totalTools > 0 ? `${enabledTools}/${totalTools} enabled` : 'Loading tools'}
-              </div>
-            </button>
-            <button
-              class="tooltip tooltip-bottom rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-left shadow-sm transition-colors hover:border-primary/50"
-              data-tip="Open Feedback to track page issues and collaboration notes"
-              title="Open Feedback to track page issues and collaboration notes"
-              @click=${() => this._handleTabClick('feedback')}
-            >
-              <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">
-                Feedback
-              </div>
-              <div class="mt-1 text-sm font-semibold tabular-nums">${openFeedbackCount} open</div>
-            </button>
-            <button
-              class="tooltip tooltip-bottom rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-left shadow-sm transition-colors hover:border-primary/50"
-              data-tip="Open Setup only when connection health blocks the workspace"
-              title="Open Setup only when connection health blocks the workspace"
-              @click=${() => this._handleTabClick('connections')}
-            >
-              <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">Setup</div>
-              <div class="mt-1 text-sm font-semibold">
-                ${attentionCount > 0
-                  ? `${attentionCount} issue${attentionCount === 1 ? '' : 's'}`
-                  : 'Ready'}
-              </div>
-            </button>
-          </section>
-
-          <details class="rounded-xl border border-base-300 bg-base-100/80 px-3 py-2 shadow-sm">
-            <summary
-              class="tooltip tooltip-bottom cursor-pointer select-none text-sm font-semibold"
-              data-tip="Use this only when you already know an existing OpenCode session ID"
-              title="Use this only when you already know an existing OpenCode session ID"
-            >
-              Restore an existing session
-            </summary>
-            <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <label class="form-control flex flex-col gap-1">
-                <span class="text-xs font-semibold opacity-70">Session ID</span>
-                <input
-                  type="text"
-                  class="input input-sm input-bordered font-mono"
-                  .value=${this._opencodeDraftSessionId}
-                  @input=${(event: Event) => {
-                    this._opencodeDraftSessionId = (event.target as HTMLInputElement).value;
-                  }}
-                  placeholder="existing OpenCode session id"
-                />
-              </label>
-              <button
-                class="tooltip tooltip-bottom btn btn-sm btn-outline"
-                data-tip="Reconnect the typed session ID instead of creating a new OpenCode session"
-                title="Reconnect the typed session ID instead of creating a new OpenCode session"
-                @click=${() => void this._handleOpencodeConnect()}
-                ?disabled=${this._opencodeConnecting}
+          <section class="flex flex-col gap-2">
+            <div class="rounded-md border border-base-300 bg-base-100 shadow-sm">
+              <div
+                class="flex items-center justify-between gap-2 border-b border-base-300 px-3 py-2"
               >
-                Use ID
-              </button>
-            </div>
-          </details>
-
-          ${this._opencodeSessions.length > 0
-            ? html`
-                <section class="flex flex-col gap-2">
-                  <div class="flex items-center justify-between gap-2">
-                    <h3 class="text-sm font-bold">Recent sessions</h3>
-                    ${activeSession
-                      ? html`<button
-                          class="tooltip tooltip-bottom btn btn-xs btn-ghost"
-                          data-tip="Close the active bridge link without deleting the OpenCode session"
-                          title="Close the active bridge link without deleting the OpenCode session"
-                          @click=${() => void this._handleOpencodeDisconnect()}
-                          ?disabled=${this._opencodeConnecting}
-                        >
-                          Disconnect active
-                        </button>`
-                      : nothing}
-                  </div>
-                  <div class="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                    ${repeat(
-                      this._opencodeSessions,
-                      (session) => session.sessionId,
-                      (session) => {
-                        const descriptor = this._getOpenCodeScopedDescriptor(session.sessionId);
-                        const active = session.sessionId === this._opencodeActiveSessionId;
-                        return html`
-                          <div
-                            class="rounded-2xl border bg-base-100 p-3 shadow-sm transition-colors ${active
-                              ? 'border-primary ring-1 ring-primary/40 xl:col-span-2'
-                              : 'border-base-300 hover:border-primary/50'}"
-                          >
-                            <div class="flex items-center justify-between gap-2">
-                              <button
-                                class="font-mono text-xs font-semibold truncate text-left hover:underline"
-                                title=${session.wsUrl}
-                                @click=${() => void this._selectOpenCodeSession(session.sessionId)}
-                              >
-                                ${shortenSessionId(session.sessionId)}
-                              </button>
-                              <div class="flex items-center gap-2">
-                                ${active
-                                  ? html`<span class="badge badge-primary badge-xs">Active</span>`
-                                  : nothing}
-                                ${descriptor
-                                  ? html`<connection-status-badge
-                                      connection-id=${descriptor.id}
-                                    ></connection-status-badge>`
-                                  : html`<span class="badge badge-outline badge-xs">pending</span>`}
-                              </div>
-                            </div>
-                            <div class="text-[11px] opacity-50 truncate mt-1">
-                              ${session.sessionDirectory || 'legacy route'}
-                            </div>
-                            ${active
-                              ? html`
-                                  <p class="mt-2 text-[11px] leading-relaxed opacity-60">
-                                    Selected session. Open it in the sidebar when you want an
-                                    embedded workspace; closing the iframe keeps the bridge
-                                    connected.
-                                  </p>
-                                  <details
-                                    class="mt-2 rounded-xl bg-base-200/60 px-3 py-2 text-[11px]"
-                                  >
-                                    <summary
-                                      class="cursor-pointer select-none font-semibold opacity-70"
-                                    >
-                                      Technical details
-                                    </summary>
-                                    <div
-                                      class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2"
-                                    >
-                                      <span class="opacity-50">OpenCode URL</span>
-                                      <span class="font-mono truncate" title=${session.webUrl}
-                                        >${session.webUrl}</span
-                                      >
-                                      <span class="opacity-50">Bridge WS</span>
-                                      <span class="font-mono truncate" title=${session.wsUrl}
-                                        >${session.wsUrl}</span
-                                      >
-                                      <span class="opacity-50">Worktree</span>
-                                      <span
-                                        class="font-mono truncate"
-                                        title=${session.sessionDirectory}
-                                        >${session.sessionDirectory || 'legacy route'}</span
-                                      >
-                                      <span class="opacity-50">MCP</span>
-                                      <span class="font-mono truncate"
-                                        >${buildOpenCodeMcpName(session.bridgeChannelId)}</span
-                                      >
-                                    </div>
-                                  </details>
-                                `
-                              : nothing}
-                            <div class="mt-3 flex flex-wrap items-center gap-1">
-                              <button
-                                class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
-                                title="Copy session id"
-                                @click=${() =>
-                                  void this._handleCopyOpenCodeSessionId(session.sessionId)}
-                              >
-                                Copy
-                              </button>
-                              <button
-                                class="btn btn-[10px] ${active
-                                  ? 'btn-primary'
-                                  : 'btn-ghost'} min-h-0 h-7 px-2"
-                                title="Open this OpenCode session fullscreen in the sidebar"
-                                @click=${() => this._handleOpenOpenCodeIframe(session.sessionId)}
-                              >
-                                Sidebar
-                              </button>
-                              <button
-                                class="btn btn-[10px] btn-ghost min-h-0 h-7 px-2"
-                                title="Open this OpenCode session in a browser tab"
-                                @click=${() => this._handleOpenOpenCodeSession(session)}
-                              >
-                                Open
-                              </button>
-                              <span class="mx-1 h-4 w-px bg-base-300"></span>
-                              <button
-                                class="btn btn-[10px] btn-ghost min-h-0 h-7 px-2"
-                                title="Disconnect this session bridge link"
-                                ?disabled=${this._opencodeConnecting}
-                                @click=${() =>
-                                  void this._handleOpencodeDisconnect(session.sessionId)}
-                              >
-                                Disconnect
-                              </button>
-                              <button
-                                class="btn btn-[10px] btn-error btn-outline min-h-0 h-7 px-2"
-                                title="Delete this OpenCode session"
-                                ?disabled=${this._opencodeConnecting}
-                                @click=${() =>
-                                  void this._handleDeleteOpenCodeSession(session.sessionId)}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        `;
-                      },
-                    )}
-                  </div>
-                </section>
-              `
-            : html`
-                <div class="flex flex-1 items-center justify-center px-6 py-8 text-center">
-                  <div
-                    class="max-w-sm rounded-3xl border border-dashed border-base-300 bg-base-100/80 p-6 shadow-sm"
-                  >
-                    <div class="text-sm font-semibold">No sessions yet</div>
-                    <p class="text-xs opacity-60 mt-2 leading-relaxed">
-                      Start a workspace above. Session details will appear here only after there is
-                      something to manage.
-                    </p>
-                  </div>
+                <div>
+                  <h3 class="text-sm font-bold">${t('recentSessions')}</h3>
+                  <p class="text-[11px] opacity-55">${t('workspaceBridgeHint')}</p>
                 </div>
-              `}
+                ${activeSession
+                  ? html`<button
+                      class="tooltip tooltip-left btn btn-xs btn-ghost"
+                      data-tip="Close the active bridge link without deleting the OpenCode session"
+                      title="Close the active bridge link without deleting the OpenCode session"
+                      @click=${() => void this._handleOpencodeDisconnect()}
+                      ?disabled=${this._opencodeConnecting}
+                    >
+                      ${t('disconnectActive')}
+                    </button>`
+                  : nothing}
+              </div>
+
+              ${this._opencodeSessions.length > 0
+                ? html`
+                    <div class="divide-y divide-base-200">
+                      ${repeat(
+                        this._opencodeSessions,
+                        (session) => session.sessionId,
+                        (session) => {
+                          const descriptor = this._getOpenCodeScopedDescriptor(session.sessionId);
+                          const active = session.sessionId === this._opencodeActiveSessionId;
+                          return html`
+                            <div
+                              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 ${active
+                                ? 'bg-primary/5'
+                                : 'hover:bg-base-200/60'}"
+                            >
+                              <div class="min-w-0">
+                                <button
+                                  class="block max-w-full truncate text-left font-mono text-xs font-semibold hover:underline"
+                                  title=${session.wsUrl}
+                                  @click=${() =>
+                                    void this._selectOpenCodeSession(session.sessionId)}
+                                >
+                                  ${shortenSessionId(session.sessionId)}
+                                </button>
+                                <div class="mt-0.5 truncate text-[10px] opacity-50">
+                                  ${session.sessionDirectory || t('legacyRoute')}
+                                </div>
+                              </div>
+                              <div class="flex flex-wrap items-center justify-end gap-1">
+                                <span class="text-[10px] opacity-45">
+                                  ${active ? `${t('active')} · ` : ''}${descriptor?.status ??
+                                  t('pending')}
+                                </span>
+                                <button
+                                  class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2"
+                                  title="Copy session id"
+                                  @click=${() =>
+                                    void this._handleCopyOpenCodeSessionId(session.sessionId)}
+                                >
+                                  ${t('copy')}
+                                </button>
+                                <button
+                                  class="btn btn-[10px] btn-ghost border border-base-300 min-h-0 h-6 px-2"
+                                  title="Open this OpenCode session fullscreen in the sidebar"
+                                  @click=${() => this._handleOpenOpenCodeIframe(session.sessionId)}
+                                >
+                                  ${t('openInSidebar')}
+                                </button>
+                                <details class="dropdown dropdown-end">
+                                  <summary class="btn btn-[10px] btn-ghost min-h-0 h-6 px-2">
+                                    ${t('moreActions')}
+                                  </summary>
+                                  <div
+                                    class="menu dropdown-content z-10 mt-1 rounded-sm border border-base-300 bg-base-100 p-1 shadow-sm"
+                                  >
+                                    <button
+                                      class="btn btn-[10px] btn-ghost justify-start min-h-0 h-6 px-2"
+                                      title="Open this OpenCode session in a browser tab"
+                                      @click=${() => this._handleOpenOpenCodeSession(session)}
+                                    >
+                                      ${t('openInTab')}
+                                    </button>
+                                    <button
+                                      class="btn btn-[10px] btn-ghost justify-start min-h-0 h-6 px-2 text-error"
+                                      title="Delete this OpenCode session"
+                                      ?disabled=${this._opencodeConnecting}
+                                      @click=${() =>
+                                        void this._handleDeleteOpenCodeSession(session.sessionId)}
+                                    >
+                                      ${t('deleteSession')}
+                                    </button>
+                                  </div>
+                                </details>
+                              </div>
+                              ${active
+                                ? html`
+                                    <details
+                                      class="col-span-2 rounded-sm bg-base-200/70 px-2 py-1 text-[10px]"
+                                    >
+                                      <summary
+                                        class="flex cursor-pointer select-none items-center justify-between gap-2 font-semibold opacity-65"
+                                      >
+                                        <span>${t('technicalDetails')}</span>
+                                        <span
+                                          class="details-chevron inline-flex h-4 w-4 items-center justify-center transition-transform duration-150"
+                                          aria-hidden="true"
+                                        >
+                                          <svg
+                                            class="h-3 w-3"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2.5"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                          >
+                                            <polyline points="6 9 12 15 18 9" />
+                                          </svg>
+                                        </span>
+                                      </summary>
+                                      <div
+                                        class="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1"
+                                      >
+                                        <span class="opacity-45">OpenCode URL</span>
+                                        <span class="truncate font-mono" title=${session.webUrl}
+                                          >${session.webUrl}</span
+                                        >
+                                        <span class="opacity-45">${t('bridgeWs')}</span>
+                                        <span class="truncate font-mono" title=${session.wsUrl}
+                                          >${session.wsUrl}</span
+                                        >
+                                        <span class="opacity-45">${t('worktree')}</span>
+                                        <span
+                                          class="truncate font-mono"
+                                          title=${session.sessionDirectory}
+                                          >${session.sessionDirectory || t('legacyRoute')}</span
+                                        >
+                                        <span class="opacity-45">${t('mcp')}</span>
+                                        <span class="truncate font-mono"
+                                          >${buildOpenCodeMcpName(session.bridgeChannelId)}</span
+                                        >
+                                      </div>
+                                    </details>
+                                  `
+                                : nothing}
+                            </div>
+                          `;
+                        },
+                      )}
+                    </div>
+                  `
+                : html`
+                    <div class="flex items-center justify-center px-6 py-8 text-center">
+                      <div class="max-w-sm">
+                        <div class="text-sm font-semibold">${t('noSessionsYet')}</div>
+                        <p class="mt-2 text-xs leading-relaxed opacity-60">
+                          ${t('noSessionsBody')}
+                        </p>
+                      </div>
+                    </div>
+                  `}
+            </div>
+
+            <details class="rounded-md border border-base-300 bg-base-100 px-3 py-2 shadow-sm">
+              <summary
+                class="flex cursor-pointer select-none items-center justify-between gap-2 text-sm font-semibold"
+                title="Use this only when you already know an existing OpenCode session ID"
+              >
+                <span>${t('restoreExistingSession')}</span>
+                <span
+                  class="details-chevron inline-flex h-5 w-5 items-center justify-center rounded-sm border border-base-300 bg-base-200 transition-transform duration-150"
+                  aria-hidden="true"
+                >
+                  <svg
+                    class="h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </span>
+              </summary>
+              <div class="mt-3 grid gap-2">
+                <label class="form-control flex flex-col gap-1">
+                  <span class="text-xs font-semibold opacity-70">${t('sessionId')}</span>
+                  <input
+                    type="text"
+                    class="input input-sm input-bordered font-mono"
+                    .value=${this._opencodeDraftSessionId}
+                    @input=${(event: Event) => {
+                      this._opencodeDraftSessionId = (event.target as HTMLInputElement).value;
+                    }}
+                    placeholder="existing OpenCode session id"
+                  />
+                </label>
+                <button
+                  class="btn btn-sm btn-outline"
+                  title="Reconnect the typed session ID instead of creating a new OpenCode session"
+                  @click=${() => void this._handleOpencodeConnect()}
+                  ?disabled=${this._opencodeConnecting}
+                >
+                  ${t('useId')}
+                </button>
+              </div>
+            </details>
+          </section>
         </div>
       </div>
     `;
@@ -2289,16 +2264,13 @@ export class SidePanelApp extends LitElement {
       );
     }
     const attentionCount = this._getConnectionAttentionCount();
-    const openFeedbackCount = this._feedbackSnapshot?.annotations?.length ?? 0;
 
     return html`
       <div class="flex flex-col gap-2 border-b border-base-300 bg-base-100 px-3 py-2 shrink-0">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-sm font-semibold leading-tight truncate">Page Context Bridge</div>
-            <div class="text-[11px] opacity-60 truncate">
-              Connect OpenCode to the current browser page.
-            </div>
+            <div class="text-sm font-semibold leading-tight truncate">${t('appName')}</div>
+            <div class="text-[11px] opacity-60 truncate">${t('appTagline')}</div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
             ${attentionCount > 0
@@ -2333,143 +2305,76 @@ export class SidePanelApp extends LitElement {
           </div>
         </div>
 
-        <div role="tablist" class="grid grid-cols-5 gap-1 rounded-2xl bg-base-200 p-1">
+        <div
+          role="tablist"
+          class="grid grid-cols-5 gap-px rounded-sm border border-base-300 bg-base-300 p-px"
+        >
           <button
             role="tab"
             aria-label="Workspace"
-            data-tip="Main flow: start or resume OpenCode for this page"
-            class="tooltip tooltip-bottom btn btn-xs min-h-8 rounded-xl border-0 gap-1 px-2 ${this
+            data-tip=${t('workspaceTip')}
+            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
               ._activeTab === 'opencode'
-              ? 'btn-primary'
-              : 'btn-ghost'}"
+              ? 'bg-base-100 text-primary'
+              : ''}"
             @click=${() => this._handleTabClick('opencode')}
-            title="Workspace"
+            title=${t('workspace')}
           >
-            <svg
-              class="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M16 18l6-6-6-6" />
-              <path d="M8 6l-6 6 6 6" />
-            </svg>
-            <span class="hidden sm:inline">Workspace</span>
+            <span>${t('workspace')}</span>
           </button>
           <button
             role="tab"
             aria-label="Inspect page tools"
-            data-tip="Inspect the page tools OpenCode can call"
-            class="tooltip tooltip-bottom btn btn-xs min-h-8 rounded-xl border-0 gap-1 px-2 ${this
+            data-tip=${t('inspectTip')}
+            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
               ._activeTab === 'tools'
-              ? 'btn-primary'
-              : 'btn-ghost'}"
+              ? 'bg-base-100 text-primary'
+              : ''}"
             @click=${() => this._handleTabClick('tools')}
-            title="Inspect page tools"
+            title=${t('inspectTip')}
           >
-            <svg
-              class="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path
-                d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
-              />
-            </svg>
-            <span class="hidden sm:inline">Inspect</span>
+            <span>${t('inspect')}</span>
           </button>
           <button
             role="tab"
             aria-label="Feedback"
-            data-tip="Capture and review browser-side issues"
-            class="tooltip tooltip-bottom btn btn-xs min-h-8 rounded-xl border-0 gap-1 px-2 ${this
+            data-tip=${t('feedbackTip')}
+            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
               ._activeTab === 'feedback'
-              ? 'btn-primary'
-              : 'btn-ghost'}"
+              ? 'bg-base-100 text-primary'
+              : ''}"
             @click=${() => this._handleTabClick('feedback')}
-            title="Feedback"
+            title=${t('feedback')}
           >
-            <svg
-              class="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span class="hidden sm:inline">Feedback</span>${openFeedbackCount > 0
-              ? html`<span class="badge badge-xs ml-1">${openFeedbackCount}</span>`
-              : nothing}
+            <span>${t('feedback')}</span>
           </button>
           <button
             role="tab"
             aria-label="Setup and troubleshooting"
-            data-tip="Fix endpoints and run connection diagnosis"
-            class="tooltip tooltip-bottom btn btn-xs min-h-8 rounded-xl border-0 gap-1 px-2 ${this
+            data-tip=${t('setupTip')}
+            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
               ._activeTab === 'connections'
-              ? 'btn-primary'
+              ? 'bg-base-100 text-primary'
               : attentionCount > 0
-                ? 'btn-warning'
-                : 'btn-ghost'}"
+                ? 'bg-warning/20'
+                : ''}"
             @click=${() => this._handleTabClick('connections')}
-            title="Setup and troubleshooting"
+            title=${t('setupTip')}
           >
-            <svg
-              class="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9 12H5a3 3 0 0 1 0-6h4" />
-              <path d="M15 6h4a3 3 0 1 1 0 6h-4" />
-              <line x1="8" y1="12" x2="16" y2="12" />
-            </svg>
-            <span class="hidden sm:inline">Setup</span>
+            <span>${t('setup')}</span>
           </button>
           <button
             role="tab"
             aria-label="AI View"
-            data-tip="Preview what OpenCode can see, read, and use from this page"
-            class="tooltip tooltip-bottom btn btn-xs min-h-8 rounded-xl border-0 gap-1 px-2 ${this
+            data-tip=${t('aiViewTip')}
+            class="tooltip tooltip-bottom flex min-h-7 items-center justify-center bg-base-200 px-2 text-[11px] font-semibold uppercase tracking-wide hover:bg-base-100 ${this
               ._activeTab === 'context'
-              ? 'btn-primary'
-              : 'btn-ghost'}"
+              ? 'bg-base-100 text-primary'
+              : ''}"
             @click=${() => this._handleTabClick('context')}
-            title="AI View"
+            title=${t('aiView')}
           >
-            <svg
-              class="h-3.5 w-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-            </svg>
-            <span class="hidden sm:inline">AI View</span>
+            <span>${t('aiView')}</span>
           </button>
         </div>
       </div>

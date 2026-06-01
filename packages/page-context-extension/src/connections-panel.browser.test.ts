@@ -23,6 +23,11 @@ vi.mock('./connections-controller', () => ({
 }));
 
 vi.mock('./connections-endpoints', () => ({
+  DEFAULT_CONNECTION_ENDPOINTS: {
+    opencodeBaseUrl: 'http://127.0.0.1:4096',
+    bridgeBaseUrl: 'http://127.0.0.1:22334',
+    bridgeWsUrl: 'ws://127.0.0.1:22335/default',
+  },
   loadConnectionEndpoints: loadConnectionEndpointsMock,
   saveConnectionEndpoints: saveConnectionEndpointsMock,
 }));

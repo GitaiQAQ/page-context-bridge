@@ -3,7 +3,16 @@ import { defineConfig } from 'vite';
 import { chromeExtension } from 'vite-plugin-chrome-extension';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, copyFileSync } from 'fs';
+import {
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  copyFileSync,
+  statSync,
+} from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
@@ -45,6 +54,13 @@ function copyStaticFiles() {
         }
       } catch (error) {
         console.warn('Failed to copy icons:', error);
+      }
+
+      // Browser extension localization files must keep the exact _locales directory name.
+      try {
+        cpSync(resolve(__dirname, '_locales'), resolve(distDir, '_locales'), { recursive: true });
+      } catch (error) {
+        console.warn('Failed to copy _locales:', error);
       }
     },
   };
@@ -222,8 +238,11 @@ function renameUnderscoreFiles() {
       }
 
       for (const file of files) {
-        if (file.startsWith('_')) {
+        if (file.startsWith('_') && file !== '_locales') {
           const oldPath = resolve(distDir, file);
+          if (statSync(oldPath).isDirectory()) {
+            continue;
+          }
           const newName = 'chunk' + file;
           const newPath = resolve(distDir, newName);
 

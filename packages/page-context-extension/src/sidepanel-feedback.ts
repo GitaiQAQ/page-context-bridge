@@ -8,6 +8,8 @@ import {
 import { html, nothing, type TemplateResult } from 'lit';
 
 import type { SidepanelFeedbackDraft } from './sidepanel-types';
+import { t } from './i18n';
+import { renderPanel, renderTabHeader } from './sidepanel-ui';
 
 export type FeedbackActionFormMode = 'reply' | 'resolve' | 'dismiss' | null;
 export type FeedbackActionInputField = 'replyBody' | 'resolveNote' | 'dismissReason';
@@ -67,28 +69,28 @@ export function updateFeedbackActionStates(
 export function feedbackStatusBadgeClass(status: string): string {
   switch (status) {
     case 'resolved':
-      return 'badge badge-success badge-sm';
+      return 'text-success';
     case 'claimed':
-      return 'badge badge-info badge-sm';
+      return 'text-info';
     case 'dismissed':
-      return 'badge badge-ghost badge-sm';
+      return 'opacity-50';
     default:
-      return 'badge badge-warning badge-sm';
+      return 'text-warning';
   }
 }
 
 export function feedbackPushAgentBadgeClass(status: FeedbackPushAgentStatus | null): string {
   if (!status || !status.enabled) {
-    return 'badge badge-ghost badge-sm';
+    return 'opacity-50';
   }
   const lastResult = status.lastLaunch?.result;
   if (lastResult === 'failed') {
-    return 'badge badge-error badge-sm';
+    return 'text-error';
   }
   if (lastResult === 'success') {
-    return 'badge badge-success badge-sm';
+    return 'text-success';
   }
-  return 'badge badge-info badge-sm';
+  return 'text-info';
 }
 
 export function feedbackPushAgentBadgeText(status: FeedbackPushAgentStatus | null): string {
@@ -148,11 +150,10 @@ export function renderFeedbackThread(annotation: FeedbackAnnotation): TemplateRe
     <div class="flex flex-col gap-1">
       ${annotation.thread.map(
         (message) => html`
-          <div class="border border-base-300 rounded-md p-2 bg-base-200/60 flex flex-col gap-1">
+          <div class="border-t border-base-200 py-1.5 flex flex-col gap-1">
             <div class="flex items-center gap-1 text-[11px] opacity-70">
               <span class="font-semibold">${message.author.displayName}</span>
-              <span class="badge badge-ghost badge-xs">${message.author.source}</span>
-              <span class="badge badge-outline badge-xs">${message.kind}</span>
+              <span>${message.author.source} · ${message.kind}</span>
               <span class="ml-auto">${formatFeedbackTime(message.createdAt)}</span>
             </div>
             <div class="text-xs whitespace-pre-wrap break-words">${message.body}</div>
@@ -174,7 +175,7 @@ export function renderFeedbackActionForm(
       <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
         <textarea
           class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
-          placeholder="Add processing progress or follow-up questions"
+          placeholder=${t('replyPlaceholder')}
           .value=${state.replyBody}
           @input=${(event: Event) => callbacks.onInput(annotation.id, 'replyBody', event)}
         ></textarea>
@@ -184,14 +185,14 @@ export function renderFeedbackActionForm(
             .disabled=${state.submitting}
             @click=${() => callbacks.onToggleMode(annotation.id, null)}
           >
-            Cancel
+            ${t('cancel')}
           </button>
           <button
             class="btn btn-xs btn-primary ml-auto"
             .disabled=${state.submitting}
             @click=${() => callbacks.onReply(annotation.id)}
           >
-            ${state.submitting ? 'Submitting...' : 'Submit Reply'}
+            ${state.submitting ? t('submitting') : t('submitReply')}
           </button>
         </div>
       </div>
@@ -203,7 +204,7 @@ export function renderFeedbackActionForm(
       <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
         <textarea
           class="textarea textarea-sm textarea-bordered min-h-[4.5rem]"
-          placeholder="Optional: fill in resolution notes"
+          placeholder=${t('resolveNotePlaceholder')}
           .value=${state.resolveNote}
           @input=${(event: Event) => callbacks.onInput(annotation.id, 'resolveNote', event)}
         ></textarea>
@@ -213,14 +214,14 @@ export function renderFeedbackActionForm(
             .disabled=${state.submitting}
             @click=${() => callbacks.onToggleMode(annotation.id, null)}
           >
-            Cancel
+            ${t('cancel')}
           </button>
           <button
             class="btn btn-xs btn-success ml-auto"
             .disabled=${state.submitting}
             @click=${() => callbacks.onResolve(annotation.id)}
           >
-            ${state.submitting ? 'Submitting...' : 'Confirm Resolve'}
+            ${state.submitting ? t('submitting') : t('confirmResolve')}
           </button>
         </div>
       </div>
@@ -232,7 +233,7 @@ export function renderFeedbackActionForm(
       <div class="border border-base-300 rounded-md p-2 bg-base-200/50 flex flex-col gap-2">
         <input
           class="input input-sm input-bordered"
-          placeholder="Optional: fill in dismiss reason"
+          placeholder=${t('dismissReasonPlaceholder')}
           .value=${state.dismissReason}
           @input=${(event: Event) => callbacks.onInput(annotation.id, 'dismissReason', event)}
         />
@@ -242,14 +243,14 @@ export function renderFeedbackActionForm(
             .disabled=${state.submitting}
             @click=${() => callbacks.onToggleMode(annotation.id, null)}
           >
-            Cancel
+            ${t('cancel')}
           </button>
           <button
             class="btn btn-xs btn-warning ml-auto"
             .disabled=${state.submitting}
             @click=${() => callbacks.onDismiss(annotation.id)}
           >
-            ${state.submitting ? 'Submitting...' : 'Confirm Dismiss'}
+            ${state.submitting ? t('submitting') : t('confirmDismiss')}
           </button>
         </div>
       </div>
@@ -273,42 +274,51 @@ export function renderFeedbackActions(
     <div class="flex flex-wrap items-center gap-1.5">
       ${canClaim
         ? html`<button
-            class="btn btn-xs btn-info"
+            class="btn btn-xs btn-ghost border border-base-300 h-6 min-h-0 px-2"
             .disabled=${state.submitting}
             @click=${() => callbacks.onClaim(annotation.id)}
           >
-            ${state.submitting ? 'Submitting...' : 'Claim'}
+            ${state.submitting ? t('submitting') : t('claim')}
           </button>`
         : nothing}
       ${canReply
         ? html`<button
-            class="btn btn-xs btn-ghost"
+            class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
             .disabled=${state.submitting}
             @click=${() => callbacks.onToggleMode(annotation.id, 'reply')}
           >
-            Reply
+            ${t('reply')}
           </button>`
         : nothing}
-      ${canResolve
-        ? html`<button
-            class="btn btn-xs btn-success btn-outline"
-            .disabled=${state.submitting}
-            @click=${() => callbacks.onToggleMode(annotation.id, 'resolve')}
-          >
-            Resolve
-          </button>`
-        : nothing}
-      ${canDismiss
-        ? html`<button
-            class="btn btn-xs btn-warning btn-outline"
-            .disabled=${state.submitting}
-            @click=${() => callbacks.onToggleMode(annotation.id, 'dismiss')}
-          >
-            Dismiss
-          </button>`
+      ${canResolve || canDismiss
+        ? html`<details class="dropdown dropdown-end">
+            <summary class="btn btn-xs btn-ghost h-6 min-h-0 px-2">${t('more')}</summary>
+            <div
+              class="menu dropdown-content z-10 mt-1 rounded-sm border border-base-300 bg-base-100 p-1 shadow-sm"
+            >
+              ${canResolve
+                ? html`<button
+                    class="btn btn-xs btn-ghost justify-start"
+                    .disabled=${state.submitting}
+                    @click=${() => callbacks.onToggleMode(annotation.id, 'resolve')}
+                  >
+                    ${t('resolve')}
+                  </button>`
+                : nothing}
+              ${canDismiss
+                ? html`<button
+                    class="btn btn-xs btn-ghost justify-start"
+                    .disabled=${state.submitting}
+                    @click=${() => callbacks.onToggleMode(annotation.id, 'dismiss')}
+                  >
+                    ${t('dismiss')}
+                  </button>`
+                : nothing}
+            </div>
+          </details>`
         : nothing}
       ${!canClaim && !canReply && !canResolve && !canDismiss
-        ? html`<span class="text-xs opacity-50">No actions available in current state</span>`
+        ? html`<span class="text-xs opacity-50">${t('noActionsAvailable')}</span>`
         : nothing}
     </div>
     ${state.error ? html`<div class="text-xs text-error">${state.error}</div>` : nothing}
@@ -341,218 +351,163 @@ export interface RenderFeedbackTabInput {
 export function renderFeedbackTab(input: RenderFeedbackTabInput): TemplateResult {
   const currentFeedbackSession = input.snapshot?.sessions[0] ?? null;
   const feedbackAnnotations = input.snapshot?.annotations ?? [];
-  const feedbackPushAgentStatus = input.snapshot?.pushAgent ?? null;
 
   return html`
     <div class="tab-content active flex flex-col flex-1 min-h-0">
-      <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
-        <span class="text-xs font-bold uppercase tracking-wide opacity-60">Feedback</span>
-        <button class="btn btn-xs btn-ghost ml-auto" @click=${input.onRefresh}>Refresh</button>
-      </div>
-      <div class="flex-1 overflow-y-auto p-3 bg-base-200 flex flex-col gap-3">
-        <div class="card bg-base-100 border border-base-300 shadow-sm">
-          <div class="card-body p-3 gap-2">
-            <div class="flex items-center gap-2">
-              <div class="font-bold text-sm">Auto Push Agent</div>
-              <span class="${feedbackPushAgentBadgeClass(feedbackPushAgentStatus)} ml-auto"
-                >${feedbackPushAgentBadgeText(feedbackPushAgentStatus)}</span
-              >
-            </div>
-            ${!feedbackPushAgentStatus
-              ? html`<div class="text-xs opacity-60">
-                  Current snapshot does not contain push-agent status.
-                </div>`
-              : html`
-                  <div class="text-xs opacity-70">
-                    enabled:
-                    <span class="font-mono">${String(feedbackPushAgentStatus.enabled)}</span> ·
-                    readiness: <span class="font-mono">${feedbackPushAgentStatus.readiness}</span> ·
-                    mode: <span class="font-mono">${feedbackPushAgentStatus.mode}</span>
-                  </div>
-                  ${feedbackPushAgentStatus.lastLaunch
-                    ? html`
-                        <div class="text-xs opacity-70">
-                          last launch:
-                          <span class="font-mono"
-                            >${feedbackPushAgentStatus.lastLaunch.result}</span
-                          >
-                          · at ${formatFeedbackTime(feedbackPushAgentStatus.lastLaunch.attemptedAt)}
-                          · annotation ${feedbackPushAgentStatus.lastLaunch.annotationId}
-                        </div>
-                        ${feedbackPushAgentStatus.lastLaunch.failureReason
-                          ? html`<div class="text-xs text-error">
-                              failure: ${feedbackPushAgentStatus.lastLaunch.failureReason}
-                            </div>`
-                          : nothing}
-                      `
-                    : html`<div class="text-xs opacity-60">last launch: (no records yet)</div>`}
-                `}
-          </div>
-        </div>
-
-        <div class="card bg-base-100 border border-base-300 shadow-sm">
-          <div class="card-body p-3 gap-2">
-            <div class="font-bold text-sm">Create Feedback</div>
-            <textarea
-              class="textarea textarea-sm textarea-bordered min-h-[6rem]"
-              placeholder="Describe the problem, expected behavior, reproduction steps"
-              .value=${input.body}
-              @input=${input.onBodyInput}
-            ></textarea>
-            <div class="flex gap-2 items-center">
-              <label class="text-xs opacity-70" for="feedbackPriority">Priority</label>
-              <select
-                id="feedbackPriority"
-                class="select select-sm select-bordered w-36"
-                .value=${input.priority}
-                @change=${input.onPriorityChange}
-              >
-                <option value="low">low</option>
-                <option value="normal">normal</option>
-                <option value="high">high</option>
-                <option value="critical">critical</option>
-              </select>
-              <button class="btn btn-sm btn-primary ml-auto" @click=${input.onSubmit}>
-                Submit
-              </button>
-            </div>
-            <div class="text-xs opacity-70">
-              ${currentFeedbackSession
-                ? html`Active Tab: #${currentFeedbackSession.tabId} ·
-                  ${currentFeedbackSession.title || currentFeedbackSession.url}`
-                : html`Active Tab: (session not created)`}
-            </div>
-            ${feedbackAnnotations[0]?.target.textQuote
-              ? html`<div class="text-xs opacity-70">
-                  Selected Text: ${feedbackAnnotations[0].target.textQuote}
-                </div>`
-              : nothing}
-            <div class="${input.createStatusClass}">${input.createStatus}</div>
-          </div>
-        </div>
-
-        <div class="card bg-base-100 border border-base-300 shadow-sm">
-          <div class="card-body p-3 gap-2">
-            <div class="flex items-center justify-between">
-              <div class="font-bold text-sm">Current Session</div>
-              <div class="text-xs opacity-60">
-                ${input.loading ? 'Loading...' : `${feedbackAnnotations.length} annotations`}
+      ${renderTabHeader({
+        title: t('feedback'),
+        action: html`<button class="btn btn-xs btn-ghost" @click=${input.onRefresh}>
+          ${t('refresh')}
+        </button>`,
+      })}
+      <div class="flex-1 overflow-y-auto p-3 bg-base-200 flex flex-col gap-2">
+        ${renderPanel({
+          title: t('createFeedback'),
+          body: html`
+            <div class="flex flex-col gap-2">
+              <textarea
+                class="textarea textarea-sm textarea-bordered min-h-[6rem]"
+                placeholder=${t('feedbackPlaceholder')}
+                .value=${input.body}
+                @input=${input.onBodyInput}
+              ></textarea>
+              <div class="flex gap-2 items-center">
+                <label class="text-xs opacity-70" for="feedbackPriority">${t('priority')}</label>
+                <select
+                  id="feedbackPriority"
+                  class="select select-sm select-bordered w-36"
+                  .value=${input.priority}
+                  @change=${input.onPriorityChange}
+                >
+                  <option value="low">low</option>
+                  <option value="normal">normal</option>
+                  <option value="high">high</option>
+                  <option value="critical">critical</option>
+                </select>
+                <button class="btn btn-sm btn-primary ml-auto" @click=${input.onSubmit}>
+                  ${t('submit')}
+                </button>
               </div>
+              <div class="text-xs opacity-70">
+                ${currentFeedbackSession
+                  ? html`${t('activeTab')}: #${currentFeedbackSession.tabId} ·
+                    ${currentFeedbackSession.title || currentFeedbackSession.url}`
+                  : html`${t('activeTab')}: ${t('sessionNotCreated')}`}
+              </div>
+              ${feedbackAnnotations[0]?.target.textQuote
+                ? html`<div class="text-xs opacity-70">
+                    ${t('selectedText')}: ${feedbackAnnotations[0].target.textQuote}
+                  </div>`
+                : nothing}
+              <div class="${input.createStatusClass}">${input.createStatus}</div>
             </div>
-            ${input.error ? html`<div class="text-xs text-error">${input.error}</div>` : nothing}
-            ${!currentFeedbackSession
-              ? html`<div class="text-xs opacity-60">
-                  No feedback records for current page yet.
-                </div>`
-              : html`
-                  <div class="text-xs opacity-70">
-                    Session ${currentFeedbackSession.id} · seq
-                    ${currentFeedbackSession.lastEventSeq}
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    ${feedbackAnnotations.length === 0
-                      ? html`<div class="text-xs opacity-60">No annotations yet.</div>`
-                      : html`${feedbackAnnotations.map((annotation) => {
-                          const state = input.readActionState(annotation.id);
-                          return html`
-                            <div
-                              class="border border-base-300 rounded-lg p-2 bg-base-100 flex flex-col gap-1.5"
-                            >
-                              <div class="flex items-center gap-2">
-                                <span class="${feedbackStatusBadgeClass(annotation.status)}"
-                                  >${annotation.status}</span
-                                >
-                                <span class="badge badge-outline badge-sm"
-                                  >${annotation.priority}</span
-                                >
-                                <span class="text-[11px] opacity-50 ml-auto"
-                                  >${formatFeedbackTime(annotation.updatedAt)}</span
-                                >
+          `,
+        })}
+        ${renderPanel({
+          title: t('currentSession'),
+          meta: input.loading
+            ? t('loading')
+            : t('annotations', { count: feedbackAnnotations.length }),
+          body: html`
+            <div class="flex flex-col gap-2">
+              ${input.error ? html`<div class="text-xs text-error">${input.error}</div>` : nothing}
+              ${!currentFeedbackSession
+                ? html`<div class="text-xs opacity-60">${t('noFeedbackRecordsYet')}</div>`
+                : html`
+                    <div class="text-xs opacity-70">
+                      Session ${currentFeedbackSession.id} · seq
+                      ${currentFeedbackSession.lastEventSeq}
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      ${feedbackAnnotations.length === 0
+                        ? html`<div class="text-xs opacity-60">${t('noAnnotationsYet')}</div>`
+                        : html`${feedbackAnnotations.map((annotation) => {
+                            const state = input.readActionState(annotation.id);
+                            return html`
+                              <div class="border-t border-base-200 py-2 flex flex-col gap-1.5">
+                                <div class="flex items-center gap-2">
+                                  <span class="text-xs font-semibold">${annotation.status}</span>
+                                  <span class="text-xs opacity-55">${annotation.priority}</span>
+                                  <span class="text-[11px] opacity-50 ml-auto"
+                                    >${formatFeedbackTime(annotation.updatedAt)}</span
+                                  >
+                                </div>
+                                <div class="text-sm whitespace-pre-wrap break-words">
+                                  ${annotation.body}
+                                </div>
+                                <div class="text-xs opacity-70">
+                                  #${annotation.id} · ${t('by')} ${annotation.author.displayName} ·
+                                  ${t('created')} ${formatFeedbackTime(annotation.createdAt)}
+                                </div>
+                                ${annotation.target.textQuote
+                                  ? html`<div class="text-xs opacity-80">
+                                      ${t('quoted')}: ${annotation.target.textQuote}
+                                    </div>`
+                                  : nothing}
+                                ${annotation.claimedBy ||
+                                annotation.resolvedBy ||
+                                annotation.resolution ||
+                                annotation.dismissReason
+                                  ? html`
+                                      <div class="text-xs opacity-70 flex flex-wrap gap-2">
+                                        ${annotation.claimedBy
+                                          ? html`<span
+                                              >${t('claimedBy')}:
+                                              ${annotation.claimedBy.displayName}</span
+                                            >`
+                                          : nothing}
+                                        ${annotation.resolvedBy
+                                          ? html`<span
+                                              >${t('resolvedBy')}:
+                                              ${annotation.resolvedBy.displayName}</span
+                                            >`
+                                          : nothing}
+                                        ${annotation.resolution
+                                          ? html`<span
+                                              >${t('resolution')}: ${annotation.resolution}</span
+                                            >`
+                                          : nothing}
+                                        ${annotation.dismissReason
+                                          ? html`<span
+                                              >${t('dismissReason')}:
+                                              ${annotation.dismissReason}</span
+                                            >`
+                                          : nothing}
+                                      </div>
+                                    `
+                                  : nothing}
+                                ${annotation.linkedCapabilities.relatedToolNames.length +
+                                  annotation.linkedCapabilities.relatedResourceIds.length +
+                                  annotation.linkedCapabilities.relatedSkillIds.length >
+                                0
+                                  ? html`
+                                      <div class="text-[11px] opacity-55 truncate">
+                                        ${t('related')}:
+                                        ${[
+                                          ...annotation.linkedCapabilities.relatedToolNames,
+                                          ...annotation.linkedCapabilities.relatedResourceIds,
+                                          ...annotation.linkedCapabilities.relatedSkillIds,
+                                        ].join(', ')}
+                                      </div>
+                                    `
+                                  : nothing}
+                                ${renderFeedbackActions(annotation, state, {
+                                  onToggleMode: input.onToggleMode,
+                                  onInput: input.onActionInput,
+                                  onClaim: input.onClaim,
+                                  onReply: input.onReply,
+                                  onResolve: input.onResolve,
+                                  onDismiss: input.onDismiss,
+                                })}
+                                ${renderFeedbackThread(annotation)}
                               </div>
-                              <div class="text-sm whitespace-pre-wrap break-words">
-                                ${annotation.body}
-                              </div>
-                              <div class="text-xs opacity-70">
-                                #${annotation.id} · by ${annotation.author.displayName} · created
-                                ${formatFeedbackTime(annotation.createdAt)}
-                              </div>
-                              ${annotation.target.textQuote
-                                ? html`<div class="text-xs opacity-80">
-                                    Quote: ${annotation.target.textQuote}
-                                  </div>`
-                                : nothing}
-                              ${annotation.claimedBy ||
-                              annotation.resolvedBy ||
-                              annotation.resolution ||
-                              annotation.dismissReason
-                                ? html`
-                                    <div class="text-xs opacity-70 flex flex-wrap gap-2">
-                                      ${annotation.claimedBy
-                                        ? html`<span
-                                            >Claimed by: ${annotation.claimedBy.displayName}</span
-                                          >`
-                                        : nothing}
-                                      ${annotation.resolvedBy
-                                        ? html`<span
-                                            >Resolved by: ${annotation.resolvedBy.displayName}</span
-                                          >`
-                                        : nothing}
-                                      ${annotation.resolution
-                                        ? html`<span>Resolution: ${annotation.resolution}</span>`
-                                        : nothing}
-                                      ${annotation.dismissReason
-                                        ? html`<span
-                                            >Dismiss reason: ${annotation.dismissReason}</span
-                                          >`
-                                        : nothing}
-                                    </div>
-                                  `
-                                : nothing}
-                              ${annotation.linkedCapabilities.relatedToolNames.length +
-                                annotation.linkedCapabilities.relatedResourceIds.length +
-                                annotation.linkedCapabilities.relatedSkillIds.length >
-                              0
-                                ? html`
-                                    <div class="flex flex-wrap gap-1">
-                                      ${annotation.linkedCapabilities.relatedToolNames.map(
-                                        (tool) =>
-                                          html`<span class="badge badge-ghost badge-xs"
-                                            >tool:${tool}</span
-                                          >`,
-                                      )}
-                                      ${annotation.linkedCapabilities.relatedResourceIds.map(
-                                        (resource) =>
-                                          html`<span class="badge badge-ghost badge-xs"
-                                            >resource:${resource}</span
-                                          >`,
-                                      )}
-                                      ${annotation.linkedCapabilities.relatedSkillIds.map(
-                                        (skill) =>
-                                          html`<span class="badge badge-ghost badge-xs"
-                                            >skill:${skill}</span
-                                          >`,
-                                      )}
-                                    </div>
-                                  `
-                                : html`<div class="text-xs opacity-50">
-                                    No related capabilities
-                                  </div>`}
-                              ${renderFeedbackActions(annotation, state, {
-                                onToggleMode: input.onToggleMode,
-                                onInput: input.onActionInput,
-                                onClaim: input.onClaim,
-                                onReply: input.onReply,
-                                onResolve: input.onResolve,
-                                onDismiss: input.onDismiss,
-                              })}
-                              ${renderFeedbackThread(annotation)}
-                            </div>
-                          `;
-                        })}`}
-                  </div>
-                `}
-          </div>
-        </div>
+                            `;
+                          })}`}
+                    </div>
+                  `}
+            </div>
+          `,
+        })}
       </div>
     </div>
   `;

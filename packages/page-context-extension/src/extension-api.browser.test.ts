@@ -79,7 +79,7 @@ describe('extension-api', () => {
       storage: {
         local: {
           get: vi.fn((_keys: unknown, callback: (response: unknown) => void) => {
-            callback({ mcpWsUrl: 'ws://127.0.0.1:22335/default' });
+            callback({ sampleKey: 'sample-value' });
           }),
           set: vi.fn((_items: unknown, callback: () => void) => callback()),
           remove: vi.fn((_keys: unknown, callback: () => void) => callback()),
@@ -98,8 +98,8 @@ describe('extension-api', () => {
     (globalThis as typeof globalThis & { chrome?: unknown }).chrome = chromeMock;
 
     await expect(runtimeSendMessage({ method: 'ping' })).resolves.toEqual({ ok: true });
-    await expect(storageLocalGet({ mcpWsUrl: 'default' })).resolves.toEqual({
-      mcpWsUrl: 'ws://127.0.0.1:22335/default',
+    await expect(storageLocalGet({ sampleKey: 'default' })).resolves.toEqual({
+      sampleKey: 'sample-value',
     });
     await expect(storageLocalSet({ value: true })).resolves.toBeUndefined();
     await expect(storageLocalRemove('sidePanelUrl')).resolves.toBeUndefined();

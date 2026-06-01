@@ -14,6 +14,7 @@ import type {
   ToolTreeTab,
   ToolTreeTool,
 } from './sidepanel-types';
+import { t } from './i18n';
 
 export function renderToolsEmpty(message: string): TemplateResult {
   return html`<div
@@ -77,10 +78,10 @@ export function renderBuiltinsNode(builtins: ToolTreeBuiltins): TemplateResult {
           checked: builtins.enabledTools === builtins.totalTools && builtins.totalTools > 0,
           indeterminate: builtins.enabledTools > 0 && builtins.enabledTools < builtins.totalTools,
           data: { root: 'builtin', scope: 'builtin', tabId: 'builtin-root' },
-          label: 'Built-in Tools',
-          subtitle: 'Extension provided tools',
-          meta: `${builtins.enabledTools}/${builtins.totalTools} enabled`,
-          badges: [html`<span class="badge badge-xs badge-primary">builtin</span>`],
+          label: t('builtinTools'),
+          subtitle: t('builtinToolsSubtitle'),
+          meta: t('enabledOfTotal', { enabled: builtins.enabledTools, total: builtins.totalTools }),
+          metaItems: [html`<span>${t('builtin')}</span>`],
         })}
       </summary>
       ${namespaces.map((namespace) => renderBuiltinNamespaceNode(namespace))}
@@ -194,9 +195,12 @@ function renderBuiltinNamespaceNode(namespace: ToolTreeBuiltinNamespace): Templa
             namespace: namespace.namespace,
           },
           label: namespace.namespace,
-          subtitle: 'Builtin namespace',
-          meta: `${namespace.enabledTools}/${namespace.totalTools} enabled`,
-          badges: [html`<span class="badge badge-xs badge-secondary">namespace</span>`],
+          subtitle: t('builtinNamespace'),
+          meta: t('enabledOfTotal', {
+            enabled: namespace.enabledTools,
+            total: namespace.totalTools,
+          }),
+          metaItems: [html`<span>${t('namespace')}</span>`],
         })}
       </summary>
       ${namespace.instances.map((instance) => renderBuiltinInstanceNode(instance))}
@@ -205,6 +209,7 @@ function renderBuiltinNamespaceNode(namespace: ToolTreeBuiltinNamespace): Templa
 }
 
 function renderBuiltinInstanceNode(instance: ToolTreeBuiltinInstance): TemplateResult {
+  const isDefault = instance.instanceId === 'default';
   return html`
     <details open>
       <summary>
@@ -221,9 +226,9 @@ function renderBuiltinInstanceNode(instance: ToolTreeBuiltinInstance): TemplateR
             instanceId: instance.instanceId,
           },
           label: instance.instanceId,
-          subtitle: instance.instanceId === 'default' ? 'Default instance' : 'Builtin instance',
-          meta: `${instance.enabledTools}/${instance.totalTools} enabled`,
-          badges: [html`<span class="badge badge-xs badge-accent">instance</span>`],
+          subtitle: isDefault ? t('defaultInstance') : t('builtinInstance'),
+          meta: t('enabledOfTotal', { enabled: instance.enabledTools, total: instance.totalTools }),
+          metaItems: [html`<span>${t('instance')}</span>`],
         })}
       </summary>
       ${instance.tools.map((tool) => renderBuiltinToolNode(tool))}
@@ -242,10 +247,10 @@ export function renderTabNode(tab: ToolTreeTab): TemplateResult {
           data: { root: 'page', scope: 'tab', tabId: String(tab.tabId) },
           label: tab.title,
           subtitle: tab.url ? tab.url : '',
-          meta: `${tab.enabledTools}/${tab.totalTools} enabled`,
-          badges: [
-            tab.active ? html`<span class="badge badge-xs badge-success">active</span>` : nothing,
-            html`<span class="badge badge-xs badge-ghost">tab ${tab.tabId}</span>`,
+          meta: t('enabledOfTotal', { enabled: tab.enabledTools, total: tab.totalTools }),
+          metaItems: [
+            tab.active ? html`<span>${t('active')}</span>` : nothing,
+            html`<span>${t('tab')} ${tab.tabId}</span>`,
           ],
         })}
       </summary>
@@ -327,8 +332,11 @@ function renderNamespaceNode(namespace: ToolTreeNamespace): TemplateResult {
           },
           label: namespaceDisplayContent.label,
           subtitle: namespaceDisplayContent.subtitle,
-          meta: `${namespace.enabledTools}/${namespace.totalTools} enabled`,
-          badges: [html`<span class="badge badge-xs badge-secondary">namespace</span>`],
+          meta: t('enabledOfTotal', {
+            enabled: namespace.enabledTools,
+            total: namespace.totalTools,
+          }),
+          metaItems: [html`<span>${t('namespace')}</span>`],
         })}
       </summary>
       ${namespace.instances.map((instance) => renderInstanceNode(instance))}
@@ -337,6 +345,7 @@ function renderNamespaceNode(namespace: ToolTreeNamespace): TemplateResult {
 }
 
 function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
+  const isDefault = instance.instanceId === 'default';
   return html`
     <details open>
       <summary>
@@ -352,9 +361,9 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
             instanceId: instance.instanceId,
           },
           label: instance.instanceId,
-          subtitle: instance.instanceId === 'default' ? 'Default instance' : 'Instance',
-          meta: `${instance.enabledTools}/${instance.totalTools} enabled`,
-          badges: [html`<span class="badge badge-xs badge-accent">instance</span>`],
+          subtitle: isDefault ? t('defaultInstance') : 'Instance',
+          meta: t('enabledOfTotal', { enabled: instance.enabledTools, total: instance.totalTools }),
+          metaItems: [html`<span>${t('instance')}</span>`],
         })}
       </summary>
       ${instance.tools.map((tool) => renderToolNode(tool))}
@@ -365,7 +374,7 @@ function renderInstanceNode(instance: ToolTreeInstance): TemplateResult {
 function renderBuiltinToolNode(tool: ToolTreeBuiltinTool): TemplateResult {
   const bridgeControl = isBridgeControlBuiltinTool(tool);
   const subtitle = bridgeControl
-    ? `${tool.description ? tool.description : tool.toolName} (Bridge/MCP control tool, display only)`
+    ? `${tool.description ? tool.description : tool.toolName} (${t('bridgeControlHint')})`
     : tool.description
       ? tool.description
       : tool.toolName;
@@ -378,9 +387,9 @@ function renderBuiltinToolNode(tool: ToolTreeBuiltinTool): TemplateResult {
     label: tool.label,
     subtitle,
     meta: tool.toolName,
-    badges: [
-      bridgeControl ? html`<span class="badge badge-xs badge-info">bridge</span>` : nothing,
-      tool.readOnly ? html`<span class="badge badge-xs badge-success">readonly</span>` : nothing,
+    metaItems: [
+      bridgeControl ? html`<span>${t('bridge')}</span>` : nothing,
+      tool.readOnly ? html`<span>${t('readonly')}</span>` : nothing,
     ],
     actions: bridgeControl
       ? undefined
@@ -409,9 +418,7 @@ function renderToolNode(tool: ToolTreeTool): TemplateResult {
     label: tool.label,
     subtitle: tool.description ? tool.description : tool.toolName,
     meta: tool.toolName,
-    badges: [
-      tool.readOnly ? html`<span class="badge badge-xs badge-success">readonly</span>` : nothing,
-    ],
+    metaItems: [tool.readOnly ? html`<span>${t('readonly')}</span>` : nothing],
     actions: renderTestButton({
       root: 'page',
       toolName: tool.toolName,
@@ -438,7 +445,7 @@ function renderTreeRow(input: {
   label: string;
   subtitle: string;
   meta: string;
-  badges: (TemplateResult | typeof nothing)[];
+  metaItems: (TemplateResult | typeof nothing)[];
   actions?: TemplateResult;
 }): TemplateResult {
   const indent = INDENT_CLASS[input.level];
@@ -461,8 +468,12 @@ function renderTreeRow(input: {
         data-tool-name=${input.data.toolName ?? nothing}
       />
       <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-1.5 flex-wrap text-xs font-semibold">
-          ${input.label}<span class="badge badge-xs badge-ghost">${input.meta}</span>${input.badges}
+        <div class="flex items-center gap-2 flex-wrap text-xs font-semibold">
+          <span>${input.label}</span>
+          <span class="text-[11px] font-normal opacity-45">${input.meta}</span>
+          ${input.metaItems.length > 0
+            ? html`<span class="text-[11px] font-normal opacity-45">${input.metaItems}</span>`
+            : nothing}
         </div>
         ${input.subtitle
           ? html`<div class="mt-0.5 text-xs opacity-60 break-all leading-snug">
@@ -494,7 +505,7 @@ function renderTestButton(input: {
   return html`
     <button
       type="button"
-      class="btn btn-xs btn-outline btn-primary rounded-full"
+      class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
       data-action="test-tool"
       data-root=${input.root}
       data-tool-name=${input.toolName}

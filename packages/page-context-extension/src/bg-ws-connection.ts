@@ -9,14 +9,12 @@ import {
   RpcPeer,
   RpcProtocolError,
 } from '@page-context/shared-protocol';
-import { storageLocalGet, storageLocalSet } from './extension-api';
 import { getConnectionRegistry } from './bg-connection-registry';
+import { DEFAULT_CONNECTION_ENDPOINTS, loadConnectionEndpoints } from './connections-endpoints';
 
-const DEFAULT_MCP_WS_URL = 'ws://127.0.0.1:22335/default';
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const MCP_WS_URL_KEY = 'mcpWsUrl';
 export const DEFAULT_BRIDGE_DESCRIPTOR_ID = 'bridge-default-ws';
 
 export interface SessionRegisterResult {
@@ -205,10 +203,8 @@ async function flushQueuedNotifications(): Promise<void> {
 }
 
 async function getWsUrl(): Promise<string> {
-  const result = await storageLocalGet({
-    [MCP_WS_URL_KEY]: DEFAULT_MCP_WS_URL,
-  });
-  return result[MCP_WS_URL_KEY] as string;
+  const endpoints = await loadConnectionEndpoints();
+  return endpoints.bridgeWsUrl;
 }
 
 function scheduleReconnect(): void {
@@ -446,19 +442,11 @@ export function disconnectWebSocket(): void {
 }
 
 export function initDefaultWsUrl(): Promise<void> {
-  return storageLocalGet<Record<string, unknown>>(MCP_WS_URL_KEY).then((data) => {
-    const currentUrl =
-      typeof data[MCP_WS_URL_KEY] === 'string' && data[MCP_WS_URL_KEY]
-        ? String(data[MCP_WS_URL_KEY])
-        : DEFAULT_MCP_WS_URL;
+  return loadConnectionEndpoints().then((endpoints) => {
     registerDefaultBridgeDescriptor('closed', {
-      endpoint: currentUrl,
+      endpoint: endpoints.bridgeWsUrl || DEFAULT_CONNECTION_ENDPOINTS.bridgeWsUrl,
       statusReason: 'idle',
     });
-    if (!data[MCP_WS_URL_KEY]) {
-      return storageLocalSet({ [MCP_WS_URL_KEY]: DEFAULT_MCP_WS_URL });
-    }
-    return undefined;
   });
 }
 

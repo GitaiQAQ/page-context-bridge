@@ -7,7 +7,7 @@ import {
   type ConsoleEntry,
 } from '@page-context/builtin-tools';
 import { createFeedbackUiAdapter } from './feedback-ui-adapter';
-import { storageLocalSet } from './extension-api';
+import { loadConnectionEndpoints, saveConnectionEndpoints } from './connections-endpoints';
 import { createRuntimeListener, sendRuntimeRequest } from './runtime-rpc';
 import { requestReadonlyFromMainWorld } from './content-script-readonly-broker';
 
@@ -424,7 +424,7 @@ async function runFirefoxE2EProbeIfRequested(): Promise<void> {
       return;
     }
     try {
-      await storageLocalSet({ mcpWsUrl: wsUrl });
+      await saveConnectionEndpoints({ ...(await loadConnectionEndpoints()), bridgeWsUrl: wsUrl });
       await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
     } catch (error) {
       log('Failed to bootstrap Firefox E2E WebSocket connection', error);
@@ -525,7 +525,7 @@ async function runFirefoxE2EProbeIfRequested(): Promise<void> {
     const wsUrl = searchParams.get('__pcE2EWs');
     if (wsUrl) {
       try {
-        await storageLocalSet({ mcpWsUrl: wsUrl });
+        await saveConnectionEndpoints({ ...(await loadConnectionEndpoints()), bridgeWsUrl: wsUrl });
         await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
         const deadline = Date.now() + 15_000;
         let connected = false;

@@ -33,6 +33,7 @@ describe('popup-main launchConsoleUi', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = '';
+    localStorage.removeItem('page-context.locale.v1');
     restoreChromeGlobal(originalChrome);
   });
 
@@ -112,20 +113,57 @@ describe('popup-main launchConsoleUi', () => {
     expect(fallbackUrl.searchParams.get('windowId')).toBeNull();
     expectNoInvalidQuery(fallbackUrl);
   });
+
+  it('adds initial setup tab query when opening Setup through fallback page', async () => {
+    const { tabsCreate } = await mountPopup({
+      activeTab: { id: 42, windowId: 7 },
+    });
+
+    clickSetupButton();
+
+    const fallbackUrl = await waitForFallbackUrl(tabsCreate);
+    expect(fallbackUrl.pathname).toBe('/sidepanel.html');
+    expect(fallbackUrl.searchParams.get('tab')).toBe('connections');
+    expect(fallbackUrl.searchParams.get('boundTabId')).toBe('42');
+    expect(fallbackUrl.searchParams.get('windowId')).toBe('7');
+    expectNoInvalidQuery(fallbackUrl);
+  });
+
+  it('updates popup copy when locale changes', async () => {
+    await mountPopup({});
+
+    const localeSelect = document.getElementById('localeSelect') as HTMLSelectElement | null;
+    expect(localeSelect).not.toBeNull();
+    localeSelect!.value = 'zh-CN';
+    localeSelect!.dispatchEvent(new Event('change'));
+
+    expect(document.documentElement.lang).toBe('zh-CN');
+    expect(document.getElementById('statusLabel')?.textContent?.trim()).toBe('状态');
+    expect(document.getElementById('openSetupBtn')?.textContent?.trim()).toBe('设置');
+  });
 });
 
 function renderPopupDom(): void {
   // Keep only the minimal DOM needed by popup-main initialization so tests do not depend on template details.
   document.body.innerHTML = `
     <span id="statusDot"></span>
+    <div id="popupSubtitle"></div>
+    <div id="statusLabel"></div>
     <div id="statusText"></div>
-    <input id="wsUrlInput" />
     <div id="pendingCalls"></div>
-    <button id="saveBtn"></button>
+    <div id="pendingCallsLabel"></div>
     <button id="reconnectBtn"></button>
     <div id="toast"></div>
+    <label id="languageLabel" for="localeSelect"></label>
+    <select id="localeSelect">
+      <option value="auto"></option>
+      <option value="en"></option>
+      <option value="zh-CN"></option>
+      <option value="ja"></option>
+    </select>
     <button id="openExampleBtn"></button>
     <button id="openSidePanelBtn"></button>
+    <button id="openSetupBtn"></button>
   `;
 }
 
@@ -150,7 +188,13 @@ function installChromeMock(options: PopupChromeMockOptions): {
   const chromeMock = {
     storage: {
       local: {
-        get: vi.fn().mockResolvedValue({ mcpWsUrl: 'ws://127.0.0.1:22335/default' }),
+        get: vi.fn().mockResolvedValue({
+          'connections.endpoints.v1': {
+            opencodeBaseUrl: 'http://127.0.0.1:4096',
+            bridgeBaseUrl: 'http://127.0.0.1:22334',
+            bridgeWsUrl: 'ws://127.0.0.1:22335/default',
+          },
+        }),
         set: storageSet,
       },
     },
@@ -186,6 +230,12 @@ function clickOpenSidePanelButton(): void {
   const openSidePanelBtn = document.getElementById('openSidePanelBtn') as HTMLButtonElement | null;
   expect(openSidePanelBtn).not.toBeNull();
   openSidePanelBtn?.click();
+}
+
+function clickSetupButton(): void {
+  const openSetupBtn = document.getElementById('openSetupBtn') as HTMLButtonElement | null;
+  expect(openSetupBtn).not.toBeNull();
+  openSetupBtn?.click();
 }
 
 async function waitForFallbackUrl(tabsCreate: ReturnType<typeof vi.fn>): Promise<URL> {

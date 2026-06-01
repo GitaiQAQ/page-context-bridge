@@ -5,6 +5,7 @@
 
 import { html, type TemplateResult } from 'lit';
 import { classMap } from 'lit/directives/class-map.js';
+import { t, tf } from './i18n';
 
 export interface RenderContextTabInput {
   active: boolean;
@@ -61,18 +62,18 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
     <div class="tab-content ${classMap({ active: input.active })} flex flex-col flex-1 min-h-0">
       <div class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
         <div class="flex flex-col gap-0.5">
-          <span class="text-xs font-bold uppercase tracking-[0.18em] opacity-60">What AI sees</span>
-          <span class="text-[11px] opacity-55"
-            >Preview the page context OpenCode receives before it starts working</span
+          <span class="text-xs font-bold uppercase tracking-[0.18em] opacity-60"
+            >${t('whatAiSees')}</span
           >
+          <span class="text-[11px] opacity-55">${t('aiViewSubtitle')}</span>
         </div>
         <button
           class="tooltip tooltip-bottom btn btn-xs btn-ghost ml-auto"
-          data-tip="Reload page context after the page changes or exposes new data"
-          title="Reload page context after the page changes or exposes new data"
+          data-tip=${t('reloadPageContext')}
+          title=${t('reloadPageContext')}
           @click=${input.onRefresh}
         >
-          Refresh
+          ${t('refresh')}
         </button>
       </div>
       <div class="grid grid-cols-[minmax(240px,320px)_1fr] flex-1 min-h-0">
@@ -80,73 +81,71 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
         <div class="border-r border-base-300 bg-base-100 overflow-auto">
           <div class="border-b border-base-200 p-3">
             <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-2">
-              Current Page
+              ${t('currentPage')}
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">App</div>
+                <div class="stat-title text-[10px]">${t('app')}</div>
                 <div class="stat-value text-sm font-bold">${input.contextAppValue}</div>
               </div>
               <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">Scene</div>
+                <div class="stat-title text-[10px]">${t('scene')}</div>
                 <div class="stat-value text-sm font-bold">${input.contextSceneValue}</div>
               </div>
               <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">Tab</div>
+                <div class="stat-title text-[10px]">${t('tab')}</div>
                 <div class="stat-value text-sm font-bold">${input.contextTabValue}</div>
               </div>
               <div class="stat bg-base-200 rounded-lg p-2">
-                <div class="stat-title text-[10px]">Route</div>
+                <div class="stat-title text-[10px]">${t('route')}</div>
                 <div class="stat-value text-sm font-bold">${input.contextRouteValue}</div>
               </div>
             </div>
           </div>
           <div class="border-b border-base-200 p-3">
             <div class="flex items-center justify-between mb-2">
-              <div class="text-xs font-bold uppercase tracking-wide opacity-50">AI Briefing</div>
-              <span class="badge badge-ghost badge-xs">${input.manifestStatus}</span>
+              <div class="text-xs font-bold uppercase tracking-wide opacity-50">
+                ${t('aiBriefing')}
+              </div>
+              <span class="text-[11px] opacity-50">${input.manifestStatus}</span>
             </div>
             <div class="text-[11px] opacity-55 mb-2">${capabilityBriefing}</div>
             <div class="grid grid-cols-3 gap-2">
               <div class="rounded-lg border border-base-300 bg-base-200 px-2 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">Namespaces</div>
+                <div class="text-[10px] uppercase tracking-wide opacity-50">${t('namespaces')}</div>
                 <div class="text-sm font-bold">${input.contextNamespaceCount}</div>
               </div>
               <div class="rounded-lg border border-base-300 bg-base-200 px-2 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">Data</div>
+                <div class="text-[10px] uppercase tracking-wide opacity-50">${t('data')}</div>
                 <div class="text-sm font-bold">${input.contextResourceCount}</div>
               </div>
               <div class="rounded-lg border border-base-300 bg-base-200 px-2 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">Skills</div>
+                <div class="text-[10px] uppercase tracking-wide opacity-50">${t('skills')}</div>
                 <div class="text-sm font-bold">${input.contextSkillCount}</div>
               </div>
             </div>
           </div>
           <div class="border-b border-base-200 p-3">
-            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">Page Areas</div>
-            <div class="text-[11px] opacity-55 mb-2">
-              Functional areas this page exposes for page-aware agent work.
+            <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
+              ${t('pageAreas')}
             </div>
+            <div class="text-[11px] opacity-55 mb-2">${t('functionalAreasExposed')}</div>
             <div id="contextNamespacesList">${input.contextNamespacesListHtml}</div>
           </div>
           <div class="border-b border-base-200 p-3">
             <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              Readable Data
+              ${t('readableData')}
             </div>
-            <div class="text-[11px] opacity-55 mb-2">
-              Structured page data OpenCode can inspect when answering or acting.
-            </div>
+            <div class="text-[11px] opacity-55 mb-2">${t('structuredPageData')}</div>
             <div id="contextResourcesList" @click=${input.onResourceClick}>
               ${input.contextResourcesListHtml}
             </div>
           </div>
           <div class="p-3">
             <div class="text-xs font-bold uppercase tracking-wide opacity-50 mb-1">
-              Guided Workflows
+              ${t('guidedWorkflows')}
             </div>
-            <div class="text-[11px] opacity-55 mb-2">
-              Task recipes the page provides so OpenCode can use the right data and tools safely.
-            </div>
+            <div class="text-[11px] opacity-55 mb-2">${t('taskRecipesProvided')}</div>
             <div id="contextSkillsList" @click=${input.onSkillClick}>
               ${input.contextSkillsListHtml}
             </div>
@@ -158,34 +157,37 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
             <div class="card-body p-3 gap-2">
               <div class="flex items-center justify-between gap-2">
                 <div>
-                  <div class="font-bold text-sm">Before OpenCode acts</div>
-                  <p class="text-[11px] opacity-55">
-                    Use this screen to verify what the AI will understand about the current page.
-                  </p>
+                  <div class="font-bold text-sm">${t('beforeOpenCodeActs')}</div>
+                  <p class="text-[11px] opacity-55">${t('aiUnderstandPage')}</p>
                 </div>
-                <div class="flex gap-1.5 flex-wrap justify-end">
-                  <span class="badge badge-ghost badge-sm">${input.contextAppValue}</span>
-                  <span class="badge badge-ghost badge-sm">${input.contextSceneValue}</span>
-                  <span class="badge badge-outline badge-sm">tab ${input.contextTabValue}</span>
+                <div class="max-w-[18rem] truncate text-right text-[11px] opacity-50">
+                  ${input.contextAppValue} · ${input.contextSceneValue} · ${t('tab')}
+                  ${input.contextTabValue}
                 </div>
               </div>
               <div class="rounded-lg border border-base-300 bg-base-200 px-3 py-2">
                 <div class="text-sm font-semibold">${capabilityBriefing}</div>
                 <div class="text-xs opacity-60 mt-1">
-                  This browser route ${input.contextRouteValue} is mapped to app
-                  <strong>${input.contextAppValue}</strong> in scene
-                  <strong>${input.contextSceneValue}</strong>.
+                  ${tf('browserRouteMapped', {
+                    route: input.contextRouteValue,
+                    app: input.contextAppValue,
+                    scene: input.contextSceneValue,
+                  })}
                 </div>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
-                  <div class="text-[10px] uppercase tracking-wide opacity-50">Page Briefing</div>
+                  <div class="text-[10px] uppercase tracking-wide opacity-50">
+                    ${t('pageBriefing')}
+                  </div>
                   <div class="text-sm font-semibold ${input.manifestStatusClass}">
                     ${input.manifestStatus}
                   </div>
                 </div>
                 <div class="rounded-lg border border-base-300 bg-base-100 px-3 py-2">
-                  <div class="text-[10px] uppercase tracking-wide opacity-50">Safety Filters</div>
+                  <div class="text-[10px] uppercase tracking-wide opacity-50">
+                    ${t('safetyFilters')}
+                  </div>
                   <div class="text-sm font-semibold ${input.diffStatusClass}">
                     ${input.diffStatus}
                   </div>
@@ -196,30 +198,24 @@ export function renderContextTab(input: RenderContextTabInput): TemplateResult {
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Hidden from AI</span>
+                <span class="font-bold text-sm">${t('hiddenFromAi')}</span>
                 <span class="text-xs font-semibold ${input.diffStatusClass}"
                   >${input.diffStatus}</span
                 >
               </div>
-              <p class="text-[11px] opacity-55">
-                If the page declares data or workflows that are not safe or enabled for this route,
-                they show up here with the reason.
-              </p>
+              <p class="text-[11px] opacity-55">${t('hiddenItemsExplanation')}</p>
               <div id="contextDiffOutput" class="flex flex-col gap-2">${input.diffOutput}</div>
             </div>
           </div>
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Developer payload</span>
+                <span class="font-bold text-sm">${t('developerPayload')}</span>
                 <span class="text-xs font-semibold ${input.manifestStatusClass}"
                   >${input.manifestStatus}</span
                 >
               </div>
-              <p class="text-[11px] opacity-55">
-                Raw page declaration used by the bridge. This is mainly for developers debugging why
-                something is or is not visible to OpenCode.
-              </p>
+              <p class="text-[11px] opacity-55">${t('developerPayloadDescription')}</p>
               <pre
                 class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
               >
@@ -230,7 +226,7 @@ ${input.manifestOutput}</pre
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Selected data preview</span>
+                <span class="font-bold text-sm">${t('selectedDataPreview')}</span>
                 <span class="text-xs font-semibold ${input.resourceStatusClass}"
                   >${input.resourceStatus}</span
                 >
@@ -245,14 +241,12 @@ ${input.resourceOutput}</pre
           <div class="card bg-base-100 border border-base-300 shadow-sm">
             <div class="card-body p-3 gap-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-sm">Selected workflow prompt</span>
+                <span class="font-bold text-sm">${t('selectedWorkflowPrompt')}</span>
                 <span class="text-xs font-semibold ${input.skillStatusClass}"
                   >${input.skillStatus}</span
                 >
               </div>
-              <p class="text-[11px] opacity-55">
-                Preview the instruction contract the page gives OpenCode for this workflow.
-              </p>
+              <p class="text-[11px] opacity-55">${t('workflowPromptDescription')}</p>
               <pre
                 class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-auto"
               >

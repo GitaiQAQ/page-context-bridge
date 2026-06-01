@@ -97,19 +97,19 @@ describe('updateFeedbackActionStates', () => {
 });
 
 describe('feedbackStatusBadgeClass', () => {
-  it('returns "badge-success" for resolved', () => {
+  it('returns success tone for resolved', () => {
     expect(feedbackStatusBadgeClass('resolved')).toContain('success');
   });
 
-  it('returns "badge-info" for claimed', () => {
+  it('returns info tone for claimed', () => {
     expect(feedbackStatusBadgeClass('claimed')).toContain('info');
   });
 
-  it('returns "badge-ghost" for dismissed', () => {
-    expect(feedbackStatusBadgeClass('dismissed')).toContain('ghost');
+  it('returns muted tone for dismissed', () => {
+    expect(feedbackStatusBadgeClass('dismissed')).toContain('opacity');
   });
 
-  it('returns "badge-warning" for open/default', () => {
+  it('returns warning tone for open/default', () => {
     expect(feedbackStatusBadgeClass('open')).toContain('warning');
     expect(feedbackStatusBadgeClass('in_progress')).toContain('warning');
     expect(feedbackStatusBadgeClass('needs_info')).toContain('warning');
@@ -117,17 +117,17 @@ describe('feedbackStatusBadgeClass', () => {
 });
 
 describe('feedbackPushAgentBadgeClass', () => {
-  it('returns ghost badge for null status', () => {
-    expect(feedbackPushAgentBadgeClass(null)).toContain('ghost');
+  it('returns muted tone for null status', () => {
+    expect(feedbackPushAgentBadgeClass(null)).toContain('opacity');
   });
 
-  it('returns ghost badge when disabled', () => {
+  it('returns muted tone when disabled', () => {
     expect(
       feedbackPushAgentBadgeClass({ enabled: false, readiness: 'disabled', mode: 'disabled' }),
-    ).toContain('ghost');
+    ).toContain('opacity');
   });
 
-  it('returns error badge when last launch failed', () => {
+  it('returns error tone when last launch failed', () => {
     expect(
       feedbackPushAgentBadgeClass({
         enabled: true,
@@ -138,7 +138,7 @@ describe('feedbackPushAgentBadgeClass', () => {
     ).toContain('error');
   });
 
-  it('returns success badge when last launch succeeded', () => {
+  it('returns success tone when last launch succeeded', () => {
     expect(
       feedbackPushAgentBadgeClass({
         enabled: true,
@@ -149,7 +149,7 @@ describe('feedbackPushAgentBadgeClass', () => {
     ).toContain('success');
   });
 
-  it('returns info badge when ready but no launch yet', () => {
+  it('returns info tone when ready but no launch yet', () => {
     expect(
       feedbackPushAgentBadgeClass({
         enabled: true,

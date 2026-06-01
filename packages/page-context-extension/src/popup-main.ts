@@ -6,12 +6,17 @@ import { BRIDGE_METHODS } from '@page-context/shared-protocol';
 import {
   getExtensionApi,
   runtimeGetUrl,
-  storageLocalGet,
-  storageLocalSet,
   tabsCreate,
   tabsQuery,
   windowsGetCurrent,
 } from './extension-api';
+import {
+  getCurrentLocale,
+  getLocalePreference,
+  setLocalePreference,
+  t,
+  type LocalePreference,
+} from './i18n';
 import { sendRuntimeRequest } from './runtime-rpc';
 import {
   DEFAULT_CONSOLE_URL,
@@ -26,18 +31,22 @@ interface StatusResponse {
   pendingToolCalls: number;
 }
 
-const DEFAULT_WS_URL = 'ws://127.0.0.1:22335/default';
 const FALLBACK_CONSOLE_UI_PATH = 'sidepanel.html';
 
 const statusDot = document.getElementById('statusDot') as HTMLSpanElement;
 const statusText = document.getElementById('statusText') as HTMLDivElement;
-const wsUrlInput = document.getElementById('wsUrlInput') as HTMLInputElement;
 const pendingCalls = document.getElementById('pendingCalls') as HTMLDivElement;
-const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
 const reconnectBtn = document.getElementById('reconnectBtn') as HTMLButtonElement;
 const toast = document.getElementById('toast') as HTMLDivElement;
 const openExampleBtn = document.getElementById('openExampleBtn') as HTMLButtonElement;
 const openSidePanelBtn = document.getElementById('openSidePanelBtn') as HTMLButtonElement;
+const openSetupBtn = document.getElementById('openSetupBtn') as HTMLButtonElement;
+const localeSelect = document.getElementById('localeSelect') as HTMLSelectElement;
+const appTitle = document.getElementById('appTitle') as HTMLSpanElement | null;
+const popupSubtitle = document.getElementById('popupSubtitle') as HTMLDivElement | null;
+const statusLabel = document.getElementById('statusLabel') as HTMLDivElement | null;
+const pendingCallsLabel = document.getElementById('pendingCallsLabel') as HTMLDivElement | null;
+const languageLabel = document.getElementById('languageLabel') as HTMLLabelElement | null;
 
 type ChromeWithOptionalSidePanel = typeof chrome & {
   sidePanel?: {
@@ -60,50 +69,48 @@ function showToast(message: string, type: 'success' | 'error' = 'success'): void
   }, 2_000);
 }
 
+function localizeStaticText(): void {
+  document.documentElement.lang = getCurrentLocale();
+  document.title = t('appName');
+  if (appTitle) appTitle.textContent = t('appName');
+  if (popupSubtitle) popupSubtitle.textContent = t('popupSubtitle');
+  if (statusLabel) statusLabel.textContent = t('status');
+  if (pendingCallsLabel) pendingCallsLabel.textContent = t('pendingToolCalls');
+  if (languageLabel) languageLabel.textContent = t('language');
+  openSidePanelBtn.textContent = t('workspaceAction');
+  openSetupBtn.textContent = t('setup');
+  reconnectBtn.textContent = t('reconnect');
+  openExampleBtn.textContent = t('contextTestPage');
+  localeSelect.value = getLocalePreference();
+  localeSelect.options[0].textContent = t('systemLanguage');
+  localeSelect.options[1].textContent = t('english');
+  localeSelect.options[2].textContent = t('simplifiedChinese');
+  localeSelect.options[3].textContent = t('japanese');
+}
+
 async function refreshStatus(): Promise<void> {
   try {
     const status = await sendRuntimeRequest<StatusResponse>(BRIDGE_METHODS.extensionStatusGet);
     statusDot.className = `w-2.5 h-2.5 rounded-full shrink-0 ${status.connected ? 'bg-success' : 'bg-error'}`;
-    statusText.textContent = status.connected ? `Connected to ${status.wsUrl}` : 'Disconnected';
+    statusText.textContent = status.connected
+      ? `${t('connected')} ${status.wsUrl}`
+      : t('disconnected');
     pendingCalls.textContent = String(status.pendingToolCalls ?? 0);
   } catch {
     statusDot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-error';
-    statusText.textContent = 'Extension not running';
+    statusText.textContent = t('extensionNotRunning');
   }
-}
-
-async function loadCurrentUrl(): Promise<void> {
-  const result = await storageLocalGet({ mcpWsUrl: DEFAULT_WS_URL });
-  wsUrlInput.value = result.mcpWsUrl as string;
 }
 
 async function reconnect(): Promise<void> {
   try {
     await sendRuntimeRequest(BRIDGE_METHODS.extensionReconnect);
-    showToast('Reconnecting...');
+    showToast(t('reconnecting'));
   } catch (error) {
     showToast(error instanceof Error ? error.message : String(error), 'error');
   } finally {
     setTimeout(() => void refreshStatus(), 1_200);
   }
-}
-
-async function saveAndReconnect(): Promise<void> {
-  const url = wsUrlInput.value.trim();
-  if (!url) {
-    showToast('Please enter a WebSocket URL', 'error');
-    return;
-  }
-
-  try {
-    new URL(url);
-  } catch {
-    showToast('Invalid URL format', 'error');
-    return;
-  }
-
-  await storageLocalSet({ mcpWsUrl: url });
-  await reconnect();
 }
 
 /**
@@ -139,7 +146,7 @@ function buildFallbackConsoleUiUrl(binding: RuntimeExplicitTabBinding): string {
   return url.toString();
 }
 
-async function launchConsoleUi(): Promise<void> {
+async function launchConsoleUi(initialTab?: 'connections'): Promise<void> {
   await setLaunchUrlForSurface(SIDEPANEL_SURFACE.default, DEFAULT_CONSOLE_URL);
   const binding = await getLauncherRuntimeBinding();
 
@@ -160,18 +167,29 @@ async function launchConsoleUi(): Promise<void> {
     }
   }
 
-  await tabsCreate({ url: buildFallbackConsoleUiUrl(binding) });
+  const url = new URL(buildFallbackConsoleUiUrl(binding));
+  if (initialTab) {
+    url.searchParams.set('tab', initialTab);
+  }
+  await tabsCreate({ url: url.toString() });
 }
 
-saveBtn.addEventListener('click', () => void saveAndReconnect());
 reconnectBtn.addEventListener('click', () => void reconnect());
+localeSelect.addEventListener('change', () => {
+  setLocalePreference(localeSelect.value as LocalePreference);
+  localizeStaticText();
+  void refreshStatus();
+});
 openExampleBtn.addEventListener('click', () => {
   void tabsCreate({ url: 'https://unpkg.com/@page-context/example/dist/example.html' });
 });
 openSidePanelBtn.addEventListener('click', async () => {
   await launchConsoleUi();
 });
+openSetupBtn.addEventListener('click', async () => {
+  await launchConsoleUi('connections');
+});
 
-void loadCurrentUrl();
+localizeStaticText();
 void refreshStatus();
 setInterval(() => void refreshStatus(), 2_000);

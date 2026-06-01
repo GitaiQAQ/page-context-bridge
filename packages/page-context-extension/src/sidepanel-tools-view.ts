@@ -1,6 +1,8 @@
 import { html, type TemplateResult } from 'lit';
 
 import type { ToolTestSelection } from './sidepanel-types';
+import { t } from './i18n';
+import { renderTabHeader } from './sidepanel-ui';
 
 export interface RenderToolsTabInput {
   active: boolean;
@@ -32,24 +34,21 @@ export interface RenderToolsTabInput {
 export function renderToolsTab(input: RenderToolsTabInput): TemplateResult {
   return html`
     <div class="tab-content ${input.active ? 'active' : ''} flex flex-col flex-1 min-h-0">
-      <div
-        class="flex items-center gap-2 px-3 py-2 bg-base-100 border-b border-base-300 sticky top-0 z-10"
-      >
-        <span class="text-xs font-bold uppercase tracking-wide opacity-60">Context Tools</span>
-        <span
-          data-testid="build-time-label"
-          class="text-xs opacity-50 truncate"
-          title=${input.toolsCount}
+      ${renderTabHeader({
+        title: t('contextTools'),
+        meta: html`<span data-testid="build-time-label" title=${input.toolsCount}
           >${input.toolsCount}</span
-        >
-        <button class="btn btn-xs btn-ghost ml-auto" @click=${input.onRefresh}>Refresh</button>
-      </div>
-      <div class="px-3 py-1.5 border-b border-base-300 bg-base-200 sticky top-[2.75rem] z-20">
+        >`,
+        action: html`<button class="btn btn-xs btn-ghost" @click=${input.onRefresh}>
+          ${t('refresh')}
+        </button>`,
+      })}
+      <div class="px-3 py-1.5 border-b border-base-300 bg-base-100 shrink-0">
         <input
           type="search"
           .value=${input.currentFilter}
           @input=${input.onFilterInput}
-          placeholder="Filter by tab / namespace / instance / tool"
+          placeholder=${t('filterToolsPlaceholder')}
           class="input input-sm input-bordered w-full"
         />
       </div>
@@ -73,34 +72,36 @@ export function renderToolsTab(input: RenderToolsTabInput): TemplateResult {
                   <div class="text-xs opacity-60 break-all">${input.toolTestSubtitle}</div>
                 </div>
                 <button class="btn btn-xs btn-ghost" @click=${input.onCloseToolTestPanel}>
-                  Close
+                  ${t('close')}
                 </button>
               </div>
               <div class="flex flex-col gap-1">
-                <label class="label text-xs font-semibold" for="toolTestTabIdInput">Tab ID</label>
+                <label class="label text-xs font-semibold" for="toolTestTabIdInput"
+                  >${t('tabId')}</label
+                >
                 <input
                   id="toolTestTabIdInput"
                   type="number"
                   .value=${input.toolTestTabIdValue}
                   .disabled=${input.toolTestTabIdDisabled}
                   @input=${input.onToolTestTabIdInput}
-                  placeholder="Optional for built-in tools"
+                  placeholder=${t('tabIdOptionalHint')}
                   class="input input-sm input-bordered"
                 />
               </div>
               <div class="flex flex-col gap-1">
                 <label class="label text-xs font-semibold" for="toolTestSchemaOutput"
-                  >Input Schema</label
+                  >${t('inputSchema')}</label
                 >
                 <pre
-                  class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words min-h-[3rem]"
+                  class="bg-base-200 rounded-sm p-2 text-xs font-mono whitespace-pre-wrap break-words min-h-[3rem]"
                 >
 ${input.toolTestSchemaOutput}</pre
                 >
               </div>
               <div class="flex flex-col gap-1">
                 <label class="label text-xs font-semibold" for="toolTestArgsInput"
-                  >RPC Args (JSON)</label
+                  >${t('rpcArgsJson')}</label
                 >
                 <textarea
                   id="toolTestArgsInput"
@@ -111,23 +112,25 @@ ${input.toolTestSchemaOutput}</pre
               </div>
               <div class="flex gap-2 justify-end">
                 <button class="btn btn-xs btn-ghost" @click=${input.onResetToolTestArgs}>
-                  Reset Args
+                  ${t('resetArgs')}
                 </button>
                 <button
                   class="btn btn-xs btn-primary"
                   .disabled=${input.toolTestRunning}
                   @click=${input.onRunToolDebugCall}
                 >
-                  Run RPC Call
+                  ${t('runRpcCall')}
                 </button>
               </div>
               <div class="text-xs font-semibold ${input.toolTestStatusClass}">
                 ${input.toolTestStatusText}
               </div>
               <div class="flex flex-col gap-1">
-                <label class="label text-xs font-semibold" for="toolTestOutput">Output</label>
+                <label class="label text-xs font-semibold" for="toolTestOutput"
+                  >${t('output')}</label
+                >
                 <pre
-                  class="bg-base-200 rounded-lg p-2 text-xs font-mono whitespace-pre-wrap break-words min-h-[3rem]"
+                  class="bg-base-200 rounded-sm p-2 text-xs font-mono whitespace-pre-wrap break-words min-h-[3rem]"
                 >
 ${input.toolTestOutput}</pre
                 >

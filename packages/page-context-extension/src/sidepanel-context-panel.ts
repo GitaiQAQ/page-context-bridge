@@ -20,6 +20,7 @@ import type {
 import { buildContextManifestDiff } from './context-manifest-diff';
 export { buildContextManifestDiff } from './context-manifest-diff';
 import { formatJson } from './sidepanel-tree-renderer';
+import { t } from './i18n';
 
 /**
  * Render the full context manifest panel (legacy inline template kept for compatibility).
@@ -39,14 +40,14 @@ export function renderContextManifestPanel(
       ${effectiveManifest.resources.length > 0
         ? effectiveManifest.resources.map((resource) => renderContextResourceCard(resource))
         : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
-            <p class="text-xs">This page does not expose any readable data yet.</p>
+            <p class="text-xs">${t('noReadableDataYet')}</p>
           </div>`}
     </div>
     <div class="context-skills-list">
       ${effectiveManifest.skills.length > 0
         ? effectiveManifest.skills.map((skill) => renderContextSkillCard(skill))
         : html`<div class="flex flex-col items-center justify-center p-4 text-base-content/40">
-            <p class="text-xs">This page does not expose any runnable skills yet.</p>
+            <p class="text-xs">${t('noRunnableSkillsYet')}</p>
           </div>`}
     </div>
   `;
@@ -79,18 +80,18 @@ export function renderContextEmptyPanel(
       ${message}
     </div>
     <pre class="context-manifest-output">
-${isError ? formatJson({ error: message }) : '(manifest not loaded)'}</pre
+${isError ? formatJson({ error: message }) : t('manifestNotLoaded')}</pre
     >
-    <div class="context-diff-status text-xs font-semibold opacity-60">Idle</div>
+    <div class="context-diff-status text-xs font-semibold opacity-60">${t('idle')}</div>
     <div class="context-diff-output">
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
-        <p class="text-xs opacity-60">(manifest diff not available)</p>
+        <p class="text-xs opacity-60">${t('manifestDiffNotAvailable')}</p>
       </div>
     </div>
-    <div class="context-resource-status text-xs font-semibold opacity-60">Idle</div>
-    <pre class="context-resource-output">(select a data card to inspect its payload)</pre>
-    <div class="context-skill-status text-xs font-semibold opacity-60">Idle</div>
-    <pre class="context-skill-output">(select a skill card to preview its prompt)</pre>
+    <div class="context-resource-status text-xs font-semibold opacity-60">${t('idle')}</div>
+    <pre class="context-resource-output">${t('selectDataCardToInspect')}</pre>
+    <div class="context-skill-status text-xs font-semibold opacity-60">${t('idle')}</div>
+    <pre class="context-skill-output">${t('selectSkillCardToPreview')}</pre>
   `;
 }
 
@@ -111,34 +112,32 @@ export function renderContextDiffPanel(
     <div
       class="context-diff-status text-xs font-semibold ${hasDiff ? 'text-success' : 'opacity-60'}"
     >
-      ${hasDiff ? 'Diff detected' : 'No diff'}
+      ${hasDiff ? t('diffDetected') : t('noDiff')}
     </div>
     <div class="context-diff-output">
       ${renderDiffCard(
-        'Namespaces',
+        t('namespaces'),
         diff.rawNamespaces,
         diff.effectiveNamespaces,
         debug?.hiddenNamespaces ?? diff.hiddenNamespaces.map((id) => ({ id, reason: 'unknown' })),
       )}
       ${renderDiffCard(
-        'Resources',
+        t('resources'),
         diff.rawResources,
         diff.effectiveResources,
         debug?.hiddenResources ?? diff.hiddenResources.map((id) => ({ id, reason: 'unknown' })),
       )}
       ${renderDiffCard(
-        'Skills',
+        t('skills'),
         diff.rawSkills,
         diff.effectiveSkills,
         debug?.hiddenSkills ?? diff.hiddenSkills.map((id) => ({ id, reason: 'unknown' })),
       )}
       ${renderTrimmedToolsCard(debug)}
       <div class="border border-base-300 rounded-lg bg-base-100 p-2.5">
-        <h4 class="text-xs font-bold mb-1">Scene</h4>
+        <h4 class="text-xs font-bold mb-1">${t('scene')}</h4>
         <p class="text-xs opacity-70">
-          ${diff.sceneChanged
-            ? 'Scene changed between raw and effective manifest.'
-            : 'Scene is unchanged.'}
+          ${diff.sceneChanged ? t('sceneChanged') : t('sceneUnchanged')}
         </p>
       </div>
     </div>
@@ -199,37 +198,30 @@ function renderTrimmedToolsCard(debug: ContextManifestFilterDebug | null): Templ
 export function formatReason(reason: string): string {
   switch (reason) {
     case 'namespace_disabled':
-      return 'disabled by namespace';
+      return t('disabledByNamespace');
     case 'builtin_tool_disabled':
-      return 'disabled by built-in tool filter';
+      return t('disabledByBuiltinToolFilter');
     case 'page_tool_disabled':
-      return 'disabled by page tool filter';
+      return t('disabledByPageToolFilter');
     case 'scene_filtered':
-      return 'filtered by scene';
+      return t('filteredByScene');
     default:
-      return 'unknown reason';
+      return t('unknownReason');
   }
 }
 
 /** Render a namespace descriptor as a compact domain card. */
 export function renderContextNamespaceCard(namespace: ContextNamespaceDescriptor): TemplateResult {
-  const tags = namespace.tags ?? [];
-
   return html`
-    <div class="card card-compact bg-base-100 border border-base-300 shadow-sm mb-2">
-      <div class="card-body p-2.5 gap-1">
+    <div class="border-b border-base-200 py-2">
+      <div class="flex flex-col gap-1">
         <div class="flex items-start justify-between gap-2">
-          <div class="card-title text-xs font-bold">${namespace.title}</div>
-          <span class="badge badge-xs badge-primary">${namespace.namespace}</span>
+          <div class="text-xs font-bold">${namespace.title}</div>
+          <span class="text-[11px] font-mono opacity-55">${namespace.namespace}</span>
         </div>
         <p class="text-xs opacity-60 break-words">
-          ${namespace.description ?? `Declared namespace ${namespace.namespace}.`}
+          ${namespace.description ?? t('declaredNamespace', { namespace: namespace.namespace })}
         </p>
-        ${tags.length > 0
-          ? html`<div class="flex gap-1 flex-wrap mt-0.5">
-              ${tags.map((tag) => html`<span class="badge badge-xs badge-ghost">${tag}</span>`)}
-            </div>`
-          : nothing}
       </div>
     </div>
   `;
@@ -237,38 +229,26 @@ export function renderContextNamespaceCard(namespace: ContextNamespaceDescriptor
 
 /** Render a resource descriptor as a data card with a preview button. */
 export function renderContextResourceCard(resource: ContextResourceDescriptor): TemplateResult {
-  const tags = resource.tags ?? [];
-
   return html`
-    <div class="card card-compact bg-base-100 border border-base-300 shadow-sm mb-2">
-      <div class="card-body p-2.5 gap-1">
-        <div class="card-title text-xs font-bold">${resource.title}</div>
+    <div class="border-b border-base-200 py-2">
+      <div class="flex flex-col gap-1">
+        <div class="text-xs font-bold">${resource.title}</div>
         <p class="text-xs opacity-60 break-words">${resource.description ?? resource.id}</p>
-        <div class="flex gap-1.5 flex-wrap">
-          <span class="badge badge-xs badge-primary">${resource.namespace}</span>
-          <span class="badge badge-xs badge-ghost">${resource.kind ?? 'resource'}</span>
-          ${resource.mimeType
-            ? html`<span class="badge badge-xs badge-outline">${resource.mimeType}</span>`
-            : nothing}
+        <div class="text-[11px] font-mono opacity-55">
+          ${resource.namespace} ·
+          ${resource.kind ?? 'resource'}${resource.mimeType ? ` · ${resource.mimeType}` : ''}
         </div>
-        ${tags.length > 0
-          ? html`<div class="flex gap-1 flex-wrap mt-0.5">
-              ${tags.map((tag) => html`<span class="badge badge-xs badge-ghost">${tag}</span>`)}
-            </div>`
-          : nothing}
-        <p class="text-[11px] opacity-55">
-          OpenCode can read this page data when it needs grounded evidence.
-        </p>
-        <div class="card-actions mt-1">
+        <p class="text-[11px] opacity-55">${t('opencodeCanReadData')}</p>
+        <div class="mt-1">
           <button
-            class="tooltip tooltip-bottom btn btn-xs btn-primary"
+            class="tooltip tooltip-bottom btn btn-xs btn-ghost"
             type="button"
             data-tip="Preview the exact text or JSON OpenCode would receive from this data source"
             data-action="read-resource"
             data-resource-id="${resource.id}"
             title="Preview the exact text or JSON OpenCode would receive from this data source"
           >
-            Preview Data
+            ${t('previewData')}
           </button>
         </div>
       </div>
@@ -278,45 +258,28 @@ export function renderContextResourceCard(resource: ContextResourceDescriptor): 
 
 /** Render a skill descriptor as a workflow card with a preview button. */
 export function renderContextSkillCard(skill: ContextSkillDescriptor): TemplateResult {
-  const intentTags = skill.intentTags ?? [];
   const linkedResourceCount = skill.resourceIds?.length ?? 0;
   const linkedToolCount = skill.toolNames?.length ?? 0;
 
   return html`
-    <div class="card card-compact bg-base-100 border border-base-300 shadow-sm mb-2">
-      <div class="card-body p-2.5 gap-1">
-        <div class="card-title text-xs font-bold">${skill.title}</div>
+    <div class="border-b border-base-200 py-2">
+      <div class="flex flex-col gap-1">
+        <div class="text-xs font-bold">${skill.title}</div>
         <p class="text-xs opacity-60 break-words">${skill.description}</p>
-        <div class="flex gap-1.5 flex-wrap">
-          <span class="badge badge-xs badge-primary">${skill.namespace}</span>
-          <span class="badge badge-xs badge-ghost">${skill.mode ?? 'analysis'}</span>
-          <span class="badge badge-xs badge-outline">
-            ${linkedResourceCount} ${linkedResourceCount === 1 ? 'resource' : 'resources'}
-          </span>
-          <span class="badge badge-xs badge-outline">
-            ${linkedToolCount} ${linkedToolCount === 1 ? 'tool' : 'tools'}
-          </span>
+        <div class="text-[11px] font-mono opacity-55">
+          ${`${skill.namespace} · ${skill.mode ?? 'analysis'} · ${linkedResourceCount} ${linkedResourceCount === 1 ? 'resource' : 'resources'} · ${linkedToolCount} ${linkedToolCount === 1 ? 'tool' : 'tools'}`}
         </div>
-        ${intentTags.length > 0
-          ? html`<div class="flex gap-1 flex-wrap mt-0.5">
-              ${intentTags.map(
-                (tag) => html`<span class="badge badge-xs badge-ghost">${tag}</span>`,
-              )}
-            </div>`
-          : nothing}
-        <p class="text-[11px] opacity-55">
-          A page-provided recipe that helps OpenCode choose the right data and tools.
-        </p>
-        <div class="card-actions mt-1">
+        <p class="text-[11px] opacity-55">${t('pageProvidedRecipe')}</p>
+        <div class="mt-1">
           <button
-            class="tooltip tooltip-bottom btn btn-xs btn-primary"
+            class="tooltip tooltip-bottom btn btn-xs btn-ghost"
             type="button"
             data-tip="Preview the workflow instructions before OpenCode uses them"
             data-action="preview-skill"
             data-skill-id="${skill.id}"
             title="Preview the workflow instructions before OpenCode uses them"
           >
-            Preview Workflow
+            ${t('previewWorkflow')}
           </button>
         </div>
       </div>

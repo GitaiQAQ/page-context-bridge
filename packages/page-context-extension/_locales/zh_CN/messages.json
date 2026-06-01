@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "Page Context Bridge",
+    "description": "扩展名称"
+  },
+  "appDescription": {
+    "message": "将 OpenCode 连接到当前浏览器页面，并向 MCP 客户端暴露页面感知工具。",
+    "description": "扩展描述"
+  }
+}

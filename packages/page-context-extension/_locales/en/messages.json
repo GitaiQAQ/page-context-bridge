@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "Page Context Bridge",
+    "description": "Extension name"
+  },
+  "appDescription": {
+    "message": "Connect OpenCode to the current browser page and expose page-aware tools to MCP clients.",
+    "description": "Extension description"
+  }
+}

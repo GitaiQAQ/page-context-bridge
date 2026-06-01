@@ -3,14 +3,14 @@ import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 
-import './connection-status-badge';
-
 import { ConnectionsController, getConnectionsStore } from './connections-controller';
 import {
+  DEFAULT_CONNECTION_ENDPOINTS,
   loadConnectionEndpoints,
   saveConnectionEndpoints,
   type ConnectionEndpointsConfig,
 } from './connections-endpoints';
+import { t } from './i18n';
 
 function isUnsupportedConnectionsActionError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -33,11 +33,11 @@ function connectionKindTitle(kind: ConnectionKind): string {
     case 'opencode-bridge-ws':
       return 'OpenCode Bridge WS';
     case 'page-tools':
-      return 'Page Tools';
+      return t('pageTools');
     case 'main-world-host':
-      return 'Main World Host';
+      return t('mainWorldHost');
     case 'agentation-main-world-host':
-      return 'Agentation Main World Host';
+      return t('agentationMainWorldHost');
     default:
       return kind;
   }
@@ -325,53 +325,69 @@ export class ConnectionsPanel extends LitElement {
     const validation = this.getEndpointValidation(input.value, input.protocols);
     const needsAttention = Boolean(input.descriptor && isAttentionConnection(input.descriptor));
     const statusReason = input.descriptor?.statusReason;
+    const exampleValue = DEFAULT_CONNECTION_ENDPOINTS[input.field];
 
     return html`
       <section
-        class="rounded-2xl border bg-base-100 p-3 shadow-sm flex flex-col gap-3 min-w-0 ${validation ||
-        needsAttention
-          ? 'border-error/50'
+        class="flex flex-col gap-2 p-3 min-w-0 ${validation || needsAttention
+          ? 'bg-error/5'
           : input.descriptor && isHealthyConnection(input.descriptor)
-            ? 'border-success/40'
-            : 'border-base-300'}"
+            ? 'bg-success/5'
+            : ''}"
       >
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-50">
+            <div class="text-[10px] font-bold uppercase tracking-[0.18em] opacity-45">
               ${input.eyebrow}
             </div>
             <h3 class="text-sm font-bold leading-tight">${input.title}</h3>
           </div>
-          ${input.descriptor
-            ? html`<connection-status-badge
-                connection-id=${input.descriptor.id}
-              ></connection-status-badge>`
-            : html`<span class="badge badge-outline badge-sm"
-                >${input.emptyStatusLabel ?? 'Not registered'}</span
-              >`}
+          <span class="text-[11px] opacity-50 whitespace-nowrap">
+            ${input.descriptor?.status ?? input.emptyStatusLabel ?? t('notRegistered')}
+          </span>
         </div>
 
         <label class="form-control flex flex-col gap-1">
-          <span class="text-xs font-semibold opacity-70">Endpoint</span>
-          <input
-            type="text"
-            class="input input-sm input-bordered font-mono ${validation ? 'input-error' : ''}"
-            .value=${input.value}
-            placeholder=${input.placeholder}
-            title=${input.helper}
-            @input=${(event: Event) => {
-              this.endpoints = {
-                ...this.endpoints,
-                [input.field]: (event.target as HTMLInputElement).value,
-              };
-            }}
-          />
+          <span class="text-xs font-semibold opacity-70">${t('endpoint')}</span>
+          <div class="join w-full">
+            <input
+              type="text"
+              class="input input-sm input-bordered join-item min-w-0 flex-1 font-mono ${validation
+                ? 'input-error'
+                : ''}"
+              .value=${input.value}
+              placeholder=${input.placeholder}
+              title=${input.helper}
+              @input=${(event: Event) => {
+                this.endpoints = {
+                  ...this.endpoints,
+                  [input.field]: (event.target as HTMLInputElement).value,
+                };
+              }}
+            />
+            <button
+              type="button"
+              class="btn btn-sm join-item border-base-300 bg-base-200 px-2 font-mono text-[10px] normal-case"
+              title=${`${t('example')}: ${exampleValue}`}
+              @click=${() => {
+                this.endpoints = { ...this.endpoints, [input.field]: exampleValue };
+              }}
+            >
+              ${t('useExample')}
+            </button>
+          </div>
+          <div class="flex items-center gap-1 text-[10px] leading-relaxed opacity-60">
+            <span class="font-semibold uppercase tracking-wide">${t('example')}</span>
+            <code class="truncate rounded-sm bg-base-200 px-1.5 py-0.5 font-mono"
+              >${exampleValue}</code
+            >
+          </div>
         </label>
 
-        <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
-          <span class="opacity-50">Check</span>
+        <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px]">
+          <span class="opacity-50">${t('check')}</span>
           <span class="opacity-70 leading-relaxed">${input.check}</span>
-          <span class="opacity-50">Current</span>
+          <span class="opacity-50">${t('current')}</span>
           <span
             class="font-mono opacity-80 truncate"
             title=${input.descriptor?.endpoint ?? input.value}
@@ -380,21 +396,21 @@ export class ConnectionsPanel extends LitElement {
           </span>
           ${statusReason
             ? html`
-                <span class="opacity-50">Reason</span>
+                <span class="opacity-50">${t('reason')}</span>
                 <span class="opacity-70 break-words">${statusReason}</span>
               `
             : nothing}
           ${validation
             ? html`
-                <span class="opacity-50">Input</span>
+                <span class="opacity-50">${t('input')}</span>
                 <span class="text-error break-words">${validation}</span>
               `
             : nothing}
         </div>
 
-        <p class="text-xs opacity-60 leading-relaxed" title=${input.helper}>${input.helper}</p>
+        <p class="text-[11px] opacity-60 leading-relaxed" title=${input.helper}>${input.helper}</p>
         ${input.actions
-          ? html`<div class="flex justify-end gap-2">${input.actions}</div>`
+          ? html`<div class="flex justify-end gap-2 text-xs">${input.actions}</div>`
           : nothing}
       </section>
     `;
@@ -407,7 +423,7 @@ export class ConnectionsPanel extends LitElement {
 
     return html`
       <div
-        class="rounded-xl border bg-base-100 px-3 py-3 shadow-sm flex flex-col gap-2 ${needsAttention
+        class="rounded-md border bg-base-100 px-3 py-3 shadow-sm flex flex-col gap-2 ${needsAttention
           ? 'border-error/50'
           : 'border-base-300'}"
       >
@@ -416,38 +432,38 @@ export class ConnectionsPanel extends LitElement {
             <div class="text-sm font-semibold truncate">${descriptor.label}</div>
             <div class="text-xs opacity-60 truncate" title=${descriptor.id}>${descriptor.id}</div>
           </div>
-          <connection-status-badge connection-id=${descriptor.id}></connection-status-badge>
+          <span class="text-[11px] opacity-50">${descriptor.status}</span>
         </div>
         <div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
-          <span class="opacity-50">Endpoint</span>
+          <span class="opacity-50">${t('endpoint')}</span>
           <span class="font-mono opacity-80 truncate" title=${descriptor.endpoint ?? ''}>
             ${descriptor.endpoint ?? '-'}
           </span>
-          <span class="opacity-50">Updated</span>
+          <span class="opacity-50">${t('updated')}</span>
           <span class="opacity-70">${formatUpdatedAt(descriptor.updatedAt)}</span>
           ${descriptor.statusReason
             ? html`
-                <span class="opacity-50">Reason</span>
+                <span class="opacity-50">${t('reason')}</span>
                 <span class="opacity-70 break-words">${descriptor.statusReason}</span>
               `
             : nothing}
         </div>
         <div class="flex items-center justify-end gap-2">
           <button
-            class="btn btn-xs btn-outline"
+            class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
             ?disabled=${!reconnectEnabled}
-            title=${reconnectEnabled ? 'Retry this connection' : 'Reconnect is not supported'}
+            title=${reconnectEnabled ? t('retry') : t('disconnectNotSupported')}
             @click=${() => void this.handleAction(descriptor.id, 'reconnect')}
           >
-            Retry
+            ${t('retry')}
           </button>
           <button
-            class="btn btn-xs btn-ghost"
+            class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
             ?disabled=${!disconnectEnabled}
-            title=${disconnectEnabled ? 'Close this connection' : 'Disconnect is not supported'}
+            title=${disconnectEnabled ? t('closeConnection') : t('disconnectNotSupported')}
             @click=${() => void this.handleAction(descriptor.id, 'disconnect')}
           >
-            Close
+            ${t('close')}
           </button>
         </div>
       </div>
@@ -473,35 +489,26 @@ export class ConnectionsPanel extends LitElement {
     );
     const readinessTitle =
       attentionCount > 0
-        ? 'Needs attention'
+        ? t('needsAttention')
         : configured
-          ? 'Ready to connect'
-          : 'Configuration incomplete';
+          ? t('readyToConnect')
+          : t('configurationIncomplete');
     const readinessBody =
       attentionCount > 0
-        ? 'Run diagnosis or open the affected endpoint card to see the next action.'
+        ? t('needAttentionBody')
         : configured
-          ? 'Endpoints are configured. Use OpenCode to start or resume a session.'
-          : 'Add the OpenCode HTTP, Bridge MCP, and Bridge WS endpoints before starting a session.';
+          ? t('endpointsReadyBody')
+          : t('needEndpointsBody');
 
     return html`
       <div class="tab-content active flex flex-col flex-1 min-h-0">
         <div class="border-b border-base-300 bg-base-200/40 p-3 shrink-0 flex flex-col gap-2">
-          <section class="rounded-2xl border border-base-300 bg-base-100 px-3 py-2.5 shadow-sm">
+          <section class="rounded-lg border border-base-300 bg-base-100 px-3 py-2.5 shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex min-w-0 items-center gap-2">
-                <span
-                  class="badge badge-sm ${attentionCount > 0
-                    ? 'badge-error'
-                    : configured
-                      ? 'badge-success'
-                      : 'badge-warning'}"
-                >
-                  ${attentionCount > 0 ? 'blocked' : configured ? 'ready' : 'setup'}
-                </span>
                 <div class="min-w-0">
                   <div class="text-[10px] font-bold uppercase tracking-[0.16em] opacity-50">
-                    Setup & troubleshooting
+                    ${t('setupTroubleshooting')}
                   </div>
                   <div class="truncate text-sm font-bold">${readinessTitle}</div>
                   <div class="truncate text-[11px] opacity-60" title=${readinessBody}>
@@ -510,48 +517,33 @@ export class ConnectionsPanel extends LitElement {
                 </div>
               </div>
               <div class="flex items-center gap-1.5 text-xs">
-                <span class="badge badge-ghost badge-sm tabular-nums">${healthyCount} healthy</span>
-                <span class="badge badge-ghost badge-sm tabular-nums"
-                  >${attentionCount} attention</span
+                <span class="text-[11px] opacity-55 tabular-nums"
+                  >${attentionCount > 0 ? t('blocked') : configured ? t('ready') : t('setup')} ·
+                  ${healthyCount} ${t('healthyCount')} · ${attentionCount}
+                  ${t('attentionCount')}</span
                 >
                 <button
-                  class="tooltip tooltip-bottom btn btn-xs btn-outline"
+                  class="tooltip tooltip-bottom btn btn-xs btn-ghost h-6 min-h-0 px-2"
                   data-tip="Refresh all descriptors and generate a copyable diagnosis report"
                   title="Refresh all descriptors and generate a copyable diagnosis report"
                   @click=${() => void this.handleRunDiagnosis()}
                 >
-                  Diagnose
+                  ${t('diagnose')}
                 </button>
                 <button
-                  class="tooltip tooltip-bottom btn btn-xs btn-ghost"
+                  class="tooltip tooltip-bottom btn btn-xs btn-ghost h-6 min-h-0 px-2"
                   data-tip="Copy the latest diagnosis report for issue reports or teammates"
                   title="Copy the latest diagnosis report for issue reports or teammates"
                   @click=${() => void this.handleCopyDiagnosis()}
                 >
-                  Copy
+                  ${t('copy')}
                 </button>
-              </div>
-            </div>
-            <div class="mt-2 grid grid-cols-3 gap-2">
-              <div class="rounded-xl bg-base-200/70 px-3 py-1.5 text-xs">
-                <div class="font-semibold">Configuration</div>
-                <div class="opacity-60">${configured ? 'Complete' : 'Missing endpoint'}</div>
-              </div>
-              <div class="rounded-xl bg-base-200/70 px-3 py-1.5 text-xs">
-                <div class="font-semibold">OpenCode</div>
-                <div class="opacity-60">
-                  ${opencodeHttpDescriptor ? opencodeHttpDescriptor.status : 'Not checked'}
-                </div>
-              </div>
-              <div class="rounded-xl bg-base-200/70 px-3 py-1.5 text-xs">
-                <div class="font-semibold">Session links</div>
-                <div class="opacity-60 tabular-nums">${scopedSessionCount} connected</div>
               </div>
             </div>
             ${this.diagnosisReport
               ? html`
                   <pre
-                    class="mt-3 max-h-40 rounded-xl bg-base-300/60 p-3 text-[11px] leading-relaxed whitespace-pre-wrap"
+                    class="mt-3 max-h-40 max-w-full overflow-auto rounded-md bg-base-300/60 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words"
                   >
 ${this.diagnosisReport}</pre
                   >
@@ -560,7 +552,7 @@ ${this.diagnosisReport}</pre
           </section>
 
           <details
-            class="rounded-xl border border-base-300 bg-base-100 px-3 py-2 shadow-sm"
+            class="rounded-md border border-base-300 bg-base-100 px-3 py-2 shadow-sm"
             ?open=${attentionCount > 0 || !configured}
           >
             <summary class="cursor-pointer select-none list-none">
@@ -568,22 +560,34 @@ ${this.diagnosisReport}</pre
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
                     <span class="text-xs font-bold uppercase tracking-wide opacity-60"
-                      >Endpoint configuration</span
-                    >
-                    <span
-                      class="tooltip tooltip-bottom badge badge-outline badge-xs"
-                      data-tip="Most users should not edit this unless Setup says endpoints are wrong"
-                      title="Most users should not edit this unless Setup says endpoints are wrong"
-                      >advanced</span
+                      >${t('endpointConfiguration')}</span
                     >
                   </div>
                   <p class="mt-1 text-xs opacity-60 leading-relaxed">
                     Edit endpoints only when local ports or remote bridge routes change.
                   </p>
                 </div>
-                ${this.message
-                  ? html`<span class="text-xs opacity-60" role="status">${this.message}</span>`
-                  : nothing}
+                <div class="flex items-center gap-2">
+                  ${this.message
+                    ? html`<span class="text-xs opacity-60" role="status">${this.message}</span>`
+                    : nothing}
+                  <span
+                    class="details-chevron inline-flex h-6 w-6 items-center justify-center rounded-sm border border-base-300 bg-base-200 transition-transform duration-150"
+                    aria-hidden="true"
+                  >
+                    <svg
+                      class="h-3.5 w-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </div>
               </div>
             </summary>
 
@@ -596,10 +600,12 @@ ${this.diagnosisReport}</pre
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-3 xl:grid-cols-3">
+            <div
+              class="rounded-md border border-base-300 bg-base-100 divide-y divide-base-200 overflow-hidden"
+            >
               ${this.renderEndpointCard({
                 eyebrow: 'OpenCode control plane',
-                title: 'OpenCode Base URL',
+                title: t('openCodeBaseUrl'),
                 field: 'opencodeBaseUrl',
                 value: this.endpoints.opencodeBaseUrl,
                 placeholder: 'http://localhost:4096',
@@ -611,16 +617,16 @@ ${this.diagnosisReport}</pre
                 descriptor: opencodeHttpDescriptor,
                 actions: html`
                   <button
-                    class="btn btn-xs btn-outline"
+                    class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
                     @click=${() => void this.handleAction('opencode-http', 'reconnect')}
                   >
-                    Probe OpenCode
+                    ${t('probeOpencode')}
                   </button>
                 `,
               })}
               ${this.renderEndpointCard({
                 eyebrow: 'Session MCP transport',
-                title: 'Bridge Base URL',
+                title: t('bridgeBaseUrl'),
                 field: 'bridgeBaseUrl',
                 value: this.endpoints.bridgeBaseUrl,
                 placeholder: 'http://localhost:22334',
@@ -631,7 +637,7 @@ ${this.diagnosisReport}</pre
               })}
               ${this.renderEndpointCard({
                 eyebrow: 'Browser bridge control link',
-                title: 'Bridge Default WS URL',
+                title: t('bridgeDefaultWsUrl'),
                 field: 'bridgeWsUrl',
                 value: this.endpoints.bridgeWsUrl,
                 placeholder: 'ws://127.0.0.1:22335/default',
@@ -643,20 +649,17 @@ ${this.diagnosisReport}</pre
                 descriptor: bridgeDescriptor,
                 actions: html`
                   <button
-                    class="btn btn-xs btn-outline"
+                    class="btn btn-xs btn-ghost h-6 min-h-0 px-2"
                     @click=${() => void this.handleAction('bridge-default-ws', 'reconnect')}
                   >
-                    Reconnect WS
+                    ${t('reconnectWs')}
                   </button>
                 `,
               })}
             </div>
 
             <div class="mt-3 flex items-center justify-between gap-2 border-t border-base-300 pt-3">
-              <p class="text-xs opacity-60 leading-relaxed">
-                Save & Probe stores all three endpoints, then immediately checks OpenCode health and
-                reconnects Bridge Default WS.
-              </p>
+              <p class="text-xs opacity-60 leading-relaxed">${t('saveProbeHint')}</p>
               <button
                 class="tooltip tooltip-bottom btn btn-sm btn-primary ${this.saving
                   ? 'loading'
@@ -666,7 +669,7 @@ ${this.diagnosisReport}</pre
                 ?disabled=${this.saving}
                 @click=${() => void this.handleSaveEndpoints()}
               >
-                Save & Probe
+                ${t('saveProbe')}
               </button>
             </div>
           </details>
@@ -675,8 +678,8 @@ ${this.diagnosisReport}</pre
         <div class="flex-1 p-3 flex flex-col gap-4">
           ${groups.length === 0
             ? html`
-                <div class="rounded-2xl border border-dashed border-base-300 p-6 text-center">
-                  <div class="text-sm font-semibold">No session/page runtime snapshots yet</div>
+                <div class="rounded-lg border border-dashed border-base-300 p-6 text-center">
+                  <div class="text-sm font-semibold">${t('noRuntimeSnapshots')}</div>
                   <p class="text-xs opacity-60 mt-1">
                     Endpoint status is shown in the cards above; after clicking Connect in OpenCode,
                     session and page capability links will appear here.
@@ -699,7 +702,7 @@ ${this.diagnosisReport}</pre
                             </p>`
                           : nothing}
                       </div>
-                      <span class="badge badge-ghost badge-xs">${group.descriptors.length}</span>
+                      <span class="text-[11px] opacity-50">${group.descriptors.length}</span>
                     </div>
                     <div class="grid grid-cols-1 gap-2 xl:grid-cols-2">
                       ${group.descriptors.map((descriptor) => this.renderRow(descriptor))}
