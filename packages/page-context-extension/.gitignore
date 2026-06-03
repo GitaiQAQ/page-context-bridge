@@ -3,3 +3,21 @@ dist
 *.log
 .DS_Store
 package-lock.json
+
+# Local AI/editor workspace artifacts
+.agent/
+.aiden/
+.codebuddy/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.kiro/
+.opencode/
+.qoder/
+.roo/
+.trae/
+.windsurf/
+
+# Tool-created config directories (not repo workflows)
+.github/
