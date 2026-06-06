@@ -1,0 +1,131 @@
+name: Package Artifacts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.32.1'
+
+jobs:
+  browser-extension:
+    name: Build browser extension targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check extension
+        working-directory: packages/page-context-extension
+        run: pnpm run typecheck
+
+      - name: Build Chromium and Firefox extension artifacts
+        working-directory: packages/page-context-extension
+        run: pnpm run build
+
+      - name: Upload Chromium extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-context-extension-chromium
+          path: packages/page-context-extension/dist-chromium/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Firefox extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-context-extension-firefox
+          path: packages/page-context-extension/dist-firefox/
+          if-no-files-found: error
+          retention-days: 14
+
+  npm-packages:
+    name: Build consumable npm packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @page-context/shared-protocol build
+          pnpm --filter @page-context/builtin-tools build
+          pnpm --filter @page-context/tool-visibility build
+          pnpm --filter @page-context/tool-executor build
+          pnpm --filter @page-context/agentation-shell build
+          pnpm --filter @page-context/agentation build
+          pnpm --filter @page-context/feedback build
+          pnpm --filter @page-context/userscripts build
+          pnpm --filter @page-context/example build
+          pnpm --filter @page-context/opencode-handler build
+          pnpm --filter @page-context/mcp-bridge build
+
+      - name: Pack publishable packages
+        run: |
+          mkdir -p artifacts/npm
+          for package_dir in \
+            packages/shared-protocol \
+            packages/builtin-tools \
+            packages/page-context-tool-visibility \
+            packages/page-context-tool-executor \
+            packages/page-context-agentation-shell \
+            packages/page-context-agentation \
+            packages/page-context-feedback \
+            packages/page-context-userscripts \
+            packages/page-context-example \
+            packages/opencode-protocol \
+            packages/page-context-bridge-server
+          do
+            pnpm --dir "$package_dir" pack --pack-destination "$GITHUB_WORKSPACE/artifacts/npm"
+          done
+
+      - name: Upload npm package tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-context-npm-packages
+          path: artifacts/npm/*.tgz
+          if-no-files-found: error
+          retention-days: 14
